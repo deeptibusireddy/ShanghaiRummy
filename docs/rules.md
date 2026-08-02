@@ -8,11 +8,17 @@
 
 ## Terminology
 
-- **Triplet** — 3+ cards of the same rank, any suits. (Elsewhere called a "set" or "book".)
-- **Sequence** — 4+ consecutive cards of the same suit. (Elsewhere called a "run".)
+- **Triplet** — 3 or more cards of the same rank, any suits. The minimum size
+  to satisfy a contract is 3; once a triplet is on the table, it can be
+  extended by any player (once they've gone down) with additional cards of
+  the same rank.
+- **Sequence** — 4 or more consecutive cards of the same suit. The minimum
+  size to satisfy a contract is 4; once on the table, it can be extended at
+  either end.
 - **Meld** — a triplet or a sequence played face-up on the table.
 - **Wild card** — a joker or any 2.
-- **Contract** — the specific combination of triplets and sequences you must lay down in a single turn to "go down" that round.
+- **Contract** — the specific combination of triplets and sequences (each of a
+  specific size) you must lay down in a single turn to "go down" that round.
 - **Going down** — laying your full contract face-up for the first time in a round.
 - **Going out** — playing your last card (via meld or discard) to end the round.
 
@@ -63,11 +69,16 @@ final round in this variant.
 ## Melding
 
 ### Triplet (3+ cards, same rank)
+- **Contract size:** exactly 3 at the moment you go down.
+- **After laid down:** can be extended by adding more same-rank cards.
 - Any suits, any repetition of suits (2 decks means you can have 2×♠7 in the
   same triplet).
 - Example: ♠7 ♥7 ♦7 (legal) • ♠7 ♠7 ♥7 (legal, from 2 decks).
 
 ### Sequence (4+ cards, same suit, consecutive)
+- **Contract size:** the exact size specified by the round's contract (e.g.,
+  a "sequence of 7" must be exactly 7 cards long when laid down).
+- **After laid down:** can be extended at either end.
 - Aces are **either low (A-2-3-4) or high (J-Q-K-A)**.
 - **No wrap-around** — K-A-2 is illegal.
 - Example: ♣5 ♣6 ♣7 ♣8 (legal) • ♥Q ♥K ♥A (illegal, only 3 cards; a sequence needs 4).
