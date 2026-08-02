@@ -35,8 +35,12 @@ Then in Xcode: select your Team under **Signing & Capabilities**, enable the
 
 ## Editing on Windows / Linux
 
-You can edit sources, docs, and `project.yml` on any OS. Only compiling,
-running, and submitting to the App Store require macOS + Xcode.
+You can edit sources, docs, and `project.yml` on any OS.
+
+**No Mac?** Builds and tests run automatically on every push via GitHub Actions
+(`.github/workflows/ios.yml`). Distribution to TestFlight is set up via Xcode
+Cloud when the app is ready for beta testing. See
+[`docs/deployment.md`](docs/deployment.md) for the full no-Mac workflow.
 
 ## Repo layout
 
