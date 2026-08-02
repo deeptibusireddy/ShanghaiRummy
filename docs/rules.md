@@ -92,8 +92,47 @@ final round in this variant.
   - Sequence of 6 → max **3** wilds
   - Sequence of 7 → max **3** wilds
   - Sequence of 10 → max **5** wilds
-- **Wild cards cannot be swapped.** Once a wild is played into a meld on the
-  table, no one may replace it with the natural card and reclaim the wild.
+- **Wild cards cannot be swapped out — with one exception:** see "Redeeming
+  a joker from a sequence" below.
+
+### Redeeming a joker from a sequence
+
+Once you have gone down, on your subsequent turns (during the Meld phase)
+you may **redeem a joker** from any sequence on the table — yours or an
+opponent's — by producing the exact natural card the joker is standing in
+for.
+
+- **Jokers only.** Wild 2s already placed into melds are permanent and can
+  never be redeemed.
+- **Sequences only.** Jokers in triplets are permanent (with two full decks
+  in play, the "natural" replacement in a triplet is ambiguous, so we
+  disallow it).
+- **You must have gone down.** No joker redemption on the same turn you go
+  down, and no redemption before you go down at all.
+- **Your turn only.** You cannot redeem a joker outside your normal turn
+  (e.g., not via a buy).
+- The **exact positional card** must be produced: for `♣5 ♣6 🃏 ♣8` the
+  joker is redeemed only by `♣7`.
+- The redeemed joker goes into your hand and is a normal wild again — you
+  may play it later, or on the same turn onto a different meld (subject to
+  wild limits).
+- Multiple joker redemptions per turn are allowed as long as each is legal.
+
+### Discarded 2s are dead
+
+A 2 that has been placed onto the discard pile **loses its wild status
+permanently**, no matter who eventually picks it up.
+
+- The moment a 2 is discarded, it becomes a "dead 2" and stays that way for
+  the rest of the round.
+- A dead 2 acquired via **drawing from the discard pile** or **buying** may
+  only be played at its face value — i.e., as the number 2 in a sequence of
+  its suit (e.g., `♥A ♥2 ♥3 ♥4`). It cannot substitute for any other card.
+- A dead 2 counts as **5 penalty points** (not 20) if left in hand at end
+  of round.
+- Dead 2s can be laid down as regular natural cards in a sequence that
+  contains a natural 2 slot; they otherwise behave like a plain low card.
+- Rediscarding a dead 2 keeps it dead. There is no way to "revive" it.
 
 ## Going down
 
@@ -137,6 +176,7 @@ At the end of each round, every player counts penalty points for cards left
 | King, Queen, Jack, 10  | 10     |
 | 3–9                    | 5      |
 | **2 (wild)**           | **20** |
+| **2 (dead — has been discarded this round)** | **5** |
 | **Joker (wild)**       | **20** |
 
 The player who went out scores 0 for the round. There is **no bonus** — going
