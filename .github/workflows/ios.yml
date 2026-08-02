@@ -42,10 +42,11 @@ jobs:
           xcodebuild \
             -project ShanghaiRummy.xcodeproj \
             -scheme ShanghaiRummy \
+            -sdk iphonesimulator \
             -destination "platform=iOS Simulator,id=$DEVICE_ID" \
             -configuration Debug \
             CODE_SIGNING_ALLOWED=NO \
-            clean build test \
+            build test \
             | xcbeautify --renderer github-actions
 
       - name: Upload test results
