@@ -28,12 +28,18 @@ public struct Card: Hashable, Codable, Sendable, Identifiable {
     public let suit: Suit?
     public let rank: Rank?
     public let isPrintedJoker: Bool
+    /// A 2 that has been placed on the discard pile is permanently dead for
+    /// the round: it can no longer be used as a wild by whoever picks it up
+    /// (draw or buy), and its penalty in hand drops to face value (5 pts).
+    /// See `docs/rules.md` "Discarded 2s are dead".
+    public var isDead2: Bool
 
     public init(suit: Suit, rank: Rank) {
         self.id = UUID()
         self.suit = suit
         self.rank = rank
         self.isPrintedJoker = false
+        self.isDead2 = false
     }
 
     public static func joker() -> Card { Card(joker: true) }
@@ -43,21 +49,35 @@ public struct Card: Hashable, Codable, Sendable, Identifiable {
         self.suit = nil
         self.rank = nil
         self.isPrintedJoker = true
+        self.isDead2 = false
     }
 
-    /// True if this card is wild (joker or any 2). Wild cards may substitute
-    /// for any card in a meld, subject to the per-meld wild limit.
+    /// True if this card is currently a wild. Jokers are always wild.
+    /// A 2 is wild only until it hits the discard pile (see `isDead2`).
     public var isWild: Bool {
-        isPrintedJoker || rank == .two
+        if isPrintedJoker { return true }
+        return rank == .two && !isDead2
     }
 
     /// Penalty points if left in hand at end of a round.
     /// - Joker: 20
-    /// - Wild 2: 20 (per family rule)
+    /// - Live wild 2: 20
+    /// - Dead 2: 5 (face value; no longer wild)
     /// - Everything else: see `Rank.points`
     public var points: Int {
         if isPrintedJoker { return 20 }
+        if rank == .two { return isDead2 ? 5 : 20 }
         return rank?.points ?? 0
+    }
+
+    /// Returns a copy of this card marked dead if it is a 2. No-op otherwise.
+    /// Used by TurnEngine when discarding a 2 — the dead status persists on
+    /// the card and follows it into whoever's hand picks it up next.
+    public func markedDeadIfTwo() -> Card {
+        guard rank == .two, !isDead2 else { return self }
+        var copy = self
+        copy.isDead2 = true
+        return copy
     }
 }
 

@@ -330,3 +330,324 @@ final class TurnEngineTests: XCTestCase {
         } else { XCTFail("expected failure") }
     }
 }
+
+// MARK: - Dead 2 rules
+
+final class Dead2Tests: XCTestCase {
+    func testFreshTwoIsWildAndWorth20() {
+        let two = c(.hearts, .two)
+        XCTAssertTrue(two.isWild)
+        XCTAssertEqual(two.points, 20)
+    }
+
+    func testMarkedDead2IsNotWildAndWorth5() {
+        let dead = c(.hearts, .two).markedDeadIfTwo()
+        XCTAssertFalse(dead.isWild)
+        XCTAssertEqual(dead.points, 5)
+    }
+
+    func testMarkedDeadIsIdempotentAndPreservesId() {
+        let two = c(.hearts, .two)
+        let dead = two.markedDeadIfTwo().markedDeadIfTwo()
+        XCTAssertTrue(dead.isDead2)
+        XCTAssertEqual(dead.id, two.id)
+    }
+
+    func testMarkedDeadIsNoopForNonTwos() {
+        let ace = c(.hearts, .ace)
+        let joker = Card.joker()
+        XCTAssertFalse(ace.markedDeadIfTwo().isDead2)
+        XCTAssertTrue(joker.markedDeadIfTwo().isWild) // jokers stay wild
+    }
+
+    func testDiscardingATwoMakesItDeadInThePile() {
+        // Player draws, then discards a 2. It should land on the pile dead.
+        let two = c(.hearts, .two)
+        let filler = c(.spades, .five)
+        let p1 = Player(name: "A", hand: [two, filler])
+        let p2 = Player(name: "B", hand: [c(.clubs, .three)])
+        var g = GameState(
+            players: [p1, p2], currentRound: 1, currentTurnIndex: 0, dealerIndex: 1,
+            stock: [c(.clubs, .four)], discard: [c(.clubs, .ten)], melds: [],
+            phase: .awaitingMeldOrDiscard, stockReshufflesUsed: 0, randomSeed: 0
+        )
+        g = try! TurnEngine.apply(.discard(playerId: p1.id, card: two), to: g).get()
+        let top = g.discard.last!
+        XCTAssertEqual(top.rank, .two)
+        XCTAssertTrue(top.isDead2)
+        XCTAssertFalse(top.isWild)
+        XCTAssertEqual(top.points, 5)
+    }
+
+    func testDrawingDead2FromDiscardKeepsItDead() {
+        // Discard pile top is a dead 2. Next player draws it. It stays dead in hand.
+        let dead2 = c(.hearts, .two).markedDeadIfTwo()
+        let p1 = Player(name: "A", hand: [c(.clubs, .three)])
+        let p2 = Player(name: "B", hand: [])
+        var g = GameState(
+            players: [p1, p2], currentRound: 1, currentTurnIndex: 0, dealerIndex: 1,
+            stock: [c(.clubs, .four)], discard: [dead2], melds: [],
+            phase: .awaitingDraw, stockReshufflesUsed: 0, randomSeed: 0
+        )
+        g = try! TurnEngine.apply(.draw(playerId: p1.id, source: .discard), to: g).get()
+        let drawn = g.players[0].hand.last!
+        XCTAssertEqual(drawn.id, dead2.id)
+        XCTAssertTrue(drawn.isDead2)
+        XCTAssertFalse(drawn.isWild)
+    }
+
+    func testBuyingDead2KeepsItDead() {
+        let dead2 = c(.hearts, .two).markedDeadIfTwo()
+        let p1 = Player(name: "A", hand: [])          // turn player
+        let p2 = Player(name: "B", hand: [])          // buyer
+        var g = GameState(
+            players: [p1, p2], currentRound: 1, currentTurnIndex: 0, dealerIndex: 1,
+            stock: [c(.clubs, .four), c(.clubs, .five)], // enough for buy + penalty
+            discard: [dead2], melds: [],
+            phase: .awaitingDraw, stockReshufflesUsed: 0, randomSeed: 0
+        )
+        g = try! TurnEngine.apply(.buy(playerId: p2.id), to: g).get()
+        // Buyer received the dead 2 plus penalty; the dead 2 should still be dead.
+        let received = g.players[1].hand.first(where: { $0.id == dead2.id })!
+        XCTAssertTrue(received.isDead2)
+        XCTAssertFalse(received.isWild)
+    }
+
+    func testDead2ScoredAsFiveInHand() {
+        let dead2 = c(.hearts, .two).markedDeadIfTwo()
+        let ace = c(.spades, .ace)
+        XCTAssertEqual(Scoring.penalty(for: [dead2, ace]), 5 + 15)
+    }
+
+    func testDead2InSequenceAtFacePositionIsLegal() {
+        // ♥A-(dead♥2)-♥3-♥4 : dead 2 sits at its natural rank slot in a heart run.
+        let dead2 = c(.hearts, .two).markedDeadIfTwo()
+        let cards = [c(.hearts, .ace), dead2, c(.hearts, .three), c(.hearts, .four)]
+        XCTAssertNoThrow(try MeldValidator.validateSequence(cards).get())
+    }
+
+    func testDead2CannotSubstituteForOtherPositionInSequence() {
+        // Try ♥5-♥6-(dead♥2)-♥8. Dead 2 is treated as its natural rank (2),
+        // which breaks the run. Must fail.
+        let dead2 = c(.hearts, .two).markedDeadIfTwo()
+        let cards = [c(.hearts, .five), c(.hearts, .six), dead2, c(.hearts, .eight)]
+        if case .failure(let e) = MeldValidator.validateSequence(cards) {
+            XCTAssertEqual(e, .sequenceNotConsecutive)
+        } else { XCTFail("expected sequenceNotConsecutive") }
+    }
+
+    func testDead2CannotJoinTripletOfSevens() {
+        // A dead 2 has rank 2 and is not wild — mixed ranks in a triplet of 7s.
+        let dead2 = c(.spades, .two).markedDeadIfTwo()
+        let cards = [c(.spades, .seven), c(.hearts, .seven), dead2]
+        if case .failure(let e) = MeldValidator.validateTriplet(cards) {
+            XCTAssertEqual(e, .tripletMixedRanks)
+        } else { XCTFail("expected tripletMixedRanks") }
+    }
+}
+
+// MARK: - Wild redemption from sequences
+
+final class WildRedemptionTests: XCTestCase {
+
+    /// Build a two-player state where p1 has already gone down (on an earlier
+    /// turn) and the table has a single sequence meld with the given cards.
+    /// p1 holds `handExtras` plus we place them in `awaitingMeldOrDiscard`
+    /// with `laidDownThisTurn: false` — i.e., this is a *later* turn.
+    private func stateWithSequence(
+        meldCards: [Card],
+        p1Hand: [Card]
+    ) -> (GameState, Player, Player, Meld) {
+        let p1 = Player(
+            name: "A", hand: p1Hand,
+            hasGoneDownThisRound: true, laidDownThisTurn: false
+        )
+        let p2 = Player(name: "B", hand: [])
+        let meld = Meld(kind: .sequence, cards: meldCards, ownerId: p2.id)
+        let state = GameState(
+            players: [p1, p2], currentRound: 1, currentTurnIndex: 0, dealerIndex: 1,
+            stock: [c(.clubs, .nine)], discard: [c(.clubs, .ten)],
+            melds: [meld],
+            phase: .awaitingMeldOrDiscard,
+            stockReshufflesUsed: 0, randomSeed: 0
+        )
+        return (state, p1, p2, meld)
+    }
+
+    func testRedeemJokerWithExactPositionalCardSucceeds() {
+        // ♣5 ♣6 🃏 ♣8 → hand ♣7 → redeem joker.
+        let joker = Card.joker()
+        let c7 = c(.clubs, .seven)
+        let (g, p1, _, meld) = stateWithSequence(
+            meldCards: [c(.clubs, .five), c(.clubs, .six), joker, c(.clubs, .eight)],
+            p1Hand: [c7]
+        )
+        let result = TurnEngine.apply(
+            .redeemWild(playerId: p1.id, meldId: meld.id,
+                        wildCardId: joker.id, replacementCard: c7),
+            to: g
+        )
+        let new = try! result.get()
+        XCTAssertEqual(new.melds[0].cards[2].id, c7.id)
+        XCTAssertEqual(new.melds[0].wildCount, 0)
+        XCTAssertTrue(new.players[0].hand.contains(where: { $0.id == joker.id }))
+        XCTAssertFalse(new.players[0].hand.contains(where: { $0.id == c7.id }))
+    }
+
+    func testRedeemLiveWildTwoFromSequenceSucceeds() {
+        // ♣5 ♣6 (♠2 wild for ♣7) ♣8 → redeem with ♣7.
+        let wild2 = c(.spades, .two) // live wild 2 (never touched discard)
+        let c7 = c(.clubs, .seven)
+        let (g, p1, _, meld) = stateWithSequence(
+            meldCards: [c(.clubs, .five), c(.clubs, .six), wild2, c(.clubs, .eight)],
+            p1Hand: [c7]
+        )
+        let new = try! TurnEngine.apply(
+            .redeemWild(playerId: p1.id, meldId: meld.id,
+                        wildCardId: wild2.id, replacementCard: c7),
+            to: g
+        ).get()
+        XCTAssertEqual(new.melds[0].cards[2].id, c7.id)
+        XCTAssertTrue(new.players[0].hand.contains(where: { $0.id == wild2.id }))
+    }
+
+    func testRedeemWithWrongPositionalCardFails() {
+        // Player tries to hand ♣3 for the joker in ♣5 ♣6 🃏 ♣8.
+        let joker = Card.joker()
+        let wrong = c(.clubs, .three)
+        let (g, p1, _, meld) = stateWithSequence(
+            meldCards: [c(.clubs, .five), c(.clubs, .six), joker, c(.clubs, .eight)],
+            p1Hand: [wrong]
+        )
+        let result = TurnEngine.apply(
+            .redeemWild(playerId: p1.id, meldId: meld.id,
+                        wildCardId: joker.id, replacementCard: wrong),
+            to: g
+        )
+        if case .failure(let e) = result {
+            if case .invalidRedemption = e { /* ok */ } else { XCTFail("expected invalidRedemption, got \(e)") }
+        } else { XCTFail("expected failure") }
+    }
+
+    func testRedeemFromTripletIsRejected() {
+        // Even a valid-looking swap on a triplet must be rejected.
+        let joker = Card.joker()
+        let c7natural = c(.clubs, .seven)
+        let p1 = Player(name: "A", hand: [c7natural],
+                        hasGoneDownThisRound: true, laidDownThisTurn: false)
+        let p2 = Player(name: "B", hand: [])
+        let meld = Meld(kind: .triplet,
+                        cards: [c(.spades, .seven), c(.hearts, .seven), joker],
+                        ownerId: p2.id)
+        let g = GameState(
+            players: [p1, p2], currentRound: 1, currentTurnIndex: 0, dealerIndex: 1,
+            stock: [c(.clubs, .nine)], discard: [c(.clubs, .ten)],
+            melds: [meld], phase: .awaitingMeldOrDiscard,
+            stockReshufflesUsed: 0, randomSeed: 0
+        )
+        let result = TurnEngine.apply(
+            .redeemWild(playerId: p1.id, meldId: meld.id,
+                        wildCardId: joker.id, replacementCard: c7natural),
+            to: g
+        )
+        if case .failure(let e) = result {
+            XCTAssertEqual(e, .notASequence)
+        } else { XCTFail("expected notASequence") }
+    }
+
+    func testRedeemBeforeGoingDownIsRejected() {
+        let joker = Card.joker()
+        let c7 = c(.clubs, .seven)
+        let p1 = Player(name: "A", hand: [c7],
+                        hasGoneDownThisRound: false, laidDownThisTurn: false)
+        let p2 = Player(name: "B", hand: [])
+        let meld = Meld(kind: .sequence,
+                        cards: [c(.clubs, .five), c(.clubs, .six), joker, c(.clubs, .eight)],
+                        ownerId: p2.id)
+        let g = GameState(
+            players: [p1, p2], currentRound: 1, currentTurnIndex: 0, dealerIndex: 1,
+            stock: [c(.clubs, .nine)], discard: [c(.clubs, .ten)],
+            melds: [meld], phase: .awaitingMeldOrDiscard,
+            stockReshufflesUsed: 0, randomSeed: 0
+        )
+        let result = TurnEngine.apply(
+            .redeemWild(playerId: p1.id, meldId: meld.id,
+                        wildCardId: joker.id, replacementCard: c7),
+            to: g
+        )
+        if case .failure(let e) = result {
+            XCTAssertEqual(e, .notYetWentDown)
+        } else { XCTFail("expected notYetWentDown") }
+    }
+
+    func testRedeemOnGoDownTurnIsRejected() {
+        let joker = Card.joker()
+        let c7 = c(.clubs, .seven)
+        // Simulate having just gone down this turn.
+        let p1 = Player(name: "A", hand: [c7],
+                        hasGoneDownThisRound: true, laidDownThisTurn: true)
+        let p2 = Player(name: "B", hand: [])
+        let meld = Meld(kind: .sequence,
+                        cards: [c(.clubs, .five), c(.clubs, .six), joker, c(.clubs, .eight)],
+                        ownerId: p2.id)
+        let g = GameState(
+            players: [p1, p2], currentRound: 1, currentTurnIndex: 0, dealerIndex: 1,
+            stock: [c(.clubs, .nine)], discard: [c(.clubs, .ten)],
+            melds: [meld], phase: .awaitingMeldOrDiscard,
+            stockReshufflesUsed: 0, randomSeed: 0
+        )
+        let result = TurnEngine.apply(
+            .redeemWild(playerId: p1.id, meldId: meld.id,
+                        wildCardId: joker.id, replacementCard: c7),
+            to: g
+        )
+        if case .failure(let e) = result {
+            XCTAssertEqual(e, .cannotActOnGoDownTurn)
+        } else { XCTFail("expected cannotActOnGoDownTurn") }
+    }
+
+    func testRedeemWithWildReplacementRejected() {
+        // Trying to hand another joker as the "replacement" for a wild — no.
+        let jokerInMeld = Card.joker()
+        let jokerInHand = Card.joker()
+        let (g, p1, _, meld) = stateWithSequence(
+            meldCards: [c(.clubs, .five), c(.clubs, .six), jokerInMeld, c(.clubs, .eight)],
+            p1Hand: [jokerInHand]
+        )
+        let result = TurnEngine.apply(
+            .redeemWild(playerId: p1.id, meldId: meld.id,
+                        wildCardId: jokerInMeld.id, replacementCard: jokerInHand),
+            to: g
+        )
+        if case .failure(let e) = result {
+            if case .invalidRedemption = e { /* ok */ } else { XCTFail("expected invalidRedemption, got \(e)") }
+        } else { XCTFail("expected failure") }
+    }
+
+    func testAddToMeldRejectedOnGoDownTurn() {
+        // Verify the new laidDownThisTurn flag also blocks addToMeld.
+        let joker = Card.joker()
+        _ = joker
+        let extra = c(.clubs, .four)
+        let p1 = Player(name: "A", hand: [extra],
+                        hasGoneDownThisRound: true, laidDownThisTurn: true)
+        let p2 = Player(name: "B", hand: [])
+        let meld = Meld(kind: .sequence,
+                        cards: [c(.clubs, .five), c(.clubs, .six), c(.clubs, .seven), c(.clubs, .eight)],
+                        ownerId: p1.id)
+        let g = GameState(
+            players: [p1, p2], currentRound: 1, currentTurnIndex: 0, dealerIndex: 1,
+            stock: [c(.clubs, .nine)], discard: [c(.clubs, .ten)],
+            melds: [meld], phase: .awaitingMeldOrDiscard,
+            stockReshufflesUsed: 0, randomSeed: 0
+        )
+        let result = TurnEngine.apply(
+            .addToMeld(playerId: p1.id, meldId: meld.id,
+                       cardsAtStart: [extra], cardsAtEnd: []),
+            to: g
+        )
+        if case .failure(let e) = result {
+            XCTAssertEqual(e, .cannotActOnGoDownTurn)
+        } else { XCTFail("expected cannotActOnGoDownTurn") }
+    }
+}
