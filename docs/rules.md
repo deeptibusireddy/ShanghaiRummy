@@ -1,35 +1,156 @@
-# Shanghai Rummy — Rule Set (Draft)
+# Shanghai Rummy — Official Rules (as implemented)
 
-> Placeholder for the exact variant we'll ship. Confirm with the family and
-> update this doc before locking down the rules engine.
+> This is the rule set the app implements. It was agreed with the family/owner
+> in the M1 planning phase. Any future rule change should be reflected here
+> **before** touching the rules engine.
+>
+> Owner: @deeptibusireddy • Locked: 2026-08-02
 
-## Baseline (7-round Contract Rummy, "Shanghai" variant)
+## Terminology
 
-- **Players:** 2–4 (extend to 6 with a third deck)
-- **Deck:** Two 52-card decks + 4 jokers = 108 cards
-- **Wild cards:** Jokers wild. Some variants also make 2s wild — TBD.
-- **Deal:** 11 cards per player each round; discard pile started face-up.
-- **Turn:** Draw one (stock or discard) → optionally meld → discard one.
-- **Melds:**
-  - **Set:** 3+ cards of the same rank, any suit.
-  - **Run:** 4+ consecutive cards of the same suit (A low or high; no wrap).
-- **Rounds (typical 7-round Shanghai contract):**
-  1. Two sets (2×3 cards)
-  2. One set + one run (3 + 4)
-  3. Two runs (2×4)
-  4. Three sets (3×3)
-  5. Two sets + one run (3+3+4)
-  6. One set + two runs (3+4+4)
-  7. Three runs (3×4), **no discard** — go out to win
-- **Buying the discard:** Off-turn players may buy top discard once per round
-  (penalty draw from stock). Optional — confirm.
-- **Scoring:** End of each round, unmelded cards in hand count against you
-  (see `Rank.points`). Lowest total after round 7 wins.
+- **Triplet** — 3+ cards of the same rank, any suits. (Elsewhere called a "set" or "book".)
+- **Sequence** — 4+ consecutive cards of the same suit. (Elsewhere called a "run".)
+- **Meld** — a triplet or a sequence played face-up on the table.
+- **Wild card** — a joker or any 2.
+- **Contract** — the specific combination of triplets and sequences you must lay down in a single turn to "go down" that round.
+- **Going down** — laying your full contract face-up for the first time in a round.
+- **Going out** — playing your last card (via meld or discard) to end the round.
 
-## Decisions to confirm
-- [ ] Number of players supported at launch
-- [ ] Are 2s wild in addition to jokers?
-- [ ] Buying-the-discard rule on/off?
-- [ ] Exact contracts for each of the 7 rounds
-- [ ] Point values (defaults: A=15, 2–9=5, 10/J/Q/K=10, joker=25)
-- [ ] Ace high, low, or both in runs?
+## Setup
+
+- **Players:** 2–6.
+- **Decks:**
+  - 2–4 players: **2 standard decks + 4 jokers** (108 cards).
+  - 5–6 players: **3 standard decks + 6 jokers** (162 cards).
+- **Wilds:** All jokers and all 2s are wild — they can substitute for any card
+  in a triplet or sequence.
+- **Deal:** **11 cards** to each player at the start of every round, regardless
+  of contract. Top card of the remaining stock is flipped face-up to start the
+  discard pile.
+- **Dealer:** Rotates left after each round.
+- **First to act:** Player to the dealer's left.
+
+## The 10 rounds (contracts)
+
+Each round has a specific contract you must lay down in a single turn:
+
+| Round | Contract                          | Cards needed |
+|-------|-----------------------------------|--------------|
+| 1     | 2 triplets of 3                   | 6            |
+| 2     | 1 triplet of 3 + 1 sequence of 4  | 7            |
+| 3     | 2 sequences of 4                  | 8            |
+| 4     | 3 triplets of 3                   | 9            |
+| 5     | 1 triplet of 3 + 1 sequence of 7  | 10           |
+| 6     | 2 triplets of 3 + 1 sequence of 5 | 11           |
+| 7     | 3 sequences of 4                  | 12           |
+| 8     | 1 triplet of 3 + 1 sequence of 10 | 13           |
+| 9     | 3 triplets of 3 + 1 sequence of 5 | 14           |
+| 10    | 3 sequences of 5                  | 15           |
+
+Later rounds start with a hand smaller than the contract requires — you draw
+and/or buy your way up before you can go down.
+
+## A turn (in order)
+
+1. **Draw:** Take the top of the **stock** *or* the top of the **discard pile**.
+2. **Meld** (only if you've already gone down this round):
+   - Lay additional cards on any meld already on the table (yours or opponents').
+3. **Discard:** Place one card face-up on the discard pile. Your turn ends.
+
+Round 10 follows the same rules — there is no "no discard, go out in one turn"
+final round in this variant.
+
+## Melding
+
+### Triplet (3+ cards, same rank)
+- Any suits, any repetition of suits (2 decks means you can have 2×♠7 in the
+  same triplet).
+- Example: ♠7 ♥7 ♦7 (legal) • ♠7 ♠7 ♥7 (legal, from 2 decks).
+
+### Sequence (4+ cards, same suit, consecutive)
+- Aces are **either low (A-2-3-4) or high (J-Q-K-A)**.
+- **No wrap-around** — K-A-2 is illegal.
+- Example: ♣5 ♣6 ♣7 ♣8 (legal) • ♥Q ♥K ♥A (illegal, only 3 cards; a sequence needs 4).
+
+### Wild card rules
+- Jokers and 2s are wild — they can substitute for any card.
+- **Maximum wilds per meld = floor(meld size / 2).**
+  - Triplet of 3 → max **1** wild
+  - Triplet/sequence of 4 → max **2** wilds
+  - Triplet/sequence of 5 → max **2** wilds
+  - Sequence of 6 → max **3** wilds
+  - Sequence of 7 → max **3** wilds
+  - Sequence of 10 → max **5** wilds
+- **Wild cards cannot be swapped.** Once a wild is played into a meld on the
+  table, no one may replace it with the natural card and reclaim the wild.
+
+## Going down
+
+- You may only "go down" by laying your **entire** contract in a single turn —
+  no partial contracts.
+- You may go down as soon as your hand supports it, on any of your turns.
+- **On the turn you go down**, you may NOT also add cards to any other meld on
+  the table. You lay your contract, then discard, then end your turn.
+- On **subsequent turns** (after going down), you may add cards to your own
+  melds AND to opponents' melds during your Meld phase.
+
+## Buying the discard
+
+When it's **not your turn**, you may claim the top of the discard pile:
+
+- Announce **"buy"** before the next player draws.
+- You receive the discarded card **plus one penalty card from the stock**.
+- Both cards go into your hand (no immediate meld).
+- **Limit: 3 buys per player per round.**
+- **First right of refusal:** the player whose turn it is to draw always has
+  priority — if they want the discard, they take it and no buy occurs.
+- If multiple non-turn players want to buy simultaneously, priority goes to
+  the player nearest to the current turn player (going clockwise).
+
+## Going out
+
+- After you have gone down, on your subsequent turns you may go out by playing
+  all your remaining cards — either laid onto existing melds, or discarded as
+  your final discard.
+- The moment any player goes out, the round ends immediately.
+- You may go out with or without a final discard.
+
+## Scoring
+
+At the end of each round, every player counts penalty points for cards left
+**in hand** (not on the table):
+
+| Card                   | Points |
+|------------------------|--------|
+| Ace                    | 15     |
+| King, Queen, Jack, 10  | 10     |
+| 3–9                    | 5      |
+| **2 (wild)**           | **20** |
+| **Joker (wild)**       | **20** |
+
+The player who went out scores 0 for the round. There is **no bonus** — going
+out just avoids penalty.
+
+## Winning
+
+Play all 10 rounds. **Lowest cumulative score wins.**
+
+## Edge cases
+
+- **Stock runs out:** Take all cards from the discard pile *except* the top
+  card, shuffle them, and place them face-down as the new stock. The top
+  discard remains the top discard.
+- **Nobody can go out and stock is exhausted twice:** Round ends immediately;
+  everyone scores their hand.
+- **Dealer misdeals:** Reshuffle and redeal.
+- **Illegal meld attempt:** Cards return to hand; player must still discard to
+  end the turn.
+
+## Implementation notes
+
+- **Deterministic shuffle:** Use a seeded RNG so both/all Game Center clients
+  can reproduce identical shuffles from a shared seed.
+- **Server of record:** For multiplayer, one player's device is authoritative
+  per turn; the full `GameState` diff is transmitted to the next player.
+- **Persistence:** Full `GameState` is `Codable` so a match can pause and
+  resume across app restarts and Game Center turn timeouts.
