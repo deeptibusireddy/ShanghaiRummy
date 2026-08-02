@@ -181,13 +181,21 @@ final class SeededRNGTests: XCTestCase {
     }
 
     func testDeterministicDeckShuffle() {
+        // Cards get fresh UUIDs on each Deck() build, so IDs will never match.
+        // What we care about is that the *permutation of card identities*
+        // (suit+rank+joker flag) is identical between two identically-seeded
+        // shuffles of two freshly-built decks.
+        func signature(_ c: Card) -> String {
+            if c.isPrintedJoker { return "J" }
+            return "\(c.suit!.rawValue)-\(c.rank!.rawValue)"
+        }
         var d1 = Deck(playerCount: 4)
         var d2 = Deck(playerCount: 4)
         var r1 = SeededRNG(seed: 12345)
         var r2 = SeededRNG(seed: 12345)
         d1.shuffle(using: &r1)
         d2.shuffle(using: &r2)
-        XCTAssertEqual(d1.cards.map(\.id), d2.cards.map(\.id))
+        XCTAssertEqual(d1.cards.map(signature), d2.cards.map(signature))
     }
 }
 
@@ -270,13 +278,15 @@ final class TurnEngineTests: XCTestCase {
 
     func testGoingDownRound1Succeeds() {
         // Manufacture a state where player has a valid contract for round 1
-        // (two triplets of 3). Bypass random dealing by constructing directly.
-        let p1 = Player(name: "A", hand: [
-            c(.spades, .seven), c(.hearts, .seven), c(.diamonds, .seven),
-            c(.spades, .king), c(.hearts, .king), c(.diamonds, .king),
+        // (two triplets of 3). Bind cards to variables so the contract
+        // references the SAME Card instances (same UUIDs) as the hand.
+        let s7 = c(.spades, .seven); let h7 = c(.hearts, .seven); let d7 = c(.diamonds, .seven)
+        let sK = c(.spades, .king);  let hK = c(.hearts, .king);  let dK = c(.diamonds, .king)
+        let filler = [
             c(.clubs, .three), c(.clubs, .four), c(.clubs, .five),
-            c(.clubs, .six), c(.clubs, .eight)
-        ])
+            c(.clubs, .six),   c(.clubs, .eight)
+        ]
+        let p1 = Player(name: "A", hand: [s7, h7, d7, sK, hK, dK] + filler)
         let p2 = Player(name: "B", hand: [])
         let state = GameState(
             players: [p1, p2],
@@ -290,10 +300,7 @@ final class TurnEngineTests: XCTestCase {
             stockReshufflesUsed: 0,
             randomSeed: 0
         )
-        let contract: [[Card]] = [
-            [c(.spades, .seven), c(.hearts, .seven), c(.diamonds, .seven)],
-            [c(.spades, .king), c(.hearts, .king), c(.diamonds, .king)]
-        ]
+        let contract: [[Card]] = [[s7, h7, d7], [sK, hK, dK]]
         let result = TurnEngine.apply(
             .goDown(playerId: p1.id, contract: contract),
             to: state
@@ -306,9 +313,8 @@ final class TurnEngineTests: XCTestCase {
 
     func testGoingDownWithWrongShapeFails() {
         // Round 1 requires 2 triplets. Player attempts 1 triplet only.
-        let p1 = Player(name: "A", hand: [
-            c(.spades, .seven), c(.hearts, .seven), c(.diamonds, .seven)
-        ])
+        let s7 = c(.spades, .seven); let h7 = c(.hearts, .seven); let d7 = c(.diamonds, .seven)
+        let p1 = Player(name: "A", hand: [s7, h7, d7])
         let p2 = Player(name: "B", hand: [])
         let state = GameState(
             players: [p1, p2], currentRound: 1, currentTurnIndex: 0, dealerIndex: 1,
@@ -316,9 +322,7 @@ final class TurnEngineTests: XCTestCase {
             phase: .awaitingMeldOrDiscard, stockReshufflesUsed: 0, randomSeed: 0
         )
         let result = TurnEngine.apply(
-            .goDown(playerId: p1.id, contract: [
-                [c(.spades, .seven), c(.hearts, .seven), c(.diamonds, .seven)]
-            ]),
+            .goDown(playerId: p1.id, contract: [[s7, h7, d7]]),
             to: state
         )
         if case .failure(let e) = result {
