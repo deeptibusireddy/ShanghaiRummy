@@ -27,15 +27,22 @@ jobs:
         run: xcodegen generate
 
       - name: Show available simulators
-        run: xcrun simctl list devices available | head -40
+        run: xcrun simctl list devices available
 
       - name: Build & test
         run: |
           set -o pipefail
+          # Pick the first available iPhone runtime dynamically instead of pinning
+          # to a specific iOS version — CI runners rotate what's preinstalled.
+          DEVICE_ID=$(xcrun simctl list devices available -j \
+            | python3 -c 'import json,sys; d=json.load(sys.stdin)["devices"]; \
+              picks=[dev for k,v in d.items() if "iOS" in k for dev in v if "iPhone" in dev["name"]]; \
+              print(picks[0]["udid"])')
+          echo "Using simulator: $DEVICE_ID"
           xcodebuild \
             -project ShanghaiRummy.xcodeproj \
             -scheme ShanghaiRummy \
-            -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
+            -destination "platform=iOS Simulator,id=$DEVICE_ID" \
             -configuration Debug \
             CODE_SIGNING_ALLOWED=NO \
             clean build test \
