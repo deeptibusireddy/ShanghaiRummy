@@ -107,8 +107,9 @@ wilds. So:
 | 10        | 5         |
 
 Once a wild is on the table, it stays there — **with one exception**: after
-you've gone down, you can **redeem a joker** from a sequence by handing over
-the natural card it was standing in for. See "Redeeming a joker" below.
+you've gone down, you can **redeem a wild card** (joker or live wild 2)
+from a sequence by handing over the natural card it was standing in for.
+See "Redeeming a wild" below.
 
 ### ⚠️ Discarded 2s are "dead"
 
@@ -123,7 +124,7 @@ forever** for the rest of the round.
   the hope no one notices — the next person can still grab it, but they
   can't abuse it.
 
-Jokers are never "dead" — but see below for how they can move.
+Jokers are never "dead" — but see below for how wild cards can move.
 
 ---
 
@@ -236,27 +237,28 @@ onto any meld that's already on the table — including your opponents'.
 
 This is the main way to shed cards after you've gone down.
 
-## Redeeming a joker from a sequence
+## Redeeming a wild from a sequence
 
 Also on your later turns (after going down), if you're holding the exact
-natural card a joker is standing in for on the table, you can **redeem the
-joker**:
+natural card a wild is standing in for on the table, you can **redeem the
+wild**:
 
 - Only from **sequences** (not triplets).
-- Only **jokers** (dead 2s and even live wild 2s stuck in melds can't be
-  redeemed).
+- Both **jokers and live wild 2s** in sequences can be redeemed. (Dead 2s
+  played at face value aren't wilds, so there's nothing to redeem.)
 - From **any** player's sequence — your own or an opponent's.
 - Only during **your own turn**, in the meld phase.
-- You place the exact natural card in the joker's slot, and take the joker
+- You place the exact natural card in the wild's slot, and take the wild
   back into your hand.
-- The joker is fully wild again — you can hold it, use it on a different
-  meld later, or even play it into another meld this same turn.
+- The wild is fully wild again — because you're already in the Meld phase,
+  you can hold it, or play it right back onto a different meld this same
+  turn (subject to wild limits).
 
 **Example.** The table shows `♣5 ♣6 🃏 ♣8`. On your turn, you draw ♣7. You
 lay ♣7 into the slot the joker was covering, take the joker into your
 hand, and now you have a wild to use however you like.
 
-You can't redeem a joker on the same turn you go down. Go down first,
+You can't redeem a wild on the same turn you go down. Go down first; on
 future turns you can redeem.
 
 ---

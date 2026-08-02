@@ -93,30 +93,32 @@ final round in this variant.
   - Sequence of 7 → max **3** wilds
   - Sequence of 10 → max **5** wilds
 - **Wild cards cannot be swapped out — with one exception:** see "Redeeming
-  a joker from a sequence" below.
+  a wild card from a sequence" below.
 
-### Redeeming a joker from a sequence
+### Redeeming a wild from a sequence
 
 Once you have gone down, on your subsequent turns (during the Meld phase)
-you may **redeem a joker** from any sequence on the table — yours or an
-opponent's — by producing the exact natural card the joker is standing in
-for.
+you may **redeem a wild card** — either a joker or a live wild 2 — from any
+sequence on the table (yours or an opponent's) by producing the exact
+natural card the wild is standing in for.
 
-- **Jokers only.** Wild 2s already placed into melds are permanent and can
-  never be redeemed.
-- **Sequences only.** Jokers in triplets are permanent (with two full decks
+- **Wilds redeemable:** jokers **and** wild 2s that were played into a
+  sequence as wilds. Dead 2s (see next section) are not wilds and cannot
+  be "redeemed" — they're just plain low cards on the table.
+- **Sequences only.** Wilds in triplets are permanent (with two full decks
   in play, the "natural" replacement in a triplet is ambiguous, so we
   disallow it).
-- **You must have gone down.** No joker redemption on the same turn you go
-  down, and no redemption before you go down at all.
-- **Your turn only.** You cannot redeem a joker outside your normal turn
-  (e.g., not via a buy).
+- **You must have already gone down** on an earlier turn. No redemption on
+  the same turn you go down, and no redemption before you go down.
+- **Your turn only**, during the Meld phase (after you've drawn, before you
+  discard). Not via a buy.
 - The **exact positional card** must be produced: for `♣5 ♣6 🃏 ♣8` the
-  joker is redeemed only by `♣7`.
-- The redeemed joker goes into your hand and is a normal wild again — you
-  may play it later, or on the same turn onto a different meld (subject to
-  wild limits).
-- Multiple joker redemptions per turn are allowed as long as each is legal.
+  wild is redeemed only by `♣7`. This is true whether the wild is a joker
+  or a wild 2 — its position, not its face, dictates the replacement.
+- The redeemed wild goes into your hand and is a normal wild again. Because
+  you're in the Meld phase, you may immediately play it back onto a
+  different meld this same turn (subject to wild limits).
+- Multiple redemptions per turn are allowed as long as each is legal.
 
 ### Discarded 2s are dead
 
