@@ -1,0 +1,68 @@
+# XcodeGen spec. Regenerate the .xcodeproj on macOS with: xcodegen generate
+name: ShanghaiRummy
+options:
+  bundleIdPrefix: com.deeptibusireddy
+  deploymentTarget:
+    iOS: "17.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    SWIFT_VERSION: "5.9"
+    DEVELOPMENT_TEAM: "" # fill in your Apple Team ID on Mac
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+
+targets:
+  ShanghaiRummy:
+    type: application
+    platform: iOS
+    sources:
+      - path: Sources/ShanghaiRummy
+    resources:
+      - path: Sources/ShanghaiRummy/Resources
+    info:
+      path: Sources/ShanghaiRummy/Info.plist
+      properties:
+        CFBundleDisplayName: Shanghai Rummy
+        UILaunchScreen: {}
+        UIRequiredDeviceCapabilities: [armv7, gamekit]
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+    entitlements:
+      path: Sources/ShanghaiRummy/ShanghaiRummy.entitlements
+      properties:
+        com.apple.developer.game-center: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.deeptibusireddy.ShanghaiRummy
+        GENERATE_INFOPLIST_FILE: NO
+        ENABLE_PREVIEWS: YES
+
+  ShanghaiRummyTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: Tests/ShanghaiRummyTests
+    dependencies:
+      - target: ShanghaiRummy
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.deeptibusireddy.ShanghaiRummyTests
+        GENERATE_INFOPLIST_FILE: YES
+
+schemes:
+  ShanghaiRummy:
+    build:
+      targets:
+        ShanghaiRummy: all
+        ShanghaiRummyTests: [test]
+    test:
+      targets:
+        - ShanghaiRummyTests
+    run:
+      config: Debug
+    archive:
+      config: Release
