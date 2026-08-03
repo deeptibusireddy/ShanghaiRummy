@@ -434,15 +434,6 @@ final class GameScene: SKScene {
         shadow.zPosition = card.zPosition - 0.5
         shadowsLayer.addChild(shadow)
     }
-}
-
-// Small helper to insert a child at a given index.
-private extension SKNode {
-    func insertChild(_ node: SKNode, at index: Int) {
-        addChild(node)
-        node.zPosition -= 0.001
-    }
-}
 
     // MARK: - Input
 
@@ -470,11 +461,10 @@ private extension SKNode {
     }
 }
 
-// Small helper to insert a child at a given index.
+// Small helper to insert a child behind existing siblings (approximation via zPosition).
 private extension SKNode {
     func insertChild(_ node: SKNode, at index: Int) {
         addChild(node)
-        // Reorder is not directly supported; approximate with zPosition tweaks.
-        node.zPosition -= 0.001 // just to push it slightly behind siblings
+        node.zPosition -= 0.001
     }
 }
