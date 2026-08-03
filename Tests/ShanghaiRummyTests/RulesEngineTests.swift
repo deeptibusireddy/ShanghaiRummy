@@ -651,3 +651,211 @@ final class WildRedemptionTests: XCTestCase {
         } else { XCTFail("expected cannotActOnGoDownTurn") }
     }
 }
+
+// MARK: - Independent contracts (per-player levels)
+
+final class IndependentContractTests: XCTestCase {
+
+    // Build a minimal roundEnded state for two players. `p1WentDown` and
+    // `p2WentDown` control who completed their contract this hand.
+    // p1Hand and p2Hand are whatever is left in hand (for scoring).
+    private func endedHand(
+        p1Level: Int, p1WentDown: Bool, p1Hand: [Card], p1Total: Int,
+        p2Level: Int, p2WentDown: Bool, p2Hand: [Card], p2Total: Int,
+        seed: UInt64 = 42,
+        handNumber: Int = 1
+    ) -> GameState {
+        let p1 = Player(name: "A", hand: p1Hand,
+                        totalScore: p1Total,
+                        hasGoneDownThisRound: p1WentDown,
+                        laidDownThisTurn: false,
+                        currentLevel: p1Level)
+        let p2 = Player(name: "B", hand: p2Hand,
+                        totalScore: p2Total,
+                        hasGoneDownThisRound: p2WentDown,
+                        laidDownThisTurn: false,
+                        currentLevel: p2Level)
+        return GameState(
+            players: [p1, p2],
+            currentRound: handNumber,
+            currentTurnIndex: 0,
+            dealerIndex: 1,
+            stock: [], discard: [c(.clubs, .four)],
+            melds: [],
+            phase: .roundEnded,
+            stockReshufflesUsed: 0,
+            randomSeed: seed
+        )
+    }
+
+    func testCurrentContractDependsOnCurrentPlayerLevel() {
+        var p1 = Player(name: "A", hand: [])
+        p1.currentLevel = 5
+        var p2 = Player(name: "B", hand: [])
+        p2.currentLevel = 8
+        let g = GameState(
+            players: [p1, p2], currentRound: 1, currentTurnIndex: 0, dealerIndex: 1,
+            stock: [], discard: [], melds: [],
+            phase: .awaitingDraw, stockReshufflesUsed: 0, randomSeed: 0
+        )
+        XCTAssertEqual(g.currentContract?.roundNumber, 5)
+        XCTAssertEqual(g.contract(forPlayer: p2.id)?.roundNumber, 8)
+    }
+
+    func testAdvanceHandOnlyPromotesGoDowners() {
+        let g = endedHand(
+            p1Level: 5, p1WentDown: true,  p1Hand: [],                     p1Total: 20,
+            p2Level: 5, p2WentDown: false, p2Hand: [c(.clubs, .ace)],       p2Total: 20
+        )
+        guard case .success(let next) = TurnEngine.advanceHand(state: g) else {
+            return XCTFail("advanceHand should succeed")
+        }
+        XCTAssertEqual(next.players[0].currentLevel, 6, "p1 went down → level 6")
+        XCTAssertEqual(next.players[1].currentLevel, 5, "p2 stuck on 5")
+    }
+
+    func testAdvanceHandAddsScoresToTotal() {
+        // p2 has an Ace in hand → 15 pts penalty. p1 went out (empty hand).
+        let g = endedHand(
+            p1Level: 3, p1WentDown: true,  p1Hand: [],               p1Total: 10,
+            p2Level: 3, p2WentDown: false, p2Hand: [c(.clubs, .ace)], p2Total: 30
+        )
+        guard case .success(let next) = TurnEngine.advanceHand(state: g) else {
+            return XCTFail("advanceHand should succeed")
+        }
+        XCTAssertEqual(next.players[0].totalScore, 10, "p1 went out, +0")
+        XCTAssertEqual(next.players[1].totalScore, 45, "p2 +15 for the Ace")
+    }
+
+    func testAdvanceHandDealsNextHandWithFreshFlags() {
+        let g = endedHand(
+            p1Level: 2, p1WentDown: true,  p1Hand: [], p1Total: 0,
+            p2Level: 2, p2WentDown: true,  p2Hand: [], p2Total: 0
+        )
+        guard case .success(let next) = TurnEngine.advanceHand(state: g) else {
+            return XCTFail("advanceHand should succeed")
+        }
+        XCTAssertEqual(next.currentRound, 2, "hand number increments")
+        XCTAssertEqual(next.phase, .awaitingDraw, "new hand starts with draw")
+        XCTAssertEqual(next.dealerIndex, 0, "dealer rotates from 1 → 0 (2-player)")
+        XCTAssertEqual(next.currentTurnIndex, 1, "player after new dealer acts first")
+        XCTAssertEqual(next.melds.count, 0, "table clears")
+        XCTAssertEqual(next.players[0].hand.count, 11, "fresh 11-card deal")
+        XCTAssertEqual(next.players[1].hand.count, 11)
+        XCTAssertFalse(next.players[0].hasGoneDownThisRound)
+        XCTAssertFalse(next.players[0].laidDownThisTurn)
+        XCTAssertEqual(next.players[0].buysUsedThisRound, 0)
+    }
+
+    func testAdvanceHandCarriesForwardLevelAndScore() {
+        let g = endedHand(
+            p1Level: 2, p1WentDown: true,  p1Hand: [], p1Total: 25,
+            p2Level: 2, p2WentDown: false, p2Hand: [c(.hearts, .four)], p2Total: 40
+        )
+        guard case .success(let next) = TurnEngine.advanceHand(state: g) else {
+            return XCTFail("advanceHand should succeed")
+        }
+        XCTAssertEqual(next.players[0].currentLevel, 3)
+        XCTAssertEqual(next.players[0].totalScore, 25)
+        XCTAssertEqual(next.players[1].currentLevel, 2)
+        XCTAssertEqual(next.players[1].totalScore, 45) // +5 for the 4
+    }
+
+    func testGameEndsWhenSoloFinisherReachesLevel10() {
+        // p1 was on level 10 and went down/out → advances past 10 → wins.
+        let g = endedHand(
+            p1Level: 10, p1WentDown: true,  p1Hand: [], p1Total: 100,
+            p2Level:  6, p2WentDown: false, p2Hand: [c(.clubs, .ace)], p2Total: 40
+        )
+        guard case .success(let next) = TurnEngine.advanceHand(state: g) else {
+            return XCTFail("advanceHand should succeed")
+        }
+        XCTAssertEqual(next.phase, .gameEnded)
+        XCTAssertEqual(next.gameWinnerIds.count, 1)
+        XCTAssertEqual(next.gameWinnerIds.first, g.players[0].id)
+    }
+
+    func testTieBreakerByLowestCumulativeScore() {
+        // Both p1 and p2 were on level 10 and completed it this hand.
+        // p1 already had lower cumulative total → p1 wins on tiebreaker.
+        let g = endedHand(
+            p1Level: 10, p1WentDown: true, p1Hand: [], p1Total: 55,
+            p2Level: 10, p2WentDown: true, p2Hand: [], p2Total: 90
+        )
+        guard case .success(let next) = TurnEngine.advanceHand(state: g) else {
+            return XCTFail("advanceHand should succeed")
+        }
+        XCTAssertEqual(next.phase, .gameEnded)
+        XCTAssertEqual(next.gameWinnerIds, [g.players[0].id])
+    }
+
+    func testTieBreakerCoWinnersOnEqualScore() {
+        // Both finished level 10 in the same hand AND have identical cumulative
+        // scores → both are winners.
+        let g = endedHand(
+            p1Level: 10, p1WentDown: true, p1Hand: [], p1Total: 60,
+            p2Level: 10, p2WentDown: true, p2Hand: [], p2Total: 60
+        )
+        guard case .success(let next) = TurnEngine.advanceHand(state: g) else {
+            return XCTFail("advanceHand should succeed")
+        }
+        XCTAssertEqual(next.phase, .gameEnded)
+        XCTAssertEqual(Set(next.gameWinnerIds), Set([g.players[0].id, g.players[1].id]))
+    }
+
+    func testAdvanceHandFailsIfPhaseNotRoundEnded() {
+        var g = endedHand(
+            p1Level: 3, p1WentDown: false, p1Hand: [], p1Total: 0,
+            p2Level: 3, p2WentDown: false, p2Hand: [], p2Total: 0
+        )
+        g.phase = .awaitingDraw
+        if case .failure(let e) = TurnEngine.advanceHand(state: g) {
+            if case .wrongPhase = e { /* ok */ } else { XCTFail("expected wrongPhase, got \(e)") }
+        } else { XCTFail("expected failure") }
+    }
+
+    func testAllActionsRejectedAfterGameEnds() {
+        // Force a gameEnded state and try to draw.
+        let p1 = Player(name: "A", hand: [], currentLevel: 11)
+        let p2 = Player(name: "B", hand: [], currentLevel: 5)
+        let g = GameState(
+            players: [p1, p2], currentRound: 5, currentTurnIndex: 0, dealerIndex: 1,
+            stock: [c(.clubs, .four)], discard: [],
+            melds: [], phase: .gameEnded,
+            stockReshufflesUsed: 0, randomSeed: 0,
+            gameWinnerIds: [p1.id]
+        )
+        let result = TurnEngine.apply(.draw(playerId: p1.id, source: .stock), to: g)
+        if case .failure(let e) = result {
+            XCTAssertEqual(e, .gameOver)
+        } else { XCTFail("expected gameOver") }
+    }
+
+    func testGoDownUsesCurrentPlayerLevel() {
+        // p1 is on level 3 (contract: 2 sequences of 4). Attempt a valid
+        // round-3 contract to confirm the engine consults per-player level.
+        let seqA = [c(.clubs, .three), c(.clubs, .four),
+                    c(.clubs, .five),  c(.clubs, .six)]
+        let seqB = [c(.hearts, .three), c(.hearts, .four),
+                    c(.hearts, .five),  c(.hearts, .six)]
+        var p1 = Player(name: "A", hand: seqA + seqB + [c(.diamonds, .king)])
+        p1.currentLevel = 3
+        var p2 = Player(name: "B", hand: [])
+        p2.currentLevel = 1 // p2 is still on level 1 — irrelevant here.
+        let g = GameState(
+            players: [p1, p2], currentRound: 5, currentTurnIndex: 0, dealerIndex: 1,
+            stock: [c(.spades, .two)], discard: [c(.spades, .four)],
+            melds: [],
+            phase: .awaitingMeldOrDiscard,
+            stockReshufflesUsed: 0, randomSeed: 0
+        )
+        let result = TurnEngine.apply(
+            .goDown(playerId: p1.id, contract: [seqA, seqB]),
+            to: g
+        )
+        guard case .success(let next) = result else {
+            return XCTFail("go down should succeed on p1's level-3 contract")
+        }
+        XCTAssertTrue(next.players[0].hasGoneDownThisRound)
+    }
+}

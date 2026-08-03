@@ -91,6 +91,29 @@ public final class GameViewModel: ObservableObject {
         dispatch(.buy(playerId: playerId))
     }
 
+    /// Trigger end-of-hand accounting: score, advance levels, deal next hand.
+    /// Fails silently (setting `lastError`) if the game isn't in `.roundEnded`.
+    public func advanceHand() {
+        switch TurnEngine.advanceHand(state: state) {
+        case .success(let newState):
+            state = newState
+            lastError = nil
+            isBetweenTurns = false
+        case .failure(let err):
+            lastError = err.description
+        }
+    }
+
+    // MARK: - Derived helpers for hand/game lifecycle
+
+    public var isHandOver: Bool { state.phase == .roundEnded }
+    public var isGameOver: Bool { state.phase == .gameEnded }
+    public var winnerNames: [String] {
+        state.gameWinnerIds.compactMap { id in
+            state.players.first(where: { $0.id == id })?.name
+        }
+    }
+
     /// The next player has acknowledged the pass-and-play prompt.
     public func acknowledgeTurnPassed() { isBetweenTurns = false }
 }

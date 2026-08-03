@@ -16,6 +16,10 @@ public struct Player: Codable, Sendable, Identifiable, Equatable {
     /// same turn. Used to reject `addToMeld` and `redeemWild` on the go-down
     /// turn. Reset to false when the turn advances.
     public var laidDownThisTurn: Bool
+    /// The contract level this player is currently attempting (1...10).
+    /// Advances by 1 at the end of each hand ONLY if they went down.
+    /// The first player to complete level 10 wins the game.
+    public var currentLevel: Int
 
     public init(
         id: UUID = UUID(),
@@ -24,7 +28,8 @@ public struct Player: Codable, Sendable, Identifiable, Equatable {
         totalScore: Int = 0,
         buysUsedThisRound: Int = 0,
         hasGoneDownThisRound: Bool = false,
-        laidDownThisTurn: Bool = false
+        laidDownThisTurn: Bool = false,
+        currentLevel: Int = 1
     ) {
         self.id = id
         self.name = name
@@ -33,5 +38,6 @@ public struct Player: Codable, Sendable, Identifiable, Equatable {
         self.buysUsedThisRound = buysUsedThisRound
         self.hasGoneDownThisRound = hasGoneDownThisRound
         self.laidDownThisTurn = laidDownThisTurn
+        self.currentLevel = currentLevel
     }
 }

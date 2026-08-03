@@ -82,6 +82,8 @@ public enum RulesConfig {
     public static let penaltyCardsOnBuy = 1
     public static let minTripletSize = 3
     public static let minSequenceSize = 4
+    /// Highest contract level. A player who completes level 10 wins the game.
+    public static let maxLevel = 10
 
     /// Maximum wild cards allowed in a meld of the given size (floor(size/2)).
     public static func maxWilds(inMeldOfSize size: Int) -> Int {

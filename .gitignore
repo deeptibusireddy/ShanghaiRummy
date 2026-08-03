@@ -60,3 +60,6 @@ Desktop.ini
 *.certSigningRequest
 AuthKey_*.p8
 GoogleService-Info.plist
+
+# Local CI screenshot downloads
+preview/

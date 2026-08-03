@@ -36,11 +36,13 @@
 - **Dealer:** Rotates left after each round.
 - **First to act:** Player to the dealer's left.
 
-## The 10 rounds (contracts)
+## The 10 contract levels (per player)
 
-Each round has a specific contract you must lay down in a single turn:
+Each player progresses through their own **1-to-10 contract track**. Levels do
+not advance in lockstep — different players can be on different levels at the
+same time.
 
-| Round | Contract                          | Cards needed |
+| Level | Contract                          | Cards needed |
 |-------|-----------------------------------|--------------|
 | 1     | 2 triplets of 3                   | 6            |
 | 2     | 1 triplet of 3 + 1 sequence of 4  | 7            |
@@ -53,8 +55,18 @@ Each round has a specific contract you must lay down in a single turn:
 | 9     | 3 triplets of 3 + 1 sequence of 5 | 14           |
 | 10    | 3 sequences of 5                  | 15           |
 
-Later rounds start with a hand smaller than the contract requires — you draw
+Later levels start with a hand smaller than the contract requires — you draw
 and/or buy your way up before you can go down.
+
+### Per-player levels & advancement
+
+- Every player starts a match on **level 1**.
+- A hand always ends when **any one player "goes out"** (see "Going out").
+- At the end of a hand, **every player who successfully went down that hand
+  advances by one level**, whether or not they were the player who went out.
+- Every player who did **not** go down stays on the same level for the next
+  hand and tries the same contract again.
+- The deal is always **11 cards per player, regardless of level.**
 
 ## A turn (in order)
 
@@ -182,11 +194,20 @@ At the end of each round, every player counts penalty points for cards left
 | **Joker (wild)**       | **20** |
 
 The player who went out scores 0 for the round. There is **no bonus** — going
-out just avoids penalty.
+out just avoids penalty. Scores accumulate across all hands played until
+someone finishes level 10.
 
 ## Winning
 
-Play all 10 rounds. **Lowest cumulative score wins.**
+Play continues hand after hand until a player **finishes level 10**. The first
+player to lay down the level-10 contract wins the game outright — even if
+their cumulative penalty score is higher than someone else's.
+
+- If two or more players finish level 10 in the **same hand**, the winner is
+  the one with the **lowest cumulative score**. If they're still tied, both
+  are declared co-winners.
+- Cumulative scores are tracked throughout the match for tiebreakers and
+  bragging rights, but the primary win condition is "first to level 10."
 
 ## Edge cases
 

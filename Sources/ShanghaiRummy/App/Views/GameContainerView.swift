@@ -13,6 +13,7 @@ struct GameContainerView: View {
         NavigationStack {
             VStack(spacing: 16) {
                 header
+                scoreboard
                 Divider()
                 tablePlaceholder
                 Divider()
@@ -25,7 +26,7 @@ struct GameContainerView: View {
                 }
             }
             .padding()
-            .navigationTitle("Round \(vm.state.currentRound)")
+            .navigationTitle("Hand \(vm.state.currentRound)")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Quit") { onExit() }
@@ -37,6 +38,13 @@ struct GameContainerView: View {
                 }
                 .interactiveDismissDisabled(true)
             }
+            .overlay {
+                if vm.isHandOver {
+                    handOverOverlay
+                } else if vm.isGameOver {
+                    gameOverOverlay
+                }
+            }
         }
     }
 
@@ -46,12 +54,40 @@ struct GameContainerView: View {
         VStack(spacing: 4) {
             Text(vm.currentPlayerName + "'s turn")
                 .font(.headline)
-            Text("Contract: " + vm.currentContractDescription)
+            Text("Level \(vm.currentPlayer.currentLevel) of \(RulesConfig.maxLevel) — " + vm.currentContractDescription)
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
             Text("Phase: " + vm.state.phase.rawValue)
                 .font(.caption)
                 .foregroundStyle(.tertiary)
+        }
+    }
+
+    /// Every player's level + running score at a glance. Once we have the
+    /// SpriteKit seat layout this moves next to each seat.
+    private var scoreboard: some View {
+        HStack(spacing: 12) {
+            ForEach(vm.state.players, id: \.id) { p in
+                VStack(spacing: 2) {
+                    Text(p.name)
+                        .font(.caption).bold()
+                        .lineLimit(1)
+                    Text("Lv \(p.currentLevel)")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                    Text("\(p.totalScore) pts")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+                .frame(minWidth: 60)
+                .padding(6)
+                .background(
+                    RoundedRectangle(cornerRadius: 6)
+                        .fill(p.id == vm.currentPlayer.id
+                              ? Color.accentColor.opacity(0.15)
+                              : Color.gray.opacity(0.08))
+                )
+            }
         }
     }
 
@@ -153,5 +189,43 @@ struct GameContainerView: View {
         case .diamonds, .hearts: return .red
         default: return .black
         }
+    }
+
+    // MARK: - Hand / game over overlays
+
+    private var handOverOverlay: some View {
+        VStack(spacing: 16) {
+            Text("Hand \(vm.state.currentRound) over")
+                .font(.title2).bold()
+            Text("Levels advance for everyone who went down.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+            Button("Next hand") { vm.advanceHand() }
+                .buttonStyle(.borderedProminent)
+        }
+        .padding(24)
+        .background(RoundedRectangle(cornerRadius: 16).fill(.regularMaterial))
+        .padding()
+    }
+
+    private var gameOverOverlay: some View {
+        VStack(spacing: 16) {
+            Text("🎉 Game over")
+                .font(.title).bold()
+            let names = vm.winnerNames
+            if names.count > 1 {
+                Text("Co-winners: " + names.joined(separator: ", "))
+                    .font(.headline)
+            } else {
+                Text((names.first ?? "Someone") + " wins!")
+                    .font(.headline)
+            }
+            Button("Back to menu") { onExit() }
+                .buttonStyle(.borderedProminent)
+        }
+        .padding(24)
+        .background(RoundedRectangle(cornerRadius: 16).fill(.regularMaterial))
+        .padding()
     }
 }

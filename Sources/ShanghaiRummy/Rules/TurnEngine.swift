@@ -90,6 +90,50 @@ public enum TurnEngine {
         }
     }
 
+    // MARK: - Hand lifecycle
+
+    /// Advance from `.roundEnded` to either the next hand or `.gameEnded`.
+    ///
+    /// Independent-contract variant:
+    /// 1. Add end-of-hand penalty points to every player's `totalScore`.
+    /// 2. Every player who went down THIS HAND advances their `currentLevel`.
+    /// 3. If any player has `currentLevel > RulesConfig.maxLevel`, the game ends;
+    ///    winner = that player. If multiple players finished level 10 in the
+    ///    same hand, tiebreaker is lowest `totalScore`.
+    /// 4. Otherwise, deal a new hand via `GameFactory.newHand`.
+    public static func advanceHand(state: GameState) -> Result<GameState, ActionError> {
+        guard state.phase == .roundEnded else { return .failure(.wrongPhase(state.phase)) }
+
+        // 1. Score.
+        let wentOutId = state.players.first {
+            $0.hand.isEmpty && $0.hasGoneDownThisRound
+        }?.id
+        let handScores = Scoring.endOfRound(players: state.players,
+                                            wentOutPlayerId: wentOutId)
+        var s = state
+        for i in s.players.indices {
+            s.players[i].totalScore += handScores[s.players[i].id] ?? 0
+        }
+
+        // 2. Advance levels for players who went down this hand.
+        for i in s.players.indices where s.players[i].hasGoneDownThisRound {
+            s.players[i].currentLevel += 1
+        }
+
+        // 3. Check win condition.
+        let finishers = s.players.filter { $0.currentLevel > RulesConfig.maxLevel }
+        if !finishers.isEmpty {
+            let minScore = finishers.map(\.totalScore).min() ?? 0
+            let winners = finishers.filter { $0.totalScore == minScore }
+            s.gameWinnerIds = winners.map(\.id)
+            s.phase = .gameEnded
+            return .success(s)
+        }
+
+        // 4. Deal next hand.
+        return .success(GameFactory.newHand(from: s))
+    }
+
     // MARK: - Handlers
 
     private static func draw(playerId: UUID, source: DrawSource, state: GameState) -> Result<GameState, ActionError> {

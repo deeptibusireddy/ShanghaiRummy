@@ -35,4 +35,56 @@ public enum GameFactory {
             randomSeed: seed
         )
     }
+
+    /// Deal the next hand while carrying forward player identities, cumulative
+    /// scores, and current levels. Called by `TurnEngine.advanceHand` after a
+    /// hand ends. Deterministic — same match seed + hand number always
+    /// produces the same shuffle across all clients.
+    public static func newHand(from state: GameState) -> GameState {
+        let nextHandNumber = state.currentRound + 1
+        // Derive a distinct-but-deterministic seed for this hand from the
+        // match seed. Hand 1 uses the raw match seed (for compatibility with
+        // `newGame`); hands 2+ mix in the hand number.
+        let handSeed = state.randomSeed &+
+            (UInt64(nextHandNumber - 1) &* 0x9E3779B97F4A7C15)
+        var rng = SeededRNG(seed: handSeed)
+        var deck = Deck(playerCount: state.players.count)
+        deck.shuffle(using: &rng)
+
+        // Reset per-hand player state; preserve id, name, totalScore, currentLevel.
+        var players = state.players.map { p in
+            Player(
+                id: p.id,
+                name: p.name,
+                hand: [],
+                totalScore: p.totalScore,
+                buysUsedThisRound: 0,
+                hasGoneDownThisRound: false,
+                laidDownThisTurn: false,
+                currentLevel: p.currentLevel
+            )
+        }
+        for pi in players.indices {
+            for _ in 0..<RulesConfig.handSizeAtDeal {
+                if let c = deck.draw() { players[pi].hand.append(c) }
+            }
+        }
+        let initialDiscard = deck.draw().map { [$0] } ?? []
+
+        // Rotate dealer left; first to act is player after new dealer.
+        let newDealer = (state.dealerIndex + 1) % players.count
+        return GameState(
+            players: players,
+            currentRound: nextHandNumber,
+            currentTurnIndex: (newDealer + 1) % players.count,
+            dealerIndex: newDealer,
+            stock: deck.cards,
+            discard: initialDiscard,
+            melds: [],
+            phase: .awaitingDraw,
+            stockReshufflesUsed: 0,
+            randomSeed: state.randomSeed,
+            gameWinnerIds: []
+        )
+    }
 }

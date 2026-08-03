@@ -8,11 +8,12 @@
 
 ## The 30-second summary
 
-Shanghai Rummy is a **10-round** card game for **2–6 players**. Each round has
-a specific "recipe" of card combinations (a **contract**) you must lay down.
-Every round you get **11 cards**. The **first person to get rid of all their
-cards** each round wins that round — everyone else takes penalty points for
-cards left in their hand. **Lowest total after 10 rounds wins.**
+Shanghai Rummy is a card game for **2–6 players**. Each player works through
+their own **10-level contract track** — level 1 is easy, level 10 is a
+gauntlet. On every deal ("hand") you try to lay down your current level's
+contract and empty your hand. Complete your contract that hand → move up a
+level next hand. Fail → try the same level again. **First player to finish
+level 10 wins.**
 
 ---
 
@@ -20,7 +21,7 @@ cards left in their hand. **Lowest total after 10 rounds wins.**
 
 - A deck of cards and a table, or… just this app 🙂
 - 2 to 6 players
-- Patience — a full 10-round game takes a bit
+- Patience — a full game takes several hands (typically 10–15)
 
 The app deals the cards, tracks scoring, enforces rules, and lets everyone
 play from their own iPhone via Game Center.
@@ -29,14 +30,19 @@ play from their own iPhone via Game Center.
 
 ## The object of the game
 
-Each round you're trying to **"go down"** — that means laying down a specific
-combination of cards in a single turn. Every round the combination is
-different and gets harder. Once you've gone down, you can start getting rid
-of your leftover cards.
+Each hand you're trying to **"go down"** — that means laying down a specific
+combination of cards ("contract") in a single turn. Every level the
+combination is different and gets harder. Once you've gone down, you can
+start getting rid of your leftover cards.
 
-The **first player to empty their hand** ends the round.
+The **first player to empty their hand** ends the hand for everyone. Then:
 
-**Winner = whoever has the fewest penalty points after all 10 rounds.**
+- Anyone who went down this hand advances to the next level.
+- Anyone who didn't stays put and tries the same level again next hand.
+- Everyone counts penalty points for cards left in hand (running total).
+
+**Winner = the first player to complete level 10.** If two people finish
+level 10 in the same hand, lowest cumulative penalty score breaks the tie.
 
 ---
 
@@ -128,11 +134,12 @@ Jokers are never "dead" — but see below for how wild cards can move.
 
 ---
 
-## The 10 rounds
+## The 10 contract levels
 
-Every round has a specific contract:
+Each player has their own current level from 1 to 10. Different players can
+be on different levels at the same time.
 
-| Round | You must lay down                    | Total cards |
+| Level | You must lay down                    | Total cards |
 |:-----:|--------------------------------------|:-----------:|
 | 1     | 2 triplets of 3                      | 6           |
 | 2     | 1 triplet of 3 + 1 sequence of 4     | 7           |
@@ -145,13 +152,13 @@ Every round has a specific contract:
 | 9     | 3 triplets of 3 + 1 sequence of 5    | 14          |
 | 10    | 3 sequences of 5                     | 15          |
 
-**Important:** you always start each round with **11 cards**, even in the
-later rounds where the contract needs more cards than that. You have to draw
+**Important:** you always start each hand with **11 cards**, even on the
+later levels where the contract needs more cards than that. You have to draw
 and buy your way up to it. That's part of the fun (and frustration).
 
-**Sequence sizes are exact when you go down.** In round 5, "sequence of 7"
+**Sequence sizes are exact when you go down.** On level 5, "sequence of 7"
 means *exactly* 7 cards — you can't go down with a sequence of 8 on that
-round. (You can extend it *after* you've gone down.)
+level. (You can extend it *after* you've gone down.)
 
 Triplet contract sizes are always 3 at go-down time. Any extras go on later.
 
@@ -288,10 +295,16 @@ those wilds!
 
 ## Winning the game
 
-After all 10 rounds, the player with the **lowest total** wins.
+The **first player to complete level 10** wins the match — as soon as you
+lay down the level-10 contract, you win, even if someone else has a lower
+cumulative penalty score.
 
-Typical winning scores can range widely; a clean game might finish under 100,
-a messy one can rack up 300+.
+- If two or more players finish level 10 in the **same hand**, the winner
+  is the one with the **lowest cumulative penalty score** at that point.
+  If they're still tied, they're co-winners.
+- The game typically runs 10–15 hands: everyone starts on level 1, but
+  people fall behind on hands where they can't go down, so the total
+  number of hands depends on how the deals go.
 
 ---
 
