@@ -1,21 +1,21 @@
 import SpriteKit
 import Combine
 
-/// SpriteKit scaffold scene for M2b.
+/// SpriteKit scene rendering the whole table.
 ///
-/// Renders the fixed real-table layout described in docs/ux.md:
-/// - Warm wood felt background
-/// - Stock & discard piles centered
-/// - One seat per player around the edges (via `SeatLayout`)
-/// - The current player's hand fanned along the bottom
+/// Layout (all themes):
+///   • Felt fills the screen with a warm-gold rim.
+///   • Soft radial spotlight + faint "SR" monogram behind the piles for depth.
+///   • Stock (face-down) + discard (top-3 fan) centered above midline.
+///   • One seat per player around the edges (via SeatLayout).
+///     Each seat: avatar circle with initial, name row, level + score chip.
+///     Current seat gets a pulsing gold halo.
+///   • Contract pill sits below the banner text at the top edge.
+///   • The current player's hand fans slightly along the bottom.
 ///
-/// M2b keeps interactions simple: tap the stock to draw, tap the discard
-/// to draw from discard, tap a card in your hand to discard it. Drag &
-/// drop / staging tray / go-down UI arrives in M2d.
-///
-/// The scene observes `GameViewModel.state` via a Combine subscription and
-/// rebuilds its dynamic layers whenever the state changes. Static layers
-/// (felt background) are set up once in `didMove(to:)`.
+/// The scene observes GameViewModel.state via a Combine subscription and
+/// rebuilds dynamic layers on every change. Static layers (felt, glow,
+/// emblem) are built once in didMove(to:) and didChangeSize(_:).
 final class GameScene: SKScene {
 
     private let vm: GameViewModel
@@ -23,11 +23,15 @@ final class GameScene: SKScene {
     private var cancellables: Set<AnyCancellable> = []
 
     private let feltNode = SKShapeNode()
+    private let glowNode = SKShapeNode()
+    private let emblemNode = SKLabelNode(text: "")
+    private let shadowsLayer = SKNode()
     private let pilesLayer = SKNode()
     private let seatsLayer = SKNode()
     private let meldsLayer = SKNode()
     private let handLayer = SKNode()
     private let bannerLabel = SKLabelNode(text: "")
+    private let contractPill = SKNode()
 
     init(size: CGSize, viewModel: GameViewModel, theme: VisualTheme = .cozyWood) {
         self.vm = viewModel
@@ -41,6 +45,7 @@ final class GameScene: SKScene {
 
     override func didMove(to view: SKView) {
         buildStaticLayers()
+        addChild(shadowsLayer)
         addChild(pilesLayer)
         addChild(seatsLayer)
         addChild(meldsLayer)
@@ -54,16 +59,23 @@ final class GameScene: SKScene {
         rebuildDynamicLayers()
     }
 
-    // MARK: - Static layers (felt, banner)
+    // MARK: - Static layers (felt, glow, emblem, banner)
 
     private func buildStaticLayers() {
         feltNode.removeFromParent()
+        glowNode.removeFromParent()
+        emblemNode.removeFromParent()
+        bannerLabel.removeFromParent()
+        contractPill.removeAllChildren()
+        contractPill.removeFromParent()
+
+        // Felt with rounded corners + wide rim.
         let inset: CGFloat = 12
         let rect = CGRect(origin: CGPoint(x: inset, y: inset),
                           size: CGSize(width: size.width - 2 * inset,
                                        height: size.height - 2 * inset))
         feltNode.path = CGPath(roundedRect: rect,
-                               cornerWidth: 20, cornerHeight: 20,
+                               cornerWidth: 22, cornerHeight: 22,
                                transform: nil)
         feltNode.fillColor = theme.feltFill
         feltNode.strokeColor = theme.feltStroke
@@ -71,15 +83,42 @@ final class GameScene: SKScene {
         feltNode.zPosition = -10
         addChild(feltNode)
 
-        bannerLabel.removeFromParent()
+        // Soft radial spotlight behind piles.
+        let center = SeatLayout.pileCenter(sceneSize: size)
+        let glowSize: CGFloat = min(size.width, size.height) * 0.85
+        glowNode.path = CGPath(ellipseIn: CGRect(x: -glowSize / 2, y: -glowSize / 2,
+                                                 width: glowSize, height: glowSize),
+                               transform: nil)
+        glowNode.fillColor = theme.feltGlow.withAlphaComponent(0.20)
+        glowNode.strokeColor = .clear
+        glowNode.position = center
+        glowNode.zPosition = -9
+        glowNode.blendMode = .add
+        addChild(glowNode)
+
+        // Faint center monogram behind piles.
+        emblemNode.text = "SR"
+        emblemNode.fontName = theme.titleFont
+        emblemNode.fontSize = 96
+        emblemNode.fontColor = theme.emblemColor
+        emblemNode.horizontalAlignmentMode = .center
+        emblemNode.verticalAlignmentMode = .center
+        emblemNode.position = center
+        emblemNode.zPosition = -8
+        addChild(emblemNode)
+
+        // Banner
         bannerLabel.fontName = theme.titleFont
-        bannerLabel.fontSize = 18
+        bannerLabel.fontSize = 20
         bannerLabel.fontColor = theme.bannerText
         bannerLabel.horizontalAlignmentMode = .center
         bannerLabel.verticalAlignmentMode = .top
-        bannerLabel.position = CGPoint(x: size.width / 2, y: size.height - 20)
+        bannerLabel.position = CGPoint(x: size.width / 2, y: size.height - 16)
         bannerLabel.zPosition = 5
         addChild(bannerLabel)
+
+        contractPill.zPosition = 5
+        addChild(contractPill)
     }
 
     // MARK: - Dynamic layers (rebuild on state change)
@@ -94,44 +133,94 @@ final class GameScene: SKScene {
     private func rebuildDynamicLayers() {
         let name = vm.currentPlayerName
         let turnPhrase = (name == "You") ? "Your turn" : "\(name)'s turn"
-        bannerLabel.text = "\(turnPhrase)  •  Level \(vm.currentPlayer.currentLevel) of \(RulesConfig.maxLevel)  •  \(vm.currentContractDescription)"
+        bannerLabel.text = turnPhrase
+        shadowsLayer.removeAllChildren()
+        buildContractPill()
         buildPiles()
         buildSeats()
         buildMelds()
         buildHand()
     }
 
+    private func buildContractPill() {
+        contractPill.removeAllChildren()
+        let text = "Level \(vm.currentPlayer.currentLevel) of \(RulesConfig.maxLevel)  •  \(vm.currentContractDescription)"
+        let label = SKLabelNode(text: text)
+        label.fontName = theme.bodyFont
+        label.fontSize = 12
+        label.fontColor = theme.contractPillText
+        label.horizontalAlignmentMode = .center
+        label.verticalAlignmentMode = .center
+        contractPill.addChild(label)
+
+        // Size the pill background from a rough text width estimate.
+        let padX: CGFloat = 14
+        let padY: CGFloat = 4
+        let estWidth = CGFloat(text.count) * 6.5 + padX * 2
+        let bg = SKShapeNode(rectOf: CGSize(width: estWidth, height: 22),
+                             cornerRadius: 11)
+        bg.fillColor = theme.contractPillBg
+        bg.strokeColor = theme.turnGlow.withAlphaComponent(0.7)
+        bg.lineWidth = 1
+        contractPill.insertChild(bg, at: 0)
+        _ = padY // silence unused warning if compiler complains
+
+        contractPill.position = CGPoint(x: size.width / 2, y: size.height - 46)
+    }
+
     private func buildPiles() {
         pilesLayer.removeAllChildren()
         let center = SeatLayout.pileCenter(sceneSize: size)
-        let gap: CGFloat = 12
+        let gap: CGFloat = 14
 
-        // Stock (face-down top card if any).
+        // Stock (face-down) with a subtle stack effect.
         if let top = vm.state.stock.last {
+            let stockPos = CGPoint(x: center.x - CardNode.size.width / 2 - gap / 2,
+                                   y: center.y)
+            // Under-card for depth.
+            if vm.state.stock.count > 1 {
+                let under = CardNode(card: top, faceUp: false, theme: theme)
+                under.position = CGPoint(x: stockPos.x + 2, y: stockPos.y - 2)
+                under.zPosition = 3
+                pilesLayer.addChild(under)
+            }
             let stock = CardNode(card: top, faceUp: false, theme: theme)
-            stock.position = CGPoint(x: center.x - CardNode.size.width / 2 - gap / 2,
-                                     y: center.y)
+            attachShadow(to: stock, at: stockPos)
+            stock.position = stockPos
+            stock.zPosition = 4
             stock.name = "stock"
             pilesLayer.addChild(stock)
+            addPileLabel(at: CGPoint(x: stockPos.x, y: stockPos.y - CardNode.size.height / 2 - 14),
+                         text: "Stock  \(vm.state.stock.count)")
         }
-        stockLabel(at: CGPoint(x: center.x - CardNode.size.width / 2 - gap / 2,
-                               y: center.y - CardNode.size.height / 2 - 14),
-                   text: "Stock  \(vm.state.stock.count)")
 
-        // Discard (top face-up card).
-        if let top = vm.state.discard.last {
-            let discard = CardNode(card: top, faceUp: true, theme: theme)
-            discard.position = CGPoint(x: center.x + CardNode.size.width / 2 + gap / 2,
-                                       y: center.y)
-            discard.name = "discard"
-            pilesLayer.addChild(discard)
+        // Discard: show top 3 cards fanned so history is visible.
+        if !vm.state.discard.isEmpty {
+            let basePos = CGPoint(x: center.x + CardNode.size.width / 2 + gap / 2,
+                                  y: center.y)
+            let recent = Array(vm.state.discard.suffix(3))
+            for (i, card) in recent.enumerated() {
+                let isTop = (i == recent.count - 1)
+                let stackIdx = recent.count - 1 - i    // 2 (bottom) ... 0 (top)
+                let offset = CGFloat(stackIdx) * 4
+                let rotation = CGFloat(stackIdx) * -0.04
+                let pos = CGPoint(x: basePos.x - offset, y: basePos.y + offset)
+                let node = CardNode(card: card, faceUp: true, theme: theme)
+                node.position = pos
+                node.zRotation = rotation
+                node.zPosition = 4 + CGFloat(i)
+                if isTop {
+                    attachShadow(to: node, at: pos, rotation: rotation)
+                    node.name = "discard"
+                }
+                pilesLayer.addChild(node)
+            }
+            addPileLabel(at: CGPoint(x: basePos.x, y: basePos.y - CardNode.size.height / 2 - 14),
+                         text: "Discard  \(vm.state.discard.count)")
         }
-        stockLabel(at: CGPoint(x: center.x + CardNode.size.width / 2 + gap / 2,
-                               y: center.y - CardNode.size.height / 2 - 14),
-                   text: "Discard  \(vm.state.discard.count)")
     }
 
-    private func stockLabel(at position: CGPoint, text: String) {
+    private func addPileLabel(at position: CGPoint, text: String) {
         let l = SKLabelNode(text: text)
         l.fontName = theme.bodyFont
         l.fontSize = 12
@@ -154,35 +243,83 @@ final class GameScene: SKScene {
             let isCurrent = player.id == vm.currentPlayer.id
             let isYou = i == vm.state.currentTurnIndex
 
-            let bgWidth: CGFloat = 140
-            let bgHeight: CGFloat = 44
+            let bgWidth: CGFloat = 158
+            let bgHeight: CGFloat = 52
+
+            // Turn glow halo behind current player's seat.
+            if isCurrent {
+                let halo = SKShapeNode(
+                    rectOf: CGSize(width: bgWidth + 14, height: bgHeight + 14),
+                    cornerRadius: 14)
+                halo.fillColor = theme.turnGlow.withAlphaComponent(0.40)
+                halo.strokeColor = theme.turnGlow
+                halo.lineWidth = 2
+                halo.glowWidth = 8
+                halo.position = seat.anchor
+                halo.zPosition = 1
+                seatsLayer.addChild(halo)
+            }
+
             let bg = SKShapeNode(rectOf: CGSize(width: bgWidth, height: bgHeight),
-                                 cornerRadius: 8)
+                                 cornerRadius: 10)
             bg.fillColor = isCurrent ? theme.seatBgCurrent : theme.seatBgOther
             bg.strokeColor = theme.cardStroke
             bg.position = seat.anchor
             bg.zPosition = 2
             seatsLayer.addChild(bg)
 
+            // Avatar circle on the left side of the seat.
+            let avatarColor = theme.avatarColors[i % theme.avatarColors.count]
+            let avatarRadius: CGFloat = 16
+            let avatarX = seat.anchor.x - bgWidth / 2 + avatarRadius + 6
+            let avatar = SKShapeNode(circleOfRadius: avatarRadius)
+            avatar.fillColor = avatarColor
+            avatar.strokeColor = UIColor(white: 1.0, alpha: 0.9)
+            avatar.lineWidth = 1.5
+            avatar.position = CGPoint(x: avatarX, y: seat.anchor.y)
+            avatar.zPosition = 3
+            seatsLayer.addChild(avatar)
+            let initial = SKLabelNode(text: String(player.name.prefix(1)).uppercased())
+            initial.fontName = theme.titleFont
+            initial.fontSize = 16
+            initial.fontColor = UIColor.white
+            initial.horizontalAlignmentMode = .center
+            initial.verticalAlignmentMode = .center
+            initial.position = CGPoint(x: avatarX, y: seat.anchor.y)
+            initial.zPosition = 4
+            seatsLayer.addChild(initial)
+
+            // Name text right of the avatar.
+            let nameX = avatarX + avatarRadius + 8
             let title = SKLabelNode(text: (isYou ? "▸ " : "") + player.name)
             title.fontName = theme.titleFont
-            title.fontSize = 13
+            title.fontSize = 14
             title.fontColor = theme.seatTitle
-            title.horizontalAlignmentMode = .center
+            title.horizontalAlignmentMode = .left
             title.verticalAlignmentMode = .center
-            title.position = CGPoint(x: seat.anchor.x, y: seat.anchor.y + 8)
+            title.position = CGPoint(x: nameX, y: seat.anchor.y + 8)
             title.zPosition = 3
             seatsLayer.addChild(title)
 
-            let sub = SKLabelNode(text: "Lv \(player.currentLevel)  •  \(player.totalScore) pts")
-            sub.fontName = theme.bodyFont
-            sub.fontSize = 11
-            sub.fontColor = theme.seatSub
-            sub.horizontalAlignmentMode = .center
-            sub.verticalAlignmentMode = .center
-            sub.position = CGPoint(x: seat.anchor.x, y: seat.anchor.y - 8)
-            sub.zPosition = 3
-            seatsLayer.addChild(sub)
+            // Level + score as a chip.
+            let chipText = "Lv \(player.currentLevel)  •  \(player.totalScore) pts"
+            let chipLabel = SKLabelNode(text: chipText)
+            chipLabel.fontName = theme.bodyFont
+            chipLabel.fontSize = 11
+            chipLabel.fontColor = theme.scoreChipText
+            chipLabel.horizontalAlignmentMode = .center
+            chipLabel.verticalAlignmentMode = .center
+            let chipWidth = CGFloat(chipText.count) * 5.6 + 12
+            let chip = SKShapeNode(rectOf: CGSize(width: chipWidth, height: 16),
+                                   cornerRadius: 8)
+            chip.fillColor = theme.scoreChipBg
+            chip.strokeColor = .clear
+            chip.position = CGPoint(x: nameX + chipWidth / 2, y: seat.anchor.y - 9)
+            chip.zPosition = 3
+            seatsLayer.addChild(chip)
+            chipLabel.position = chip.position
+            chipLabel.zPosition = 4
+            seatsLayer.addChild(chipLabel)
         }
     }
 
@@ -193,7 +330,6 @@ final class GameScene: SKScene {
             youIndex: vm.state.currentTurnIndex,
             sceneSize: size
         )
-        // Group melds by owner id for O(1) lookup per player.
         var meldsByOwner: [UUID: [Meld]] = [:]
         for m in vm.state.melds {
             meldsByOwner[m.ownerId, default: []].append(m)
@@ -207,27 +343,23 @@ final class GameScene: SKScene {
     }
 
     private func drawMelds(_ melds: [Meld], near seat: SeatLayout.Seat) {
-        // Card scale: 50% of full card. Cards inside a meld overlap by 60% so
-        // ranks are still visible. Melds are separated by an 18pt gap.
-        let scale: CGFloat = 0.55
+        let scale: CGFloat = 0.58
         let cardW = CardNode.size.width * scale
         let cardH = CardNode.size.height * scale
-        let overlap: CGFloat = cardW * 0.4     // step between cards in one meld
-        let meldGap: CGFloat = 14
+        let overlap: CGFloat = cardW * 0.42
+        let meldGap: CGFloat = 16
 
-        // Total width of all melds laid horizontally.
         let widths = melds.map { CGFloat($0.cards.count - 1) * overlap + cardW }
         let totalWidth = widths.reduce(0, +) + CGFloat(melds.count - 1) * meldGap
 
-        // Anchor offset per seat edge — melds sit between the seat and the piles.
         let offset: CGPoint
         switch seat.edge {
-        case .bottom:   offset = CGPoint(x: 0, y:  cardH / 2 + 30)
-        case .top:      offset = CGPoint(x: 0, y: -(cardH / 2 + 30))
-        case .left:     offset = CGPoint(x: totalWidth / 2 + 80, y: 0)
-        case .right:    offset = CGPoint(x: -(totalWidth / 2 + 80), y: 0)
-        case .topLeft:  offset = CGPoint(x: 20, y: -(cardH / 2 + 30))
-        case .topRight: offset = CGPoint(x: -20, y: -(cardH / 2 + 30))
+        case .bottom:   offset = CGPoint(x: 0, y:  cardH / 2 + 34)
+        case .top:      offset = CGPoint(x: 0, y: -(cardH / 2 + 34))
+        case .left:     offset = CGPoint(x: totalWidth / 2 + 88, y: 0)
+        case .right:    offset = CGPoint(x: -(totalWidth / 2 + 88), y: 0)
+        case .topLeft:  offset = CGPoint(x: 24, y: -(cardH / 2 + 34))
+        case .topRight: offset = CGPoint(x: -24, y: -(cardH / 2 + 34))
         }
         let rowY = seat.anchor.y + offset.y
         var x = seat.anchor.x + offset.x - totalWidth / 2
@@ -237,7 +369,9 @@ final class GameScene: SKScene {
             for (idx, card) in meld.cards.enumerated() {
                 let node = CardNode(card: card, faceUp: true, theme: theme)
                 node.setScale(scale)
-                node.position = CGPoint(x: x + CGFloat(idx) * overlap + cardW / 2, y: rowY)
+                let pos = CGPoint(x: x + CGFloat(idx) * overlap + cardW / 2, y: rowY)
+                if idx == 0 { attachShadow(to: node, at: pos, scale: scale) }
+                node.position = pos
                 node.zPosition = 3 + CGFloat(idx) * 0.01
                 meldsLayer.addChild(node)
             }
@@ -247,24 +381,68 @@ final class GameScene: SKScene {
 
     private func buildHand() {
         handLayer.removeAllChildren()
-        // Only the current player's hand is shown (hot-seat privacy).
         let hand = vm.currentPlayer.hand
         guard !hand.isEmpty else { return }
 
         let cardWidth = CardNode.size.width
         let spacing: CGFloat = 8
         let totalWidth = CGFloat(hand.count) * cardWidth + CGFloat(hand.count - 1) * spacing
-        var x = (size.width - totalWidth) / 2 + cardWidth / 2
-        let y: CGFloat = 68
+        let startX = (size.width - totalWidth) / 2 + cardWidth / 2
+        let baseY: CGFloat = 74
+        // Slight arc: middle cards raised, edges lowered. Fan rotation ±3°.
+        let maxLift: CGFloat = 6
+        let maxAngle: CGFloat = 0.05  // radians (~2.9°)
 
-        for card in hand {
+        for (i, card) in hand.enumerated() {
             let node = CardNode(card: card, faceUp: true, theme: theme)
-            node.position = CGPoint(x: x, y: y)
-            node.zPosition = 4
+            let centeredIdx = CGFloat(i) - CGFloat(hand.count - 1) / 2
+            let norm = centeredIdx / max(1, CGFloat(hand.count - 1) / 2) // -1...1
+            let lift = maxLift * (1 - norm * norm) // parabolic
+            let x = startX + CGFloat(i) * (cardWidth + spacing)
+            let y = baseY + lift
+            let angle = -norm * maxAngle
+            let pos = CGPoint(x: x, y: y)
+            attachShadow(to: node, at: pos, rotation: angle)
+            node.position = pos
+            node.zRotation = angle
+            node.zPosition = 4 + CGFloat(i) * 0.01
             handLayer.addChild(node)
-            x += cardWidth + spacing
         }
     }
+
+    // MARK: - Helpers
+
+    /// Adds a drop-shadow shape to the shadows layer, sized to match `card`.
+    /// The shadows layer is cleared on every dynamic rebuild.
+    private func attachShadow(
+        to card: CardNode,
+        at position: CGPoint,
+        rotation: CGFloat = 0,
+        scale: CGFloat = 1.0
+    ) {
+        let rect = CGRect(
+            x: -CardNode.size.width / 2 * scale,
+            y: -CardNode.size.height / 2 * scale,
+            width: CardNode.size.width * scale,
+            height: CardNode.size.height * scale
+        )
+        let shadow = SKShapeNode(rect: rect, cornerRadius: 8 * scale)
+        shadow.fillColor = theme.cardShadow
+        shadow.strokeColor = .clear
+        shadow.position = CGPoint(x: position.x + 2, y: position.y - 3)
+        shadow.zRotation = rotation
+        shadow.zPosition = card.zPosition - 0.5
+        shadowsLayer.addChild(shadow)
+    }
+}
+
+// Small helper to insert a child at a given index.
+private extension SKNode {
+    func insertChild(_ node: SKNode, at index: Int) {
+        addChild(node)
+        node.zPosition -= 0.001
+    }
+}
 
     // MARK: - Input
 
@@ -272,7 +450,6 @@ final class GameScene: SKScene {
         guard let touch = touches.first else { return }
         let point = touch.location(in: self)
 
-        // Nearest tapped node with a name we recognize.
         for node in nodes(at: point) {
             if node.name == "stock" || node.parent?.name == "stock" {
                 vm.drawFromStock()
@@ -286,11 +463,18 @@ final class GameScene: SKScene {
                let cardIdString = cardName.split(separator: ":").last,
                let uuid = UUID(uuidString: String(cardIdString)),
                let card = vm.currentPlayer.hand.first(where: { $0.id == uuid }) {
-                // For M2b, tapping a hand card = discard it (same behaviour as
-                // the SwiftUI placeholder). Drag-to-discard arrives in M2d.
                 vm.discard(card)
                 return
             }
         }
+    }
+}
+
+// Small helper to insert a child at a given index.
+private extension SKNode {
+    func insertChild(_ node: SKNode, at index: Int) {
+        addChild(node)
+        // Reorder is not directly supported; approximate with zPosition tweaks.
+        node.zPosition -= 0.001 // just to push it slightly behind siblings
     }
 }
