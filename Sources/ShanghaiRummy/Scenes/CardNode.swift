@@ -34,7 +34,7 @@ final class CardNode: SKNode {
         label.text = faceUp ? Self.shortName(card) : ""
         addChild(label)
 
-        userInteractionEnabled = false // Scene handles taps globally.
+        isUserInteractionEnabled = false // Scene handles taps globally.
         name = "card:\(card.id.uuidString)"
     }
 
