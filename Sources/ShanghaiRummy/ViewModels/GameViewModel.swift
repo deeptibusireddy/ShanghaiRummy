@@ -20,6 +20,10 @@ public final class GameViewModel: ObservableObject {
     /// True when the outgoing player has just discarded and we're waiting for
     /// the next player to take the device (hot-seat privacy interstitial).
     @Published public var isBetweenTurns: Bool = false
+    /// Cards the current player has moved to the meld-staging tray. Used by
+    /// the UI to render staged cards separately from the hand fan and to
+    /// preview meld legality before committing (M2d-b).
+    @Published public private(set) var stagedCardIds: Set<UUID> = []
 
     // MARK: - Init
 
@@ -64,6 +68,7 @@ public final class GameViewModel: ObservableObject {
                 // Trigger the pass-and-play interstitial before the next player
                 // takes the device.
                 isBetweenTurns = true
+                stagedCardIds.removeAll()
             }
             return true
         case .failure(let err):
@@ -116,4 +121,31 @@ public final class GameViewModel: ObservableObject {
 
     /// The next player has acknowledged the pass-and-play prompt.
     public func acknowledgeTurnPassed() { isBetweenTurns = false }
+
+    // MARK: - Staging (M2d)
+
+    /// Toggle a card's staged state. Staged cards render above the hand fan
+    /// and are the working set for the next `.goDown` or `.addToMeld` action.
+    /// Silently ignored if the card isn't in the current player's hand.
+    public func toggleStaged(cardId: UUID) {
+        guard currentPlayer.hand.contains(where: { $0.id == cardId }) else { return }
+        if stagedCardIds.contains(cardId) {
+            stagedCardIds.remove(cardId)
+        } else {
+            stagedCardIds.insert(cardId)
+        }
+    }
+
+    /// Cards currently staged, in the order they appear in the player's hand.
+    public var stagedCards: [Card] {
+        currentPlayer.hand.filter { stagedCardIds.contains($0.id) }
+    }
+
+    /// Cards remaining in-hand after staging (rendered in the hand fan).
+    public var unstagedCards: [Card] {
+        currentPlayer.hand.filter { !stagedCardIds.contains($0.id) }
+    }
+
+    /// Clear staging. Called after a turn ends or the player cancels.
+    public func clearStaging() { stagedCardIds.removeAll() }
 }

@@ -33,6 +33,14 @@ final class GameScene: SKScene {
     private let bannerLabel = SKLabelNode(text: "")
     private let contractPill = SKNode()
 
+    // Drag-and-drop state (M2d-a).
+    private var draggingCard: CardNode?
+    private var dragOrigin: CGPoint = .zero
+    private var dragOriginRotation: CGFloat = 0
+    private var dragOriginZ: CGFloat = 0
+    private var draggingCardId: UUID?
+    private var discardTargetRing: SKShapeNode?
+
     init(size: CGSize, viewModel: GameViewModel, theme: VisualTheme = .cozyWood) {
         self.vm = viewModel
         self.theme = theme
@@ -395,6 +403,7 @@ final class GameScene: SKScene {
 
         for (i, card) in hand.enumerated() {
             let node = CardNode(card: card, faceUp: true, theme: theme)
+            node.name = "card:\(card.id.uuidString)"
             let centeredIdx = CGFloat(i) - CGFloat(hand.count - 1) / 2
             let norm = centeredIdx / max(1, CGFloat(hand.count - 1) / 2) // -1...1
             let lift = maxLift * (1 - norm * norm) // parabolic
@@ -437,27 +446,155 @@ final class GameScene: SKScene {
 
     // MARK: - Input
 
-    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
+    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
         guard let touch = touches.first else { return }
         let point = touch.location(in: self)
 
+        // Pile taps come first (they don't start drags).
         for node in nodes(at: point) {
             if node.name == "stock" || node.parent?.name == "stock" {
                 vm.drawFromStock()
                 return
             }
-            if node.name == "discard" || node.parent?.name == "discard" {
-                vm.drawFromDiscard()
-                return
-            }
-            if let cardName = node.name, cardName.hasPrefix("card:"),
-               let cardIdString = cardName.split(separator: ":").last,
-               let uuid = UUID(uuidString: String(cardIdString)),
-               let card = vm.currentPlayer.hand.first(where: { $0.id == uuid }) {
-                vm.discard(card)
-                return
-            }
         }
+
+        // Try to begin a hand-card drag. Only the current player can drag.
+        for node in nodes(at: point) {
+            var target: SKNode? = node
+            while let t = target, !(t.name?.hasPrefix("card:") ?? false) {
+                target = t.parent
+            }
+            guard let hit = target as? CardNode,
+                  let name = hit.name,
+                  let idStr = name.split(separator: ":").last,
+                  let uuid = UUID(uuidString: String(idStr)),
+                  vm.currentPlayer.hand.contains(where: { $0.id == uuid })
+            else { continue }
+            beginDrag(card: hit, id: uuid)
+            return
+        }
+    }
+
+    override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
+        guard let touch = touches.first, let card = draggingCard else { return }
+        card.position = touch.location(in: self)
+    }
+
+    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
+        guard let touch = touches.first else {
+            cancelDrag()
+            return
+        }
+        let point = touch.location(in: self)
+
+        if draggingCard == nil {
+            // No drag in progress → treat as a tap. Currently the only
+            // remaining tap target is the discard pile (for drawFromDiscard);
+            // hand-card discards are drag-only now.
+            for node in nodes(at: point) {
+                if node.name == "discard" || node.parent?.name == "discard" {
+                    vm.drawFromDiscard()
+                    return
+                }
+            }
+            return
+        }
+
+        // Resolve drag drop.
+        if discardDropZone().contains(point),
+           let id = draggingCardId,
+           let card = vm.currentPlayer.hand.first(where: { $0.id == id }) {
+            // Attempt discard. If engine rejects (e.g., wrong phase), snap back.
+            let ok = vm.dispatch(.discard(playerId: vm.currentPlayer.id, card: card))
+            if ok {
+                // Successful discard triggers a rebuild via publisher; clear
+                // drag bookkeeping here.
+                draggingCard = nil
+                draggingCardId = nil
+                clearDiscardTarget()
+                return
+            }
+            // Fell through: snap back.
+        }
+
+        cancelDrag()
+    }
+
+    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
+        cancelDrag()
+    }
+
+    // MARK: - Drag helpers
+
+    private func beginDrag(card: CardNode, id: UUID) {
+        draggingCard = card
+        draggingCardId = id
+        dragOrigin = card.position
+        dragOriginRotation = card.zRotation
+        dragOriginZ = card.zPosition
+        card.removeAllActions()
+        card.zPosition = 500
+        card.zRotation = 0
+        card.run(SKAction.scale(to: 1.08, duration: 0.08))
+        highlightDiscardTarget()
+    }
+
+    private func cancelDrag() {
+        guard let card = draggingCard else {
+            clearDiscardTarget()
+            return
+        }
+        let snap = SKAction.group([
+            SKAction.move(to: dragOrigin, duration: 0.15),
+            SKAction.rotate(toAngle: dragOriginRotation, duration: 0.15,
+                            shortestUnitArc: true),
+            SKAction.scale(to: 1.0, duration: 0.15)
+        ])
+        card.run(snap) { [weak self, weak card] in
+            card?.zPosition = self?.dragOriginZ ?? 4
+        }
+        draggingCard = nil
+        draggingCardId = nil
+        clearDiscardTarget()
+    }
+
+    /// The tappable/droppable rectangle around the discard pile, in scene
+    /// coordinates. Slightly larger than the pile visual for easier drops.
+    private func discardDropZone() -> CGRect {
+        let center = SeatLayout.pileCenter(sceneSize: size)
+        let gap: CGFloat = 14
+        let basePos = CGPoint(x: center.x + CardNode.size.width / 2 + gap / 2,
+                              y: center.y)
+        let pad: CGFloat = 24
+        return CGRect(
+            x: basePos.x - CardNode.size.width / 2 - pad,
+            y: basePos.y - CardNode.size.height / 2 - pad,
+            width: CardNode.size.width + pad * 2,
+            height: CardNode.size.height + pad * 2
+        )
+    }
+
+    private func highlightDiscardTarget() {
+        clearDiscardTarget()
+        let zone = discardDropZone()
+        let ring = SKShapeNode(rect: CGRect(x: -zone.width / 2, y: -zone.height / 2,
+                                            width: zone.width, height: zone.height),
+                               cornerRadius: 14)
+        ring.position = CGPoint(x: zone.midX, y: zone.midY)
+        ring.strokeColor = theme.turnGlow
+        ring.lineWidth = 3
+        ring.fillColor = .clear
+        ring.alpha = 0
+        ring.glowWidth = 6
+        ring.zPosition = 200
+        ring.run(SKAction.fadeAlpha(to: 0.85, duration: 0.15))
+        addChild(ring)
+        discardTargetRing = ring
+    }
+
+    private func clearDiscardTarget() {
+        discardTargetRing?.removeFromParent()
+        discardTargetRing = nil
     }
 }
 
