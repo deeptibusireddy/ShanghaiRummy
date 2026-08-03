@@ -7,14 +7,21 @@ import SwiftUI
 /// SpriteKit scene in without touching the view model.
 struct GameContainerView: View {
     @StateObject var vm: GameViewModel
+    let theme: VisualTheme
     let onExit: () -> Void
+
+    init(vm: GameViewModel, theme: VisualTheme = .cozyWood, onExit: @escaping () -> Void) {
+        _vm = StateObject(wrappedValue: vm)
+        self.theme = theme
+        self.onExit = onExit
+    }
 
     var body: some View {
         NavigationStack {
             ZStack {
                 // SpriteKit scene fills the screen.
-                GameSceneView(vm: vm)
-                    .background(Color(red: 0.32, green: 0.22, blue: 0.14))
+                GameSceneView(vm: vm, theme: theme)
+                    .background(Color(theme.background))
                 // Overlay controls (error, scoreboard summary, toolbar) drawn
                 // above the scene. In M2d these move into the scene proper.
                 VStack {

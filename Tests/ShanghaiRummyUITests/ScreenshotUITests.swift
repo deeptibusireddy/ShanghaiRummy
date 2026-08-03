@@ -51,7 +51,25 @@ final class ScreenshotUITests: XCTestCase {
         app.launch()
         _ = app.navigationBars["Hand 4"].waitForExistence(timeout: 5)
         Thread.sleep(forTimeInterval: 0.7)
-        snapshot(named: "04-mid-game-4players")
+        snapshot(named: "04-mid-game-cozy-wood")
+    }
+
+    func testCaptureMidGameCasinoFelt() throws {
+        let app = XCUIApplication()
+        app.launchArguments += ["--demo-mid-game", "--theme-felt"]
+        app.launch()
+        _ = app.navigationBars["Hand 4"].waitForExistence(timeout: 5)
+        Thread.sleep(forTimeInterval: 0.7)
+        snapshot(named: "05-mid-game-casino-felt")
+    }
+
+    func testCaptureMidGameMinimalModern() throws {
+        let app = XCUIApplication()
+        app.launchArguments += ["--demo-mid-game", "--theme-minimal"]
+        app.launch()
+        _ = app.navigationBars["Hand 4"].waitForExistence(timeout: 5)
+        Thread.sleep(forTimeInterval: 0.7)
+        snapshot(named: "06-mid-game-minimal-modern")
     }
 
     // MARK: - Helpers

@@ -3,11 +3,12 @@ import SwiftUI
 struct RootView: View {
     @EnvironmentObject var gameCenter: GameCenterManager
     @State private var activeGame: GameViewModel?
+    @State private var activeTheme: VisualTheme = .cozyWood
     @State private var showingSetup = false
 
     var body: some View {
         if let game = activeGame {
-            GameContainerView(vm: game) {
+            GameContainerView(vm: game, theme: activeTheme) {
                 activeGame = nil
             }
         } else {
@@ -21,10 +22,17 @@ struct RootView: View {
                 .onAppear {
                     if activeGame == nil,
                        CommandLine.arguments.contains("--demo-mid-game") {
+                        activeTheme = themeFromArgs()
                         activeGame = GameViewModel(state: GameFactory.demoMidGame())
                     }
                 }
         }
+    }
+
+    private func themeFromArgs() -> VisualTheme {
+        if CommandLine.arguments.contains("--theme-felt") { return .casinoFelt }
+        if CommandLine.arguments.contains("--theme-minimal") { return .minimalModern }
+        return .cozyWood
     }
 
     private var homeMenu: some View {

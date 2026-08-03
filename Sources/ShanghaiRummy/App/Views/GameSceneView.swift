@@ -5,6 +5,12 @@ import SpriteKit
 /// `GameViewModel` into it. Used by `GameContainerView`.
 struct GameSceneView: View {
     @ObservedObject var vm: GameViewModel
+    let theme: VisualTheme
+
+    init(vm: GameViewModel, theme: VisualTheme = .cozyWood) {
+        self.vm = vm
+        self.theme = theme
+    }
 
     var body: some View {
         GeometryReader { geo in
@@ -15,7 +21,7 @@ struct GameSceneView: View {
     }
 
     private func makeScene(size: CGSize) -> SKScene {
-        let scene = GameScene(size: size, viewModel: vm)
+        let scene = GameScene(size: size, viewModel: vm, theme: theme)
         scene.scaleMode = .resizeFill
         return scene
     }

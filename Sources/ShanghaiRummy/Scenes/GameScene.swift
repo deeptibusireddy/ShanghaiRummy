@@ -19,6 +19,7 @@ import Combine
 final class GameScene: SKScene {
 
     private let vm: GameViewModel
+    private let theme: VisualTheme
     private var cancellables: Set<AnyCancellable> = []
 
     private let feltNode = SKShapeNode()
@@ -28,11 +29,12 @@ final class GameScene: SKScene {
     private let handLayer = SKNode()
     private let bannerLabel = SKLabelNode(text: "")
 
-    init(size: CGSize, viewModel: GameViewModel) {
+    init(size: CGSize, viewModel: GameViewModel, theme: VisualTheme = .cozyWood) {
         self.vm = viewModel
+        self.theme = theme
         super.init(size: size)
         scaleMode = .resizeFill
-        backgroundColor = UIColor(red: 0.32, green: 0.22, blue: 0.14, alpha: 1) // dark walnut
+        backgroundColor = theme.background
     }
 
     required init?(coder aDecoder: NSCoder) { fatalError() }
@@ -63,16 +65,16 @@ final class GameScene: SKScene {
         feltNode.path = CGPath(roundedRect: rect,
                                cornerWidth: 20, cornerHeight: 20,
                                transform: nil)
-        feltNode.fillColor = UIColor(red: 0.44, green: 0.32, blue: 0.22, alpha: 1) // warm wood
-        feltNode.strokeColor = UIColor(red: 0.85, green: 0.72, blue: 0.52, alpha: 0.6) // warm-gold rim
-        feltNode.lineWidth = 3
+        feltNode.fillColor = theme.feltFill
+        feltNode.strokeColor = theme.feltStroke
+        feltNode.lineWidth = theme.feltStrokeWidth
         feltNode.zPosition = -10
         addChild(feltNode)
 
         bannerLabel.removeFromParent()
-        bannerLabel.fontName = "HelveticaNeue-Bold"
+        bannerLabel.fontName = theme.titleFont
         bannerLabel.fontSize = 18
-        bannerLabel.fontColor = UIColor(white: 0.98, alpha: 1)
+        bannerLabel.fontColor = theme.bannerText
         bannerLabel.horizontalAlignmentMode = .center
         bannerLabel.verticalAlignmentMode = .top
         bannerLabel.position = CGPoint(x: size.width / 2, y: size.height - 20)
@@ -106,7 +108,7 @@ final class GameScene: SKScene {
 
         // Stock (face-down top card if any).
         if let top = vm.state.stock.last {
-            let stock = CardNode(card: top, faceUp: false)
+            let stock = CardNode(card: top, faceUp: false, theme: theme)
             stock.position = CGPoint(x: center.x - CardNode.size.width / 2 - gap / 2,
                                      y: center.y)
             stock.name = "stock"
@@ -118,7 +120,7 @@ final class GameScene: SKScene {
 
         // Discard (top face-up card).
         if let top = vm.state.discard.last {
-            let discard = CardNode(card: top, faceUp: true)
+            let discard = CardNode(card: top, faceUp: true, theme: theme)
             discard.position = CGPoint(x: center.x + CardNode.size.width / 2 + gap / 2,
                                        y: center.y)
             discard.name = "discard"
@@ -131,9 +133,9 @@ final class GameScene: SKScene {
 
     private func stockLabel(at position: CGPoint, text: String) {
         let l = SKLabelNode(text: text)
-        l.fontName = "HelveticaNeue"
+        l.fontName = theme.bodyFont
         l.fontSize = 12
-        l.fontColor = UIColor(white: 0.92, alpha: 0.9)
+        l.fontColor = theme.pileLabel
         l.horizontalAlignmentMode = .center
         l.verticalAlignmentMode = .top
         l.position = position
@@ -156,18 +158,16 @@ final class GameScene: SKScene {
             let bgHeight: CGFloat = 44
             let bg = SKShapeNode(rectOf: CGSize(width: bgWidth, height: bgHeight),
                                  cornerRadius: 8)
-            bg.fillColor = isCurrent
-                ? UIColor(red: 0.85, green: 0.72, blue: 0.52, alpha: 0.9)
-                : UIColor(white: 0.98, alpha: 0.85)
-            bg.strokeColor = UIColor(white: 0.15, alpha: 0.3)
+            bg.fillColor = isCurrent ? theme.seatBgCurrent : theme.seatBgOther
+            bg.strokeColor = theme.cardStroke
             bg.position = seat.anchor
             bg.zPosition = 2
             seatsLayer.addChild(bg)
 
             let title = SKLabelNode(text: (isYou ? "▸ " : "") + player.name)
-            title.fontName = "HelveticaNeue-Bold"
+            title.fontName = theme.titleFont
             title.fontSize = 13
-            title.fontColor = UIColor(white: 0.10, alpha: 1)
+            title.fontColor = theme.seatTitle
             title.horizontalAlignmentMode = .center
             title.verticalAlignmentMode = .center
             title.position = CGPoint(x: seat.anchor.x, y: seat.anchor.y + 8)
@@ -175,9 +175,9 @@ final class GameScene: SKScene {
             seatsLayer.addChild(title)
 
             let sub = SKLabelNode(text: "Lv \(player.currentLevel)  •  \(player.totalScore) pts")
-            sub.fontName = "HelveticaNeue"
+            sub.fontName = theme.bodyFont
             sub.fontSize = 11
-            sub.fontColor = UIColor(white: 0.25, alpha: 1)
+            sub.fontColor = theme.seatSub
             sub.horizontalAlignmentMode = .center
             sub.verticalAlignmentMode = .center
             sub.position = CGPoint(x: seat.anchor.x, y: seat.anchor.y - 8)
@@ -235,7 +235,7 @@ final class GameScene: SKScene {
         for meld in melds {
             let count = meld.cards.count
             for (idx, card) in meld.cards.enumerated() {
-                let node = CardNode(card: card, faceUp: true)
+                let node = CardNode(card: card, faceUp: true, theme: theme)
                 node.setScale(scale)
                 node.position = CGPoint(x: x + CGFloat(idx) * overlap + cardW / 2, y: rowY)
                 node.zPosition = 3 + CGFloat(idx) * 0.01
@@ -258,7 +258,7 @@ final class GameScene: SKScene {
         let y: CGFloat = 68
 
         for card in hand {
-            let node = CardNode(card: card, faceUp: true)
+            let node = CardNode(card: card, faceUp: true, theme: theme)
             node.position = CGPoint(x: x, y: y)
             node.zPosition = 4
             handLayer.addChild(node)
