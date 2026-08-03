@@ -43,6 +43,17 @@ final class ScreenshotUITests: XCTestCase {
         snapshot(named: "03-hand-1-scaffold")
     }
 
+    func testCaptureMidGamePreview() throws {
+        // Boots directly into a rigged 4-player mid-game state so we can
+        // preview the table populated with melds from every player.
+        let app = XCUIApplication()
+        app.launchArguments += ["--demo-mid-game"]
+        app.launch()
+        _ = app.navigationBars["Hand 4"].waitForExistence(timeout: 5)
+        Thread.sleep(forTimeInterval: 0.7)
+        snapshot(named: "04-mid-game-4players")
+    }
+
     // MARK: - Helpers
 
     private func snapshot(named name: String) {

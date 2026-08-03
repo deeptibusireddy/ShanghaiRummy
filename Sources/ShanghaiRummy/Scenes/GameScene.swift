@@ -24,6 +24,7 @@ final class GameScene: SKScene {
     private let feltNode = SKShapeNode()
     private let pilesLayer = SKNode()
     private let seatsLayer = SKNode()
+    private let meldsLayer = SKNode()
     private let handLayer = SKNode()
     private let bannerLabel = SKLabelNode(text: "")
 
@@ -40,6 +41,7 @@ final class GameScene: SKScene {
         buildStaticLayers()
         addChild(pilesLayer)
         addChild(seatsLayer)
+        addChild(meldsLayer)
         addChild(handLayer)
         rebuildDynamicLayers()
         subscribeToViewModel()
@@ -88,9 +90,12 @@ final class GameScene: SKScene {
     }
 
     private func rebuildDynamicLayers() {
-        bannerLabel.text = "\(vm.currentPlayerName)'s turn  •  Level \(vm.currentPlayer.currentLevel) of \(RulesConfig.maxLevel)  •  \(vm.currentContractDescription)"
+        let name = vm.currentPlayerName
+        let turnPhrase = (name == "You") ? "Your turn" : "\(name)'s turn"
+        bannerLabel.text = "\(turnPhrase)  •  Level \(vm.currentPlayer.currentLevel) of \(RulesConfig.maxLevel)  •  \(vm.currentContractDescription)"
         buildPiles()
         buildSeats()
+        buildMelds()
         buildHand()
     }
 
@@ -178,6 +183,65 @@ final class GameScene: SKScene {
             sub.position = CGPoint(x: seat.anchor.x, y: seat.anchor.y - 8)
             sub.zPosition = 3
             seatsLayer.addChild(sub)
+        }
+    }
+
+    private func buildMelds() {
+        meldsLayer.removeAllChildren()
+        let seats = SeatLayout.seats(
+            playerCount: vm.state.players.count,
+            youIndex: vm.state.currentTurnIndex,
+            sceneSize: size
+        )
+        // Group melds by owner id for O(1) lookup per player.
+        var meldsByOwner: [UUID: [Meld]] = [:]
+        for m in vm.state.melds {
+            meldsByOwner[m.ownerId, default: []].append(m)
+        }
+        for (i, player) in vm.state.players.enumerated() {
+            let melds = meldsByOwner[player.id] ?? []
+            guard !melds.isEmpty else { continue }
+            let seat = seats[i]
+            drawMelds(melds, near: seat)
+        }
+    }
+
+    private func drawMelds(_ melds: [Meld], near seat: SeatLayout.Seat) {
+        // Card scale: 50% of full card. Cards inside a meld overlap by 60% so
+        // ranks are still visible. Melds are separated by an 18pt gap.
+        let scale: CGFloat = 0.55
+        let cardW = CardNode.size.width * scale
+        let cardH = CardNode.size.height * scale
+        let overlap: CGFloat = cardW * 0.4     // step between cards in one meld
+        let meldGap: CGFloat = 14
+
+        // Total width of all melds laid horizontally.
+        let widths = melds.map { CGFloat($0.cards.count - 1) * overlap + cardW }
+        let totalWidth = widths.reduce(0, +) + CGFloat(melds.count - 1) * meldGap
+
+        // Anchor offset per seat edge — melds sit between the seat and the piles.
+        let offset: CGPoint
+        switch seat.edge {
+        case .bottom:   offset = CGPoint(x: 0, y:  cardH / 2 + 30)
+        case .top:      offset = CGPoint(x: 0, y: -(cardH / 2 + 30))
+        case .left:     offset = CGPoint(x: totalWidth / 2 + 80, y: 0)
+        case .right:    offset = CGPoint(x: -(totalWidth / 2 + 80), y: 0)
+        case .topLeft:  offset = CGPoint(x: 20, y: -(cardH / 2 + 30))
+        case .topRight: offset = CGPoint(x: -20, y: -(cardH / 2 + 30))
+        }
+        let rowY = seat.anchor.y + offset.y
+        var x = seat.anchor.x + offset.x - totalWidth / 2
+
+        for meld in melds {
+            let count = meld.cards.count
+            for (idx, card) in meld.cards.enumerated() {
+                let node = CardNode(card: card, faceUp: true)
+                node.setScale(scale)
+                node.position = CGPoint(x: x + CGFloat(idx) * overlap + cardW / 2, y: rowY)
+                node.zPosition = 3 + CGFloat(idx) * 0.01
+                meldsLayer.addChild(node)
+            }
+            x += CGFloat(count - 1) * overlap + cardW + meldGap
         }
     }
 

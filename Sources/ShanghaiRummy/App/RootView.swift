@@ -18,6 +18,12 @@ struct RootView: View {
                         activeGame = vm
                     }
                 }
+                .onAppear {
+                    if activeGame == nil,
+                       CommandLine.arguments.contains("--demo-mid-game") {
+                        activeGame = GameViewModel(state: GameFactory.demoMidGame())
+                    }
+                }
         }
     }
 

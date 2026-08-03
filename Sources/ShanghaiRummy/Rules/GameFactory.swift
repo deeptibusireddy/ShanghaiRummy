@@ -87,4 +87,95 @@ public enum GameFactory {
             gameWinnerIds: []
         )
     }
+
+    // MARK: - Demo state (for design previews)
+
+    /// A rigged 4-player mid-game state used only by design previews and CI
+    /// screenshots. NOT a legal shuffle — cards are hand-picked so the table
+    /// clearly shows: multiple players who've gone down, a mix of triplets
+    /// and sequences, a joker and a wild 2 in play, and a hand for "You".
+    ///
+    /// Trigger by launching the app with `--demo-mid-game`.
+    public static func demoMidGame() -> GameState {
+        func c(_ suit: Suit, _ rank: Rank) -> Card { Card(suit: suit, rank: rank) }
+
+        let you = Player(
+            name: "You",
+            hand: [
+                c(.spades, .king), c(.spades, .queen), c(.diamonds, .eight),
+                c(.hearts, .six), c(.clubs, .three), Card.joker(),
+                c(.hearts, .ten), c(.diamonds, .four),
+            ],
+            hasGoneDownThisRound: true,
+            currentLevel: 2
+        )
+        let alex = Player(
+            name: "Alex",
+            hand: Array(repeating: c(.clubs, .four), count: 7),
+            hasGoneDownThisRound: true,
+            currentLevel: 2
+        )
+        let jordan = Player(
+            name: "Jordan",
+            hand: Array(repeating: c(.clubs, .four), count: 5),
+            hasGoneDownThisRound: true,
+            currentLevel: 3
+        )
+        let sam = Player(
+            name: "Sam",
+            hand: Array(repeating: c(.clubs, .four), count: 9),
+            hasGoneDownThisRound: false,
+            currentLevel: 2
+        )
+
+        // Assign per-player scores so seat labels show variety.
+        var players = [you, alex, jordan, sam]
+        players[0].totalScore = 45
+        players[1].totalScore = 120
+        players[2].totalScore = 30
+        players[3].totalScore = 180
+
+        // Melds on the table.
+        let melds: [Meld] = [
+            // You: triplet 7s + sequence 4-5-6 spades
+            Meld(kind: .triplet, cards: [c(.hearts, .seven), c(.diamonds, .seven), c(.clubs, .seven)],
+                 ownerId: players[0].id),
+            Meld(kind: .sequence, cards: [c(.spades, .four), c(.spades, .five), c(.spades, .six)],
+                 ownerId: players[0].id),
+            // Alex: triplet K with wild 2, sequence 9-10-J hearts
+            Meld(kind: .triplet, cards: [c(.spades, .king), c(.diamonds, .king), c(.clubs, .king),
+                                          c(.hearts, .two)],
+                 ownerId: players[1].id),
+            Meld(kind: .sequence, cards: [c(.hearts, .nine), c(.hearts, .ten), c(.hearts, .jack)],
+                 ownerId: players[1].id),
+            // Jordan (level 3 = 2 sets + 1 run): triplets Q & 5, sequence 8-9-10-J diamonds w/ joker as J
+            Meld(kind: .triplet, cards: [c(.spades, .queen), c(.hearts, .queen), c(.diamonds, .queen)],
+                 ownerId: players[2].id),
+            Meld(kind: .triplet, cards: [c(.clubs, .five), c(.diamonds, .five), c(.hearts, .five)],
+                 ownerId: players[2].id),
+            Meld(kind: .sequence, cards: [c(.diamonds, .eight), c(.diamonds, .nine),
+                                           c(.diamonds, .ten), Card.joker()],
+                 ownerId: players[2].id),
+        ]
+
+        // A modest stock + discard, top of discard is a K♥ that just got tossed.
+        var stock = Array(repeating: c(.clubs, .four), count: 42)
+        stock.append(c(.spades, .ace)) // top of stock (last element)
+        let discard: [Card] = [
+            c(.diamonds, .three), c(.spades, .eight), c(.hearts, .king),
+        ]
+
+        return GameState(
+            players: players,
+            currentRound: 4,
+            currentTurnIndex: 0, // Your turn — you draw next
+            dealerIndex: 3,
+            stock: stock,
+            discard: discard,
+            melds: melds,
+            phase: .awaitingDraw,
+            stockReshufflesUsed: 0,
+            randomSeed: 42
+        )
+    }
 }
