@@ -53,15 +53,30 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.deeptibusireddy.ShanghaiRummyTests
         GENERATE_INFOPLIST_FILE: YES
 
+  ShanghaiRummyUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: Tests/ShanghaiRummyUITests
+    dependencies:
+      - target: ShanghaiRummy
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.deeptibusireddy.ShanghaiRummyUITests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_TARGET_NAME: ShanghaiRummy
+
 schemes:
   ShanghaiRummy:
     build:
       targets:
         ShanghaiRummy: all
         ShanghaiRummyTests: [test]
+        ShanghaiRummyUITests: [test]
     test:
       targets:
         - ShanghaiRummyTests
+        - ShanghaiRummyUITests
     run:
       config: Debug
     archive:

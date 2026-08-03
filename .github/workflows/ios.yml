@@ -20,8 +20,8 @@ jobs:
       - name: Show Xcode version
         run: xcodebuild -version
 
-      - name: Install XcodeGen and xcbeautify
-        run: brew install xcodegen xcbeautify
+      - name: Install XcodeGen, xcbeautify, and xcparse
+        run: brew install xcodegen xcbeautify chargepoint/xcparse/xcparse
 
       - name: Generate Xcode project
         run: xcodegen generate
@@ -45,15 +45,34 @@ jobs:
             -sdk iphonesimulator \
             -destination "platform=iOS Simulator,id=$DEVICE_ID" \
             -configuration Debug \
+            -resultBundlePath TestResults.xcresult \
             CODE_SIGNING_ALLOWED=NO \
             build test \
             | xcbeautify --renderer github-actions
+
+      - name: Extract screenshots from test results
+        if: always()
+        run: |
+          if [ -d TestResults.xcresult ]; then
+            mkdir -p screenshots
+            xcparse screenshots TestResults.xcresult screenshots/ || true
+            ls -la screenshots/ || true
+          else
+            echo "No xcresult bundle found — skipping"
+          fi
+
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-screenshots
+          path: screenshots/
+          if-no-files-found: warn
 
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: test-results
-          path: |
-            ~/Library/Developer/Xcode/DerivedData/**/Logs/Test/*.xcresult
+          path: TestResults.xcresult
           if-no-files-found: ignore
