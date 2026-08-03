@@ -5,13 +5,16 @@ import XCTest
 /// uploads them as an artifact — so the developer can preview the app from
 /// Windows without a Mac.
 ///
-/// If these tests start failing after real UI changes: update the labels
-/// referenced below (`app.buttons["..."]` etc.) or take the fresh screenshots
-/// as the new baseline.
+/// M2b note: game interactions (draw/discard) happen on SpriteKit nodes which
+/// XCUITest can't identify by label without accessibility identifiers. We
+/// therefore only screenshot the three navigable SwiftUI screens (home, setup,
+/// game scaffold). Interaction screenshots (drawn card, pass-and-play) return
+/// in M2d once we wire up accessibility identifiers on the sprites.
 final class ScreenshotUITests: XCTestCase {
 
     override func setUpWithError() throws {
         continueAfterFailure = false
+        XCUIDevice.shared.orientation = .landscapeLeft
     }
 
     func testCaptureScreens() throws {
@@ -32,33 +35,12 @@ final class ScreenshotUITests: XCTestCase {
         // Start the game with the default 2 players.
         app.buttons["Start"].tap()
 
-        // Game container appears — should show Round 1 title.
-        _ = app.navigationBars["Round 1"].waitForExistence(timeout: 5)
-        snapshot(named: "03-round-1-turn-start")
-
-        // Draw from stock, then screenshot with the meld/discard phase visible.
-        let stockButton = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Stock'")).firstMatch
-        if stockButton.exists { stockButton.tap() }
-        snapshot(named: "04-after-draw")
-
-        // Tap the first card in the hand to discard it.
-        // Hand cards are Text-labeled ("7♠" etc.) inside plain-style buttons.
-        // Grabbing them generically as any button that's not "Stock"/"Discard"/"Quit".
-        let handCards = app.buttons.allElementsBoundByIndex.filter { btn in
-            let l = btn.label
-            return !l.isEmpty
-                && !l.hasPrefix("Stock")
-                && !l.hasPrefix("Discard")
-                && l != "Quit"
-        }
-        if let first = handCards.first {
-            first.tap()
-        }
-
-        // Pass-and-play interstitial should appear.
-        let passLabel = app.staticTexts["Pass the device"]
-        _ = passLabel.waitForExistence(timeout: 5)
-        snapshot(named: "05-pass-and-play")
+        // Game container appears — nav bar shows "Hand 1". SpriteKit scene
+        // paints the felt, piles, seats, and the current player's hand.
+        _ = app.navigationBars["Hand 1"].waitForExistence(timeout: 5)
+        // Small pause so the scene finishes its first frame.
+        Thread.sleep(forTimeInterval: 0.5)
+        snapshot(named: "03-hand-1-scaffold")
     }
 
     // MARK: - Helpers
@@ -71,3 +53,4 @@ final class ScreenshotUITests: XCTestCase {
         add(attachment)
     }
 }
+

@@ -11,22 +11,26 @@ struct GameContainerView: View {
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 16) {
-                header
-                scoreboard
-                Divider()
-                tablePlaceholder
-                Divider()
-                handSection
-                if let err = vm.lastError {
-                    Text(err)
-                        .font(.footnote)
-                        .foregroundStyle(.red)
-                        .multilineTextAlignment(.center)
+            ZStack {
+                // SpriteKit scene fills the screen.
+                GameSceneView(vm: vm)
+                    .background(Color(red: 0.32, green: 0.22, blue: 0.14))
+                // Overlay controls (error, scoreboard summary, toolbar) drawn
+                // above the scene. In M2d these move into the scene proper.
+                VStack {
+                    Spacer()
+                    if let err = vm.lastError {
+                        Text(err)
+                            .font(.footnote)
+                            .foregroundStyle(.white)
+                            .padding(8)
+                            .background(RoundedRectangle(cornerRadius: 8).fill(.red.opacity(0.85)))
+                            .padding(.bottom, 8)
+                    }
                 }
             }
-            .padding()
             .navigationTitle("Hand \(vm.state.currentRound)")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Quit") { onExit() }
@@ -45,149 +49,6 @@ struct GameContainerView: View {
                     gameOverOverlay
                 }
             }
-        }
-    }
-
-    // MARK: - Sections
-
-    private var header: some View {
-        VStack(spacing: 4) {
-            Text(vm.currentPlayerName + "'s turn")
-                .font(.headline)
-            Text("Level \(vm.currentPlayer.currentLevel) of \(RulesConfig.maxLevel) — " + vm.currentContractDescription)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-            Text("Phase: " + vm.state.phase.rawValue)
-                .font(.caption)
-                .foregroundStyle(.tertiary)
-        }
-    }
-
-    /// Every player's level + running score at a glance. Once we have the
-    /// SpriteKit seat layout this moves next to each seat.
-    private var scoreboard: some View {
-        HStack(spacing: 12) {
-            ForEach(vm.state.players, id: \.id) { p in
-                VStack(spacing: 2) {
-                    Text(p.name)
-                        .font(.caption).bold()
-                        .lineLimit(1)
-                    Text("Lv \(p.currentLevel)")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                    Text("\(p.totalScore) pts")
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                }
-                .frame(minWidth: 60)
-                .padding(6)
-                .background(
-                    RoundedRectangle(cornerRadius: 6)
-                        .fill(p.id == vm.currentPlayer.id
-                              ? Color.accentColor.opacity(0.15)
-                              : Color.gray.opacity(0.08))
-                )
-            }
-        }
-    }
-
-    private var tablePlaceholder: some View {
-        HStack(spacing: 24) {
-            Button {
-                vm.drawFromStock()
-            } label: {
-                pileCard(label: "Stock", subtitle: "\(vm.state.stock.count) cards")
-            }
-            .disabled(!vm.canDrawFromStock)
-
-            Button {
-                vm.drawFromDiscard()
-            } label: {
-                pileCard(
-                    label: "Discard",
-                    subtitle: vm.state.discard.last.map(cardShort) ?? "empty"
-                )
-            }
-            .disabled(!vm.canDrawFromDiscard)
-        }
-    }
-
-    private var handSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Your hand (\(vm.currentPlayer.hand.count))")
-                .font(.subheadline).bold()
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ForEach(vm.currentPlayer.hand, id: \.id) { card in
-                        Button {
-                            vm.discard(card)
-                        } label: {
-                            handCard(card)
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(vm.state.phase != .awaitingMeldOrDiscard)
-                    }
-                }
-            }
-            Text("Tap a card to discard (temporary placeholder UI).")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-    }
-
-    // MARK: - Card visuals (placeholder)
-
-    private func pileCard(label: String, subtitle: String) -> some View {
-        VStack(spacing: 4) {
-            Text(label).font(.headline)
-            Text(subtitle).font(.caption).foregroundStyle(.secondary)
-        }
-        .frame(width: 96, height: 128)
-        .background(RoundedRectangle(cornerRadius: 12).fill(.thinMaterial))
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(.gray.opacity(0.4)))
-    }
-
-    private func handCard(_ card: Card) -> some View {
-        VStack {
-            Text(cardShort(card))
-                .font(.system(size: 20, weight: .semibold, design: .rounded))
-                .foregroundStyle(cardColor(card))
-        }
-        .frame(width: 56, height: 84)
-        .background(RoundedRectangle(cornerRadius: 8).fill(Color.white))
-        .overlay(RoundedRectangle(cornerRadius: 8).stroke(.gray))
-    }
-
-    private func cardShort(_ card: Card) -> String {
-        if card.isPrintedJoker { return "🃏" }
-        let suit: String = {
-            switch card.suit {
-            case .clubs: return "♣"
-            case .diamonds: return "♦"
-            case .hearts: return "♥"
-            case .spades: return "♠"
-            case .none: return "?"
-            }
-        }()
-        let rank: String = {
-            switch card.rank {
-            case .ace: return "A"
-            case .jack: return "J"
-            case .queen: return "Q"
-            case .king: return "K"
-            case .some(let r): return "\(r.rawValue)"
-            case .none: return "?"
-            }
-        }()
-        let dead = card.isDead2 ? "†" : ""
-        return "\(rank)\(suit)\(dead)"
-    }
-
-    private func cardColor(_ card: Card) -> Color {
-        if card.isPrintedJoker { return .purple }
-        switch card.suit {
-        case .diamonds, .hearts: return .red
-        default: return .black
         }
     }
 

@@ -28,7 +28,6 @@ targets:
         UILaunchScreen: {}
         UIRequiredDeviceCapabilities: [armv7, gamekit]
         UISupportedInterfaceOrientations:
-          - UIInterfaceOrientationPortrait
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight
     entitlements:
