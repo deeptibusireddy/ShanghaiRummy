@@ -88,6 +88,24 @@ public enum GameFactory {
         )
     }
 
+    // MARK: - Convenience factories
+
+    /// Build a fresh "You vs N CPUs" match ready to play. `you` seats at
+    /// index 0 so their hand is always the bottom-of-screen hand. Returns
+    /// the game state plus the set of CPU-controlled player IDs (feed into
+    /// `GameViewModel.cpuPlayerIds`).
+    public static func newVsCPU(you: String,
+                                cpuNames: [String],
+                                seed: UInt64) -> (state: GameState, cpuIds: Set<UUID>) {
+        let names = [you] + cpuNames
+        let state = newGame(playerNames: names, seed: seed)
+        var cpuIds: Set<UUID> = []
+        for (i, p) in state.players.enumerated() where i != 0 {
+            cpuIds.insert(p.id)
+        }
+        return (state, cpuIds)
+    }
+
     // MARK: - Demo state (for design previews)
 
     /// A rigged 4-player mid-game state used only by design previews and CI

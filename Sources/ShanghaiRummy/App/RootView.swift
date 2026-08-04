@@ -28,6 +28,19 @@ struct RootView: View {
                             stageFirstTriplet(in: vm)
                         }
                         activeGame = vm
+                    } else if activeGame == nil,
+                              CommandLine.arguments.contains("--demo-vs-cpu") {
+                        activeTheme = themeFromArgs()
+                        let built = GameFactory.newVsCPU(
+                            you: "You",
+                            cpuNames: ["Alex", "Jordan", "Sam"],
+                            seed: 42
+                        )
+                        let vm = GameViewModel(state: built.state)
+                        vm.cpuPlayerIds = built.cpuIds
+                        // If it's already a CPU's first turn, let them play.
+                        vm.runAllCPUTurns()
+                        activeGame = vm
                     }
                 }
         }

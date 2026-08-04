@@ -30,6 +30,13 @@ public final class GameViewModel: ObservableObject {
     /// launch flag.
     @Published public var isMeldOverlayOpen: Bool = false
 
+    /// IDs of players controlled by the CPU practice bot (M1e). Empty in
+    /// hot-seat / GameKit modes.
+    @Published public var cpuPlayerIds: Set<UUID> = []
+
+    /// Re-entrancy guard for the CPU auto-play loop (see `dispatch`).
+    private var isRunningCPUTurns: Bool = false
+
     // MARK: - Init
 
     public init(state: GameState) {
@@ -62,6 +69,7 @@ public final class GameViewModel: ObservableObject {
     /// the new state or the error message, and returns `true` on success.
     @discardableResult
     public func dispatch(_ action: TurnEngine.Action) -> Bool {
+        let outgoingId = state.currentPlayerId
         switch TurnEngine.apply(action, to: state) {
         case .success(let newState):
             let didAdvanceTurn =
@@ -70,11 +78,19 @@ public final class GameViewModel: ObservableObject {
             state = newState
             lastError = nil
             if didAdvanceTurn {
-                // Trigger the pass-and-play interstitial before the next player
-                // takes the device.
-                isBetweenTurns = true
+                let incomingId = newState.currentPlayerId
+                let outgoingIsCPU = cpuPlayerIds.contains(outgoingId)
+                let incomingIsCPU = cpuPlayerIds.contains(incomingId)
+                // Only show the pass-and-play interstitial when handing off
+                // between two humans. Bot ↔ human and bot ↔ bot skip it.
+                isBetweenTurns = !(outgoingIsCPU || incomingIsCPU)
                 stagedCardIds.removeAll()
                 isMeldOverlayOpen = false
+                // Auto-pump the CPU's turn(s) so the UI never has to wait on
+                // a bot. Re-entrancy guard prevents recursion from the loop.
+                if incomingIsCPU && !isRunningCPUTurns {
+                    runAllCPUTurns()
+                }
             }
             return true
         case .failure(let err):
@@ -163,4 +179,39 @@ public final class GameViewModel: ObservableObject {
 
     /// Clear staging. Called after a turn ends or the player cancels.
     public func clearStaging() { stagedCardIds.removeAll() }
+
+    // MARK: - CPU practice bot (M1e)
+
+    /// True when the player whose turn it is right now is a CPU.
+    public var isCurrentPlayerCPU: Bool {
+        cpuPlayerIds.contains(state.currentPlayerId)
+    }
+
+    /// If the current player is a CPU and the round is still live, run a
+    /// single action (typically draw OR meld/discard). Returns whether an
+    /// action was applied. Safe to call any time.
+    @discardableResult
+    public func stepCurrentCPUTurn() -> Bool {
+        guard isCurrentPlayerCPU else { return false }
+        guard state.phase == .awaitingDraw
+                || state.phase == .awaitingMeldOrDiscard else { return false }
+        let action = CPUPlayer.nextAction(for: state.currentPlayerId, in: state)
+        return dispatch(action)
+    }
+
+    /// Pump CPU actions until it's a human's turn (or the round/game ends).
+    /// Caps iterations to avoid any theoretical infinite loop from a bad
+    /// heuristic — 200 covers dozens of full turns per player.
+    public func runAllCPUTurns() {
+        isRunningCPUTurns = true
+        defer { isRunningCPUTurns = false }
+        var guardCounter = 0
+        while isCurrentPlayerCPU
+                && (state.phase == .awaitingDraw
+                    || state.phase == .awaitingMeldOrDiscard)
+                && guardCounter < 200 {
+            if !stepCurrentCPUTurn() { break }
+            guardCounter += 1
+        }
+    }
 }
