@@ -40,6 +40,7 @@ struct RootView: View {
         let byRank = Dictionary(grouping: hand, by: { $0.rank })
         for (_, cards) in byRank where cards.count >= 3 {
             for card in cards.prefix(3) { vm.toggleStaged(cardId: card.id) }
+            vm.isMeldOverlayOpen = true
             return
         }
     }

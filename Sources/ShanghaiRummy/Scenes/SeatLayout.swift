@@ -41,7 +41,10 @@ enum SeatLayout {
         let midX = w / 2
         let leftX = insets + 60
         let rightX = w - insets - 60
-        let topY = h - insets - 60
+        // Push the top row further down so opponent seat cards don't collide
+        // with the top banner + contract pill, and so there's room for a mini
+        // meld strip between the seat card and the shared piles.
+        let topY = h - insets - 36
         let botY = insets + 60
         let quarterLeft = w * 0.25
         let quarterRight = w * 0.75
@@ -98,12 +101,12 @@ enum SeatLayout {
         return seats
     }
 
-    /// Center point of the shared piles (stock + discard). Positioned in the
-    /// upper 60-70% of the scene so the bottom stays free for the current
-    /// player's hand fan, meld staging tray, and personal HUD. Clamped to a
-    /// sensible minimum so tiny scenes still lay out cleanly.
+    /// Center point of the shared piles (stock + discard). Sits just above
+    /// midline so the top-seat opponent has room to render its seat card and
+    /// mini-meld strip above the piles, and the bottom half stays clear for
+    /// the current player's hand + HUD.
     static func pileCenter(sceneSize: CGSize) -> CGPoint {
         CGPoint(x: sceneSize.width / 2,
-                y: max(220, sceneSize.height * 0.72))
+                y: max(200, sceneSize.height * 0.55))
     }
 }

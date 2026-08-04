@@ -30,9 +30,9 @@ final class GameScene: SKScene {
     private let seatsLayer = SKNode()
     private let meldsLayer = SKNode()
     private let handLayer = SKNode()
-    private let stagingLayer = SKNode()
+    private let meldButtonLayer = SKNode()
+    private let overlayLayer = SKNode()
     private let bannerLabel = SKLabelNode(text: "")
-    private let contractPill = SKNode()
 
     // Drag-and-drop state (M2d-a).
     private var draggingCard: CardNode?
@@ -59,7 +59,8 @@ final class GameScene: SKScene {
         addChild(seatsLayer)
         addChild(meldsLayer)
         addChild(handLayer)
-        addChild(stagingLayer)
+        addChild(meldButtonLayer)
+        addChild(overlayLayer)
         rebuildDynamicLayers()
         subscribeToViewModel()
     }
@@ -76,8 +77,6 @@ final class GameScene: SKScene {
         glowNode.removeFromParent()
         emblemNode.removeFromParent()
         bannerLabel.removeFromParent()
-        contractPill.removeAllChildren()
-        contractPill.removeFromParent()
 
         // Felt with rounded corners + wide rim.
         let inset: CGFloat = 12
@@ -117,18 +116,16 @@ final class GameScene: SKScene {
         emblemNode.zPosition = -8
         addChild(emblemNode)
 
-        // Banner
+        // Combined banner: turn + contract, single line at the top edge so
+        // opponent seats and shared piles get the full vertical budget.
         bannerLabel.fontName = theme.titleFont
-        bannerLabel.fontSize = 20
+        bannerLabel.fontSize = 14
         bannerLabel.fontColor = theme.bannerText
         bannerLabel.horizontalAlignmentMode = .center
         bannerLabel.verticalAlignmentMode = .top
-        bannerLabel.position = CGPoint(x: size.width / 2, y: size.height - 16)
+        bannerLabel.position = CGPoint(x: size.width / 2, y: size.height - 12)
         bannerLabel.zPosition = 5
         addChild(bannerLabel)
-
-        contractPill.zPosition = 5
-        addChild(contractPill)
     }
 
     // MARK: - Dynamic layers (rebuild on state change)
@@ -148,40 +145,14 @@ final class GameScene: SKScene {
     private func rebuildDynamicLayers() {
         let name = vm.currentPlayerName
         let turnPhrase = (name == "You") ? "Your turn" : "\(name)'s turn"
-        bannerLabel.text = turnPhrase
+        bannerLabel.text = "\(turnPhrase)  —  Level \(vm.currentPlayer.currentLevel) of \(RulesConfig.maxLevel)  •  \(vm.currentContractDescription)"
         shadowsLayer.removeAllChildren()
-        buildContractPill()
         buildPiles()
         buildSeats()
         buildMelds()
-        buildStagingTray()
         buildHand()
-    }
-
-    private func buildContractPill() {
-        contractPill.removeAllChildren()
-        let text = "Level \(vm.currentPlayer.currentLevel) of \(RulesConfig.maxLevel)  •  \(vm.currentContractDescription)"
-        let label = SKLabelNode(text: text)
-        label.fontName = theme.bodyFont
-        label.fontSize = 12
-        label.fontColor = theme.contractPillText
-        label.horizontalAlignmentMode = .center
-        label.verticalAlignmentMode = .center
-        contractPill.addChild(label)
-
-        // Size the pill background from a rough text width estimate.
-        let padX: CGFloat = 14
-        let padY: CGFloat = 4
-        let estWidth = CGFloat(text.count) * 6.5 + padX * 2
-        let bg = SKShapeNode(rectOf: CGSize(width: estWidth, height: 22),
-                             cornerRadius: 11)
-        bg.fillColor = theme.contractPillBg
-        bg.strokeColor = theme.turnGlow.withAlphaComponent(0.7)
-        bg.lineWidth = 1
-        contractPill.insertChild(bg, at: 0)
-        _ = padY // silence unused warning if compiler complains
-
-        contractPill.position = CGPoint(x: size.width / 2, y: size.height - 46)
+        buildMeldButton()
+        buildMeldOverlay()
     }
 
     private func buildPiles() {
@@ -379,26 +350,29 @@ final class GameScene: SKScene {
     }
 
     private func drawMelds(_ melds: [Meld], near seat: SeatLayout.Seat) {
-        let scale: CGFloat = 0.58
+        let scale: CGFloat = 0.40
         let cardW = CardNode.size.width * scale
         let cardH = CardNode.size.height * scale
         let overlap: CGFloat = cardW * 0.42
-        let meldGap: CGFloat = 16
+        let meldGap: CGFloat = 10
+        // Height of the seat card visual (must match buildSeats).
+        let bgHalfHeight: CGFloat = 52 / 2
 
         let widths = melds.map { CGFloat($0.cards.count - 1) * overlap + cardW }
         let totalWidth = widths.reduce(0, +) + CGFloat(melds.count - 1) * meldGap
 
-        let offset: CGPoint
-        switch seat.edge {
-        case .bottom:   offset = CGPoint(x: 0, y:  cardH / 2 + 34)
-        case .top:      offset = CGPoint(x: 0, y: -(cardH / 2 + 34))
-        case .left:     offset = CGPoint(x: totalWidth / 2 + 88, y: 0)
-        case .right:    offset = CGPoint(x: -(totalWidth / 2 + 88), y: 0)
-        case .topLeft:  offset = CGPoint(x: 24, y: -(cardH / 2 + 34))
-        case .topRight: offset = CGPoint(x: -24, y: -(cardH / 2 + 34))
-        }
-        let rowY = seat.anchor.y + offset.y
-        var x = seat.anchor.x + offset.x - totalWidth / 2
+        // Melds always sit BELOW the seat card, in the corridor between the
+        // seat card and the shared piles. This keeps each player's melds
+        // clearly attached to their own seat and prevents the top-seat melds
+        // from bleeding into the stock/discard fan.
+        let padding: CGFloat = 6
+        let rowY = seat.anchor.y - bgHalfHeight - padding - cardH / 2
+        // Clamp x-range to the felt so wide meld rows don't clip the rim.
+        let margin: CGFloat = 30
+        let minCenter = margin + totalWidth / 2
+        let maxCenter = size.width - margin - totalWidth / 2
+        let centerX = min(max(seat.anchor.x, minCenter), maxCenter)
+        var x = centerX - totalWidth / 2
 
         for meld in melds {
             let count = meld.cards.count
@@ -420,16 +394,19 @@ final class GameScene: SKScene {
     /// own melds (scaled ~35%). Leaves the whole bottom-center clear for the
     /// hand fan and staging tray.
     private func buildYouHUD(player: Player, isCurrent: Bool) {
-        let hudX: CGFloat = 90
-        let hudY: CGFloat = 42
-        let avatarRadius: CGFloat = 16
+        // Position above the hand fan (not beside it) so the HUD label never
+        // clips or hides behind the leftmost hand cards. Left-aligned to the
+        // felt edge, above the fan and below the left-seat meld strip.
+        let avatarRadius: CGFloat = 14
+        let hudX: CGFloat = 30 + avatarRadius
+        let hudY: CGFloat = handRowY + CardNode.size.height / 2 + 18
 
         if isCurrent {
-            let halo = SKShapeNode(circleOfRadius: avatarRadius + 6)
+            let halo = SKShapeNode(circleOfRadius: avatarRadius + 5)
             halo.fillColor = theme.turnGlow.withAlphaComponent(0.35)
             halo.strokeColor = theme.turnGlow
             halo.lineWidth = 2
-            halo.glowWidth = 6
+            halo.glowWidth = 5
             halo.position = CGPoint(x: hudX, y: hudY)
             halo.zPosition = 1
             seatsLayer.addChild(halo)
@@ -445,7 +422,7 @@ final class GameScene: SKScene {
         seatsLayer.addChild(avatar)
         let initial = SKLabelNode(text: String(player.name.prefix(1)).uppercased())
         initial.fontName = theme.titleFont
-        initial.fontSize = 16
+        initial.fontSize = 14
         initial.fontColor = .white
         initial.horizontalAlignmentMode = .center
         initial.verticalAlignmentMode = .center
@@ -453,24 +430,25 @@ final class GameScene: SKScene {
         initial.zPosition = 4
         seatsLayer.addChild(initial)
 
-        // "You  Lv 2  •  45 pts  •  4 melds"
         let ownMeldCount = vm.state.melds.filter { $0.ownerId == player.id }.count
         let meldsFragment = ownMeldCount == 0 ? "" : "  •  \(ownMeldCount) meld\(ownMeldCount == 1 ? "" : "s") down"
         let text = "\(player.name)  Lv \(player.currentLevel)  •  \(player.totalScore) pts\(meldsFragment)"
         let label = SKLabelNode(text: text)
         label.fontName = theme.titleFont
-        label.fontSize = 12
+        label.fontSize = 11
         label.fontColor = theme.seatTitle
         label.horizontalAlignmentMode = .left
         label.verticalAlignmentMode = .center
-        label.position = CGPoint(x: hudX + avatarRadius + 8, y: hudY)
+        label.position = CGPoint(x: hudX + avatarRadius + 6, y: hudY)
         label.zPosition = 3
         seatsLayer.addChild(label)
     }
 
     private func buildHand() {
         handLayer.removeAllChildren()
-        let hand = vm.unstagedCards
+        // On the main table, always show the full hand — staging is a modal
+        // concept surfaced through the Build Meld button.
+        let hand = vm.currentPlayer.hand
         guard !hand.isEmpty else { return }
 
         let cardWidth = CardNode.size.width
@@ -500,101 +478,208 @@ final class GameScene: SKScene {
         }
     }
 
-    // MARK: - Staging tray (M2d-b)
+    // MARK: - Layout constants
 
     /// Y coordinate for the (unstaged) hand fan. Sits near the bottom edge.
     private var handRowY: CGFloat { max(45, size.height * 0.11) }
-    /// Y coordinate for the staging tray row (above the hand fan, below the
-    /// piles). Chosen so hand cards, tray panel, and piles never overlap.
-    private var trayRowY: CGFloat { max(155, size.height * 0.40) }
 
-    /// The tray's droppable rectangle in scene coordinates. Auto-widths to
-    /// the staged cards (or a minimum size when empty) so it doesn't span
-    /// the entire bottom edge.
-    private func trayDropZone() -> CGRect {
-        let cardWidth = CardNode.size.width
-        let spacing: CGFloat = 8
-        let count = max(vm.stagedCards.count, 0)
-        let contentW: CGFloat
-        if count == 0 {
-            contentW = 200
-        } else {
-            contentW = CGFloat(count) * cardWidth + CGFloat(count - 1) * spacing
-        }
-        let panelW = contentW + 40
-        let panelH: CGFloat = CardNode.size.height + 16
-        return CGRect(
-            x: size.width / 2 - panelW / 2,
-            y: trayRowY - panelH / 2,
-            width: panelW,
-            height: panelH
-        )
+    // MARK: - Build Meld button (opens modal overlay, M2d-b)
+
+    /// A small chip in the bottom-right that toggles the meld staging overlay.
+    /// Only visible on the current player's turn.
+    private func buildMeldButton() {
+        meldButtonLayer.removeAllChildren()
+        guard vm.currentPlayerName == "You" else { return }
+
+        let chipW: CGFloat = 118
+        let chipH: CGFloat = 28
+        let chipX: CGFloat = size.width - chipW / 2 - 24
+        let chipY: CGFloat = handRowY
+        let chip = SKShapeNode(rectOf: CGSize(width: chipW, height: chipH),
+                               cornerRadius: 14)
+        chip.fillColor = theme.contractPillBg
+        chip.strokeColor = theme.turnGlow
+        chip.lineWidth = 1.5
+        chip.position = CGPoint(x: chipX, y: chipY)
+        chip.zPosition = 20
+        chip.name = "build-meld-button"
+        meldButtonLayer.addChild(chip)
+
+        let count = vm.stagedCardIds.count
+        let text = count == 0 ? "Build Meld" : "Build Meld (\(count))"
+        let label = SKLabelNode(text: text)
+        label.fontName = theme.titleFont
+        label.fontSize = 12
+        label.fontColor = theme.contractPillText
+        label.horizontalAlignmentMode = .center
+        label.verticalAlignmentMode = .center
+        label.position = chip.position
+        label.zPosition = 21
+        label.name = "build-meld-button"
+        meldButtonLayer.addChild(label)
     }
 
-    private func buildStagingTray() {
-        stagingLayer.removeAllChildren()
+    // MARK: - Meld staging overlay (modal, M2d-b)
 
-        let zone = trayDropZone()
-        let panel = SKShapeNode(rect: CGRect(x: -zone.width / 2, y: -zone.height / 2,
-                                             width: zone.width, height: zone.height),
-                                cornerRadius: 12)
-        panel.position = CGPoint(x: zone.midX, y: zone.midY)
-        panel.fillColor = theme.contractPillBg.withAlphaComponent(0.35)
-        panel.strokeColor = trayStrokeColor()
+    /// Renders a full-screen dimmed panel with staged cards row, hand row,
+    /// live validator, and Cancel / Confirm buttons. When open, all touches
+    /// on the underlying table are blocked.
+    private func buildMeldOverlay() {
+        overlayLayer.removeAllChildren()
+        guard vm.isMeldOverlayOpen else { return }
+
+        // Dim the underlying scene.
+        let dim = SKShapeNode(rect: CGRect(origin: .zero, size: size))
+        dim.fillColor = UIColor.black.withAlphaComponent(0.62)
+        dim.strokeColor = .clear
+        dim.zPosition = 100
+        dim.name = "overlay-dim"
+        overlayLayer.addChild(dim)
+
+        // Central panel.
+        let panelW = min(size.width - 60, 720)
+        let panelH = min(size.height - 40, 330)
+        let panel = SKShapeNode(rectOf: CGSize(width: panelW, height: panelH),
+                                cornerRadius: 16)
+        panel.fillColor = theme.feltFill
+        panel.strokeColor = theme.turnGlow
         panel.lineWidth = 2
-        panel.zPosition = 1
-        stagingLayer.addChild(panel)
+        panel.glowWidth = 4
+        panel.position = CGPoint(x: size.width / 2, y: size.height / 2)
+        panel.zPosition = 101
+        panel.name = "overlay-panel"
+        overlayLayer.addChild(panel)
 
-        // Status label above the panel (out of the way of the cards).
-        let status = SKLabelNode(text: trayStatusText())
+        let cx = panel.position.x
+        let cy = panel.position.y
+        let top = cy + panelH / 2
+
+        // Title.
+        let title = SKLabelNode(text: "Build Meld")
+        title.fontName = theme.titleFont
+        title.fontSize = 18
+        title.fontColor = theme.bannerText
+        title.horizontalAlignmentMode = .center
+        title.verticalAlignmentMode = .top
+        title.position = CGPoint(x: cx, y: top - 12)
+        title.zPosition = 102
+        overlayLayer.addChild(title)
+
+        // Status text (from validator).
+        let status = SKLabelNode(text: overlayStatusText())
         status.fontName = theme.bodyFont
-        status.fontSize = 11
-        status.fontColor = trayStrokeColor()
+        status.fontSize = 13
+        status.fontColor = overlayStatusColor()
         status.horizontalAlignmentMode = .center
-        status.verticalAlignmentMode = .bottom
-        status.position = CGPoint(x: zone.midX, y: zone.maxY + 4)
-        status.zPosition = 2
-        stagingLayer.addChild(status)
+        status.verticalAlignmentMode = .top
+        status.position = CGPoint(x: cx, y: top - 40)
+        status.zPosition = 102
+        overlayLayer.addChild(status)
 
-        // Render staged cards centered inside the panel.
-        let staged = vm.stagedCards
-        guard !staged.isEmpty else { return }
-        let cardWidth = CardNode.size.width
+        // Staged cards row (upper half of panel).
+        let stagedRowY = cy + 30
+        addOverlayCardRow(vm.stagedCards, y: stagedRowY, tag: "staged")
+        addOverlayRowLabel(text: "Staged  —  tap to remove", y: stagedRowY + CardNode.size.height / 2 + 8, cx: cx)
+
+        // Hand row (lower half of panel).
+        let handRowInOverlayY = cy - 70
+        addOverlayCardRow(vm.unstagedCards, y: handRowInOverlayY, tag: "unstaged")
+        addOverlayRowLabel(text: "Your hand  —  tap to stage", y: handRowInOverlayY + CardNode.size.height / 2 + 8, cx: cx)
+
+        // Cancel + Confirm buttons at the bottom of the panel.
+        let btnY = cy - panelH / 2 + 20
+        let confirmValid = (try? vm.stagedValidation?.get()) != nil
+        addOverlayButton(text: "Cancel", cx: cx - 80, cy: btnY,
+                         name: "overlay-cancel", enabled: true)
+        addOverlayButton(text: "Confirm", cx: cx + 80, cy: btnY,
+                         name: "overlay-confirm", enabled: confirmValid)
+    }
+
+    private func addOverlayCardRow(_ cards: [Card], y: CGFloat, tag: String) {
+        guard !cards.isEmpty else {
+            // Empty-state placeholder.
+            let placeholder = SKLabelNode(text: "—")
+            placeholder.fontName = theme.bodyFont
+            placeholder.fontSize = 22
+            placeholder.fontColor = theme.contractPillText.withAlphaComponent(0.5)
+            placeholder.horizontalAlignmentMode = .center
+            placeholder.verticalAlignmentMode = .center
+            placeholder.position = CGPoint(x: size.width / 2, y: y)
+            placeholder.zPosition = 102
+            overlayLayer.addChild(placeholder)
+            return
+        }
+        let cardW = CardNode.size.width
         let spacing: CGFloat = 8
-        let totalWidth = CGFloat(staged.count) * cardWidth + CGFloat(staged.count - 1) * spacing
-        let startX = (size.width - totalWidth) / 2 + cardWidth / 2
-
-        for (i, card) in staged.enumerated() {
+        let total = CGFloat(cards.count) * cardW + CGFloat(cards.count - 1) * spacing
+        let startX = size.width / 2 - total / 2 + cardW / 2
+        for (i, card) in cards.enumerated() {
             let node = CardNode(card: card, faceUp: true, theme: theme)
-            node.name = "card:\(card.id.uuidString)"
-            let pos = CGPoint(x: startX + CGFloat(i) * (cardWidth + spacing), y: trayRowY)
-            attachShadow(to: node, at: pos)
+            let pos = CGPoint(x: startX + CGFloat(i) * (cardW + spacing), y: y)
             node.position = pos
-            node.zPosition = 5 + CGFloat(i) * 0.01
-            stagingLayer.addChild(node)
+            node.zPosition = 103
+            node.name = "overlay-card-\(tag):\(card.id.uuidString)"
+            overlayLayer.addChild(node)
         }
     }
 
-    private func trayStatusText() -> String {
+    private func addOverlayRowLabel(text: String, y: CGFloat, cx: CGFloat) {
+        let l = SKLabelNode(text: text)
+        l.fontName = theme.bodyFont
+        l.fontSize = 11
+        l.fontColor = theme.pileLabel
+        l.horizontalAlignmentMode = .center
+        l.verticalAlignmentMode = .bottom
+        l.position = CGPoint(x: cx, y: y)
+        l.zPosition = 102
+        overlayLayer.addChild(l)
+    }
+
+    private func addOverlayButton(text: String, cx: CGFloat, cy: CGFloat,
+                                  name: String, enabled: Bool) {
+        let w: CGFloat = 120
+        let h: CGFloat = 30
+        let chip = SKShapeNode(rectOf: CGSize(width: w, height: h),
+                               cornerRadius: 15)
+        chip.fillColor = enabled ? theme.contractPillBg : theme.contractPillBg.withAlphaComponent(0.4)
+        chip.strokeColor = enabled ? theme.turnGlow : theme.pileLabel.withAlphaComponent(0.4)
+        chip.lineWidth = 1.5
+        chip.position = CGPoint(x: cx, y: cy)
+        chip.zPosition = 104
+        chip.name = enabled ? name : nil
+        overlayLayer.addChild(chip)
+        let label = SKLabelNode(text: text)
+        label.fontName = theme.titleFont
+        label.fontSize = 13
+        label.fontColor = enabled ? theme.contractPillText : theme.contractPillText.withAlphaComponent(0.5)
+        label.horizontalAlignmentMode = .center
+        label.verticalAlignmentMode = .center
+        label.position = chip.position
+        label.zPosition = 105
+        label.name = enabled ? name : nil
+        overlayLayer.addChild(label)
+    }
+
+    private func overlayStatusText() -> String {
         switch vm.stagedValidation {
         case .none:
-            return "Meld tray — drag cards up to stage"
+            return "Tap cards below to stage them"
         case .some(.success(let kind)):
             let label = (kind == .triplet) ? "SET" : "RUN"
-            return "✓ Valid \(label) (\(vm.stagedCards.count) cards)"
+            return "✓ Valid \(label) — \(vm.stagedCards.count) cards"
         case .some(.failure(let err)):
             return "✗ \(err.description)"
         }
     }
 
-    private func trayStrokeColor() -> UIColor {
+    private func overlayStatusColor() -> UIColor {
         switch vm.stagedValidation {
         case .some(.success):
             return UIColor(red: 0.55, green: 0.85, blue: 0.55, alpha: 1.0)
         case .some(.failure):
             return UIColor(red: 0.95, green: 0.55, blue: 0.55, alpha: 1.0)
         case .none:
-            return theme.contractPillText.withAlphaComponent(0.6)
+            return theme.pileLabel
         }
     }
 
@@ -629,6 +714,20 @@ final class GameScene: SKScene {
         guard let touch = touches.first else { return }
         let point = touch.location(in: self)
 
+        // If the meld overlay is open, all touches route to it exclusively.
+        if vm.isMeldOverlayOpen {
+            handleOverlayTap(at: point)
+            return
+        }
+
+        // Build-Meld button tap opens the overlay.
+        for node in nodes(at: point) {
+            if node.name == "build-meld-button" {
+                vm.isMeldOverlayOpen = true
+                return
+            }
+        }
+
         // Pile taps come first (they don't start drags).
         for node in nodes(at: point) {
             if node.name == "stock" || node.parent?.name == "stock" {
@@ -655,11 +754,13 @@ final class GameScene: SKScene {
     }
 
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
+        if vm.isMeldOverlayOpen { return }
         guard let touch = touches.first, let card = draggingCard else { return }
         card.position = touch.location(in: self)
     }
 
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
+        if vm.isMeldOverlayOpen { return } // handled in touchesBegan
         guard let touch = touches.first else {
             cancelDrag()
             return
@@ -682,7 +783,7 @@ final class GameScene: SKScene {
         // Resolve drag drop.
         if let id = draggingCardId,
            let card = vm.currentPlayer.hand.first(where: { $0.id == id }) {
-            // 1) Drop on discard pile → discard.
+            // Drop on discard pile → discard.
             if discardDropZone().contains(point) {
                 let ok = vm.dispatch(.discard(playerId: vm.currentPlayer.id, card: card))
                 if ok {
@@ -692,25 +793,6 @@ final class GameScene: SKScene {
                     return
                 }
             }
-            // 2) Drop in tray zone → toggle staged (stage if unstaged, and
-            //    unstage if already staged; the drag can start from either
-            //    row).
-            if trayDropZone().contains(point) {
-                if !vm.stagedCardIds.contains(id) {
-                    vm.toggleStaged(cardId: id)
-                    draggingCard = nil
-                    draggingCardId = nil
-                    clearDiscardTarget()
-                    return
-                }
-            } else if vm.stagedCardIds.contains(id) {
-                // 3) Dropped outside tray while staged → unstage.
-                vm.toggleStaged(cardId: id)
-                draggingCard = nil
-                draggingCardId = nil
-                clearDiscardTarget()
-                return
-            }
         }
 
         cancelDrag()
@@ -718,6 +800,29 @@ final class GameScene: SKScene {
 
     override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
         cancelDrag()
+    }
+
+    /// Handles a tap while the meld overlay is open: buttons + card toggles.
+    private func handleOverlayTap(at point: CGPoint) {
+        for node in nodes(at: point) {
+            if node.name == "overlay-cancel" {
+                vm.isMeldOverlayOpen = false
+                return
+            }
+            if node.name == "overlay-confirm" {
+                // M2d-c will wire this to vm.goDown(...). For now, dismiss.
+                vm.isMeldOverlayOpen = false
+                return
+            }
+            if let name = node.name, name.hasPrefix("overlay-card-") {
+                // Parse UUID and toggle staged.
+                if let idStr = name.split(separator: ":").last,
+                   let uuid = UUID(uuidString: String(idStr)) {
+                    vm.toggleStaged(cardId: uuid)
+                }
+                return
+            }
+        }
     }
 
     // MARK: - Drag helpers

@@ -25,6 +25,11 @@ public final class GameViewModel: ObservableObject {
     /// preview meld legality before committing (M2d-b).
     @Published public private(set) var stagedCardIds: Set<UUID> = []
 
+    /// Whether the "Build Meld" modal overlay is visible. Toggled by the
+    /// on-table button chip; kept on the VM so UI tests can drive it via a
+    /// launch flag.
+    @Published public var isMeldOverlayOpen: Bool = false
+
     // MARK: - Init
 
     public init(state: GameState) {
@@ -69,6 +74,7 @@ public final class GameViewModel: ObservableObject {
                 // takes the device.
                 isBetweenTurns = true
                 stagedCardIds.removeAll()
+                isMeldOverlayOpen = false
             }
             return true
         case .failure(let err):
