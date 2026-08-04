@@ -23,9 +23,24 @@ struct RootView: View {
                     if activeGame == nil,
                        CommandLine.arguments.contains("--demo-mid-game") {
                         activeTheme = themeFromArgs()
-                        activeGame = GameViewModel(state: GameFactory.demoMidGame())
+                        let vm = GameViewModel(state: GameFactory.demoMidGame())
+                        if CommandLine.arguments.contains("--demo-stage-triplet") {
+                            stageFirstTriplet(in: vm)
+                        }
+                        activeGame = vm
                     }
                 }
+        }
+    }
+
+    /// Stage the first triplet-forming set of cards in the current player's
+    /// hand (if any) so the meld tray renders in demo screenshots.
+    private func stageFirstTriplet(in vm: GameViewModel) {
+        let hand = vm.currentPlayer.hand
+        let byRank = Dictionary(grouping: hand, by: { $0.rank })
+        for (_, cards) in byRank where cards.count >= 3 {
+            for card in cards.prefix(3) { vm.toggleStaged(cardId: card.id) }
+            return
         }
     }
 

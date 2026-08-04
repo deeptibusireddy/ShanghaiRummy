@@ -146,6 +146,15 @@ public final class GameViewModel: ObservableObject {
         currentPlayer.hand.filter { !stagedCardIds.contains($0.id) }
     }
 
+    /// Live validation of the current staging tray. `nil` when empty; on
+    /// non-empty tray it returns the underlying `MeldValidator.validate`
+    /// result so the UI can show ✓ (with kind) or ✗ (with reason).
+    public var stagedValidation: Result<Meld.Kind, MeldValidator.ValidationError>? {
+        let cards = stagedCards
+        guard !cards.isEmpty else { return nil }
+        return MeldValidator.validate(cards)
+    }
+
     /// Clear staging. Called after a turn ends or the player cancels.
     public func clearStaging() { stagedCardIds.removeAll() }
 }

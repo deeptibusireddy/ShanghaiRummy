@@ -30,6 +30,7 @@ final class GameScene: SKScene {
     private let seatsLayer = SKNode()
     private let meldsLayer = SKNode()
     private let handLayer = SKNode()
+    private let stagingLayer = SKNode()
     private let bannerLabel = SKLabelNode(text: "")
     private let contractPill = SKNode()
 
@@ -58,6 +59,7 @@ final class GameScene: SKScene {
         addChild(seatsLayer)
         addChild(meldsLayer)
         addChild(handLayer)
+        addChild(stagingLayer)
         rebuildDynamicLayers()
         subscribeToViewModel()
     }
@@ -132,9 +134,14 @@ final class GameScene: SKScene {
     // MARK: - Dynamic layers (rebuild on state change)
 
     private func subscribeToViewModel() {
-        vm.$state
+        // Rebuild on any published change (state, staging, etc.).
+        vm.objectWillChange
             .receive(on: RunLoop.main)
-            .sink { [weak self] _ in self?.rebuildDynamicLayers() }
+            .sink { [weak self] _ in
+                // Defer to next runloop so vm's @Published sink fires after the
+                // property is actually updated (objectWillChange fires *before*).
+                DispatchQueue.main.async { self?.rebuildDynamicLayers() }
+            }
             .store(in: &cancellables)
     }
 
@@ -147,6 +154,7 @@ final class GameScene: SKScene {
         buildPiles()
         buildSeats()
         buildMelds()
+        buildStagingTray()
         buildHand()
     }
 
@@ -389,14 +397,14 @@ final class GameScene: SKScene {
 
     private func buildHand() {
         handLayer.removeAllChildren()
-        let hand = vm.currentPlayer.hand
+        let hand = vm.unstagedCards
         guard !hand.isEmpty else { return }
 
         let cardWidth = CardNode.size.width
         let spacing: CGFloat = 8
         let totalWidth = CGFloat(hand.count) * cardWidth + CGFloat(hand.count - 1) * spacing
         let startX = (size.width - totalWidth) / 2 + cardWidth / 2
-        let baseY: CGFloat = 74
+        let baseY: CGFloat = handRowY
         // Slight arc: middle cards raised, edges lowered. Fan rotation ±3°.
         let maxLift: CGFloat = 6
         let maxAngle: CGFloat = 0.05  // radians (~2.9°)
@@ -416,6 +424,86 @@ final class GameScene: SKScene {
             node.zRotation = angle
             node.zPosition = 4 + CGFloat(i) * 0.01
             handLayer.addChild(node)
+        }
+    }
+
+    // MARK: - Staging tray (M2d-b)
+
+    /// Y coordinate for the (unstaged) hand fan.
+    private var handRowY: CGFloat { 74 }
+    /// Y coordinate for the staging tray row.
+    private var trayRowY: CGFloat { handRowY + CardNode.size.height + 32 }
+    /// The tray's droppable rectangle in scene coordinates.
+    private func trayDropZone() -> CGRect {
+        let h = CardNode.size.height + 44
+        return CGRect(x: 24, y: trayRowY - h / 2,
+                      width: size.width - 48, height: h)
+    }
+
+    private func buildStagingTray() {
+        stagingLayer.removeAllChildren()
+
+        let zone = trayDropZone()
+        let panel = SKShapeNode(rect: CGRect(x: -zone.width / 2, y: -zone.height / 2,
+                                             width: zone.width, height: zone.height),
+                                cornerRadius: 14)
+        panel.position = CGPoint(x: zone.midX, y: zone.midY)
+        panel.fillColor = theme.contractPillBg.withAlphaComponent(0.35)
+        panel.strokeColor = trayStrokeColor()
+        panel.lineWidth = 2
+        panel.zPosition = 1
+        stagingLayer.addChild(panel)
+
+        // Status label (top-left of tray).
+        let status = SKLabelNode(text: trayStatusText())
+        status.fontName = theme.bodyFont
+        status.fontSize = 13
+        status.fontColor = trayStrokeColor()
+        status.horizontalAlignmentMode = .left
+        status.verticalAlignmentMode = .top
+        status.position = CGPoint(x: zone.minX + 16, y: zone.maxY - 8)
+        status.zPosition = 2
+        stagingLayer.addChild(status)
+
+        // Render staged cards centered.
+        let staged = vm.stagedCards
+        guard !staged.isEmpty else { return }
+        let cardWidth = CardNode.size.width
+        let spacing: CGFloat = 8
+        let totalWidth = CGFloat(staged.count) * cardWidth + CGFloat(staged.count - 1) * spacing
+        let startX = (size.width - totalWidth) / 2 + cardWidth / 2
+
+        for (i, card) in staged.enumerated() {
+            let node = CardNode(card: card, faceUp: true, theme: theme)
+            node.name = "card:\(card.id.uuidString)"
+            let pos = CGPoint(x: startX + CGFloat(i) * (cardWidth + spacing), y: trayRowY)
+            attachShadow(to: node, at: pos)
+            node.position = pos
+            node.zPosition = 5 + CGFloat(i) * 0.01
+            stagingLayer.addChild(node)
+        }
+    }
+
+    private func trayStatusText() -> String {
+        switch vm.stagedValidation {
+        case .none:
+            return "Meld tray — drag cards up to stage"
+        case .some(.success(let kind)):
+            let label = (kind == .triplet) ? "SET" : "RUN"
+            return "✓ Valid \(label) (\(vm.stagedCards.count) cards)"
+        case .some(.failure(let err)):
+            return "✗ \(err.description)"
+        }
+    }
+
+    private func trayStrokeColor() -> UIColor {
+        switch vm.stagedValidation {
+        case .some(.success):
+            return UIColor(red: 0.55, green: 0.85, blue: 0.55, alpha: 1.0)
+        case .some(.failure):
+            return UIColor(red: 0.95, green: 0.55, blue: 0.55, alpha: 1.0)
+        case .none:
+            return theme.contractPillText.withAlphaComponent(0.6)
         }
     }
 
@@ -501,20 +589,37 @@ final class GameScene: SKScene {
         }
 
         // Resolve drag drop.
-        if discardDropZone().contains(point),
-           let id = draggingCardId,
+        if let id = draggingCardId,
            let card = vm.currentPlayer.hand.first(where: { $0.id == id }) {
-            // Attempt discard. If engine rejects (e.g., wrong phase), snap back.
-            let ok = vm.dispatch(.discard(playerId: vm.currentPlayer.id, card: card))
-            if ok {
-                // Successful discard triggers a rebuild via publisher; clear
-                // drag bookkeeping here.
+            // 1) Drop on discard pile → discard.
+            if discardDropZone().contains(point) {
+                let ok = vm.dispatch(.discard(playerId: vm.currentPlayer.id, card: card))
+                if ok {
+                    draggingCard = nil
+                    draggingCardId = nil
+                    clearDiscardTarget()
+                    return
+                }
+            }
+            // 2) Drop in tray zone → toggle staged (stage if unstaged, and
+            //    unstage if already staged; the drag can start from either
+            //    row).
+            if trayDropZone().contains(point) {
+                if !vm.stagedCardIds.contains(id) {
+                    vm.toggleStaged(cardId: id)
+                    draggingCard = nil
+                    draggingCardId = nil
+                    clearDiscardTarget()
+                    return
+                }
+            } else if vm.stagedCardIds.contains(id) {
+                // 3) Dropped outside tray while staged → unstage.
+                vm.toggleStaged(cardId: id)
                 draggingCard = nil
                 draggingCardId = nil
                 clearDiscardTarget()
                 return
             }
-            // Fell through: snap back.
         }
 
         cancelDrag()

@@ -72,6 +72,17 @@ final class ScreenshotUITests: XCTestCase {
         snapshot(named: "06-mid-game-minimal-modern")
     }
 
+    func testCaptureStagingTray() throws {
+        let app = XCUIApplication()
+        app.launchArguments += [
+            "--demo-mid-game", "--theme-felt", "--demo-stage-triplet"
+        ]
+        app.launch()
+        _ = app.navigationBars["Hand 4"].waitForExistence(timeout: 5)
+        Thread.sleep(forTimeInterval: 0.9)
+        snapshot(named: "07-staging-tray-triplet")
+    }
+
     // MARK: - Helpers
 
     private func snapshot(named name: String) {

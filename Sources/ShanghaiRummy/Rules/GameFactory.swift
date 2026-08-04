@@ -102,9 +102,9 @@ public enum GameFactory {
         let you = Player(
             name: "You",
             hand: [
-                c(.spades, .king), c(.spades, .queen), c(.diamonds, .eight),
+                c(.spades, .king), c(.diamonds, .king), c(.hearts, .king),
+                c(.spades, .queen), c(.diamonds, .eight),
                 c(.hearts, .six), c(.clubs, .three), Card.joker(),
-                c(.hearts, .ten), c(.diamonds, .four),
             ],
             hasGoneDownThisRound: true,
             currentLevel: 2
