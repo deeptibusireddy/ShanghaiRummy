@@ -536,9 +536,9 @@ final class GameScene: SKScene {
         dim.name = "overlay-dim"
         overlayLayer.addChild(dim)
 
-        // Central panel.
+        // Central panel — taller now to fit a "draft" row up top.
         let panelW = min(size.width - 60, 720)
-        let panelH = min(size.height - 40, 330)
+        let panelH = min(size.height - 20, 370)
         let panel = SKShapeNode(rectOf: CGSize(width: panelW, height: panelH),
                                 cornerRadius: 16)
         panel.fillColor = theme.feltFill
@@ -561,38 +561,94 @@ final class GameScene: SKScene {
         title.fontColor = theme.bannerText
         title.horizontalAlignmentMode = .center
         title.verticalAlignmentMode = .top
-        title.position = CGPoint(x: cx, y: top - 12)
+        title.position = CGPoint(x: cx, y: top - 10)
         title.zPosition = 102
         overlayLayer.addChild(title)
 
-        // Status text (from validator).
+        // Progress toward contract (draft-aware).
+        let progress = SKLabelNode(text: vm.goDownProgressText)
+        progress.fontName = theme.bodyFont
+        progress.fontSize = 12
+        progress.fontColor = vm.canConfirmGoDown
+            ? UIColor(red: 0.55, green: 0.85, blue: 0.55, alpha: 1.0)
+            : theme.pileLabel
+        progress.horizontalAlignmentMode = .center
+        progress.verticalAlignmentMode = .top
+        progress.position = CGPoint(x: cx, y: top - 32)
+        progress.zPosition = 102
+        overlayLayer.addChild(progress)
+
+        // Draft row: saved melds so far (compact strip).
+        let draftRowY = top - 78
+        addOverlayDraftRow(y: draftRowY, cx: cx, panelWidth: panelW)
+
+        // Status text (from validator on the current staged tray).
         let status = SKLabelNode(text: overlayStatusText())
         status.fontName = theme.bodyFont
-        status.fontSize = 13
+        status.fontSize = 12
         status.fontColor = overlayStatusColor()
         status.horizontalAlignmentMode = .center
-        status.verticalAlignmentMode = .top
-        status.position = CGPoint(x: cx, y: top - 40)
+        status.verticalAlignmentMode = .center
+        status.position = CGPoint(x: cx, y: cy + 62)
         status.zPosition = 102
         overlayLayer.addChild(status)
 
-        // Staged cards row (upper half of panel).
-        let stagedRowY = cy + 30
+        // Staged cards row.
+        let stagedRowY = cy + 22
         addOverlayCardRow(vm.stagedCards, y: stagedRowY, tag: "staged")
-        addOverlayRowLabel(text: "Staged  —  tap to remove", y: stagedRowY + CardNode.size.height / 2 + 8, cx: cx)
+        addOverlayRowLabel(text: "Staged  —  tap to remove",
+                           y: stagedRowY + CardNode.size.height / 2 + 6, cx: cx)
 
-        // Hand row (lower half of panel).
-        let handRowInOverlayY = cy - 70
+        // Hand row.
+        let handRowInOverlayY = cy - 74
         addOverlayCardRow(vm.unstagedCards, y: handRowInOverlayY, tag: "unstaged")
-        addOverlayRowLabel(text: "Your hand  —  tap to stage", y: handRowInOverlayY + CardNode.size.height / 2 + 8, cx: cx)
+        addOverlayRowLabel(text: "Your hand  —  tap to stage",
+                           y: handRowInOverlayY + CardNode.size.height / 2 + 6, cx: cx)
 
-        // Cancel + Confirm buttons at the bottom of the panel.
-        let btnY = cy - panelH / 2 + 20
-        let confirmValid = (try? vm.stagedValidation?.get()) != nil
-        addOverlayButton(text: "Cancel", cx: cx - 80, cy: btnY,
+        // Cancel + Save Meld + Go Down at the bottom.
+        let btnY = cy - panelH / 2 + 22
+        let stagedValid = (try? vm.stagedValidation?.get()) != nil
+        let hasGoneDown = vm.currentPlayer.hasGoneDownThisRound
+        addOverlayButton(text: "Cancel", cx: cx - 140, cy: btnY,
                          name: "overlay-cancel", enabled: true)
-        addOverlayButton(text: "Confirm", cx: cx + 80, cy: btnY,
-                         name: "overlay-confirm", enabled: confirmValid)
+        addOverlayButton(text: "Save Meld", cx: cx, cy: btnY,
+                         name: "overlay-save-meld",
+                         enabled: stagedValid && !hasGoneDown)
+        addOverlayButton(text: "Go Down", cx: cx + 140, cy: btnY,
+                         name: "overlay-confirm",
+                         enabled: vm.canConfirmGoDown)
+    }
+
+    /// Mini strip near the top of the overlay showing melds the player has
+    /// saved into their go-down draft. Each meld is tappable to undo.
+    private func addOverlayDraftRow(y: CGFloat, cx: CGFloat, panelWidth: CGFloat) {
+        let melds = vm.contractDraft
+        addOverlayRowLabel(text: melds.isEmpty
+                           ? "Draft: (empty) — build a meld below, then Save"
+                           : "Draft  —  tap a meld to undo",
+                           y: y + 18, cx: cx)
+        guard !melds.isEmpty else { return }
+        // Lay each mini-meld left-to-right; scale cards down to fit.
+        let scale: CGFloat = 0.45
+        let cardW = CardNode.size.width * scale
+        let intraMeldGap: CGFloat = 2
+        let interMeldGap: CGFloat = 16
+        let widths = melds.map { CGFloat($0.count) * cardW + CGFloat($0.count - 1) * intraMeldGap }
+        let total = widths.reduce(0, +) + CGFloat(max(0, melds.count - 1)) * interMeldGap
+        var x = cx - total / 2
+        for (mi, meld) in melds.enumerated() {
+            let meldW = widths[mi]
+            for (ci, card) in meld.enumerated() {
+                let node = CardNode(card: card, faceUp: true, theme: theme)
+                node.setScale(scale)
+                node.position = CGPoint(x: x + cardW / 2 + CGFloat(ci) * (cardW + intraMeldGap),
+                                        y: y)
+                node.zPosition = 103
+                node.name = "overlay-draft:\(mi)"
+                overlayLayer.addChild(node)
+            }
+            x += meldW + interMeldGap
+        }
     }
 
     private func addOverlayCardRow(_ cards: [Card], y: CGFloat, tag: String) {
@@ -793,6 +849,18 @@ final class GameScene: SKScene {
                     return
                 }
             }
+            // Not a drop: was it a tap (barely moved from origin)?
+            let dx = point.x - dragOrigin.x
+            let dy = point.y - dragOrigin.y
+            let tapThreshold: CGFloat = 10
+            if abs(dx) < tapThreshold && abs(dy) < tapThreshold {
+                if vm.layoffTappedHandCard(card) {
+                    draggingCard = nil
+                    draggingCardId = nil
+                    clearDiscardTarget()
+                    return
+                }
+            }
         }
 
         cancelDrag()
@@ -806,12 +874,24 @@ final class GameScene: SKScene {
     private func handleOverlayTap(at point: CGPoint) {
         for node in nodes(at: point) {
             if node.name == "overlay-cancel" {
+                vm.clearStaging()
+                vm.clearContractDraft()
                 vm.isMeldOverlayOpen = false
                 return
             }
+            if node.name == "overlay-save-meld" {
+                _ = vm.saveStagedAsMeld()
+                return
+            }
             if node.name == "overlay-confirm" {
-                // M2d-c will wire this to vm.goDown(...). For now, dismiss.
-                vm.isMeldOverlayOpen = false
+                _ = vm.confirmGoDown()
+                return
+            }
+            if let name = node.name, name.hasPrefix("overlay-draft:") {
+                if let idxStr = name.split(separator: ":").last,
+                   let idx = Int(idxStr) {
+                    vm.removeDraftMeld(at: idx)
+                }
                 return
             }
             if let name = node.name, name.hasPrefix("overlay-card-") {

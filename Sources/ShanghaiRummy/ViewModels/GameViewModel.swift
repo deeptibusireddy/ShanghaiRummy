@@ -85,6 +85,7 @@ public final class GameViewModel: ObservableObject {
                 // between two humans. Bot ↔ human and bot ↔ bot skip it.
                 isBetweenTurns = !(outgoingIsCPU || incomingIsCPU)
                 stagedCardIds.removeAll()
+                contractDraft.removeAll()
                 isMeldOverlayOpen = false
                 // Auto-pump the CPU's turn(s) so the UI never has to wait on
                 // a bot. Re-entrancy guard prevents recursion from the loop.
@@ -179,6 +180,138 @@ public final class GameViewModel: ObservableObject {
 
     /// Clear staging. Called after a turn ends or the player cancels.
     public func clearStaging() { stagedCardIds.removeAll() }
+
+    // MARK: - Go-down draft (M2d-c)
+
+    /// Completed melds toward the current player's go-down contract. Each
+    /// entry is a valid meld the player has "saved" from the staging tray
+    /// but not yet committed. Committed together on `confirmGoDown`.
+    @Published public private(set) var contractDraft: [[Card]] = []
+
+    /// Move the current staged tray into the draft as a new completed
+    /// meld. No-op if staging is empty or invalid.
+    @discardableResult
+    public func saveStagedAsMeld() -> Bool {
+        guard case .success = stagedValidation else { return false }
+        contractDraft.append(stagedCards)
+        stagedCardIds.removeAll()
+        return true
+    }
+
+    /// Undo one saved draft meld: cards return to the hand's un-staged pool.
+    /// (They're still in `currentPlayer.hand` — the draft is a UI overlay.)
+    public func removeDraftMeld(at index: Int) {
+        guard contractDraft.indices.contains(index) else { return }
+        contractDraft.remove(at: index)
+    }
+
+    public func clearContractDraft() {
+        contractDraft.removeAll()
+    }
+
+    /// The draft's shape (kind + size for each meld), sorted for order-
+    /// independent comparison against the current contract.
+    private var draftShape: [String] {
+        contractDraft.compactMap { cards -> String? in
+            switch MeldValidator.validate(cards) {
+            case .success(let kind): return "\(kind.rawValue)-\(cards.count)"
+            case .failure: return nil
+            }
+        }.sorted()
+    }
+
+    private var contractShape: [String] {
+        guard let c = state.contract(forPlayer: currentPlayer.id) else { return [] }
+        return c.components.map { comp -> String in
+            switch comp {
+            case .triplet(let n): return "triplet-\(n)"
+            case .sequence(let n): return "sequence-\(n)"
+            }
+        }.sorted()
+    }
+
+    /// True when the draft exactly satisfies the current player's contract.
+    public var canConfirmGoDown: Bool {
+        guard !currentPlayer.hasGoneDownThisRound else { return false }
+        return draftShape == contractShape && !contractShape.isEmpty
+    }
+
+    /// Progress summary for the overlay ("Need 1 more triplet of 3", etc.).
+    public var goDownProgressText: String {
+        guard let c = state.contract(forPlayer: currentPlayer.id) else {
+            return "No contract"
+        }
+        if canConfirmGoDown { return "✓ Ready to go down" }
+        let needed = c.components.map { comp -> String in
+            switch comp {
+            case .triplet(let n): return "triplet-\(n)"
+            case .sequence(let n): return "sequence-\(n)"
+            }
+        }
+        var remaining = needed.sorted()
+        for saved in draftShape {
+            if let i = remaining.firstIndex(of: saved) { remaining.remove(at: i) }
+        }
+        if remaining.isEmpty { return "✓ Ready to go down" }
+        let pretty = remaining.map { key -> String in
+            let parts = key.split(separator: "-")
+            let n = parts.last ?? "?"
+            return parts.first == "triplet" ? "triplet of \(n)" : "sequence of \(n)"
+        }.joined(separator: " + ")
+        return "Still need: \(pretty)"
+    }
+
+    /// Commit the draft as `.goDown`. Returns whether the dispatch succeeded.
+    @discardableResult
+    public func confirmGoDown() -> Bool {
+        guard canConfirmGoDown else { return false }
+        let draft = contractDraft
+        let ok = dispatch(.goDown(playerId: currentPlayer.id, contract: draft))
+        if ok {
+            contractDraft.removeAll()
+            stagedCardIds.removeAll()
+            isMeldOverlayOpen = false
+        }
+        return ok
+    }
+
+    // MARK: - Tap-to-lay-off (M2d-c)
+
+    /// If the player has gone down and `card` extends some existing meld,
+    /// dispatch the `.addToMeld`. Returns true if the layoff succeeded.
+    /// Called from a single-tap on a hand card (not a drag).
+    @discardableResult
+    public func layoffTappedHandCard(_ card: Card) -> Bool {
+        guard currentPlayer.hasGoneDownThisRound,
+              !currentPlayer.laidDownThisTurn else { return false }
+        for meld in state.melds {
+            let appended = meld.cards + [card]
+            let prepended = [card] + meld.cards
+            if isValid(meld.kind, cards: appended) {
+                return dispatch(.addToMeld(playerId: currentPlayer.id,
+                                           meldId: meld.id,
+                                           cardsAtStart: [],
+                                           cardsAtEnd: [card]))
+            }
+            if isValid(meld.kind, cards: prepended) {
+                return dispatch(.addToMeld(playerId: currentPlayer.id,
+                                           meldId: meld.id,
+                                           cardsAtStart: [card],
+                                           cardsAtEnd: []))
+            }
+        }
+        return false
+    }
+
+    private func isValid(_ kind: Meld.Kind, cards: [Card]) -> Bool {
+        switch kind {
+        case .triplet:
+            if case .success = MeldValidator.validateTriplet(cards) { return true }
+        case .sequence:
+            if case .success = MeldValidator.validateSequence(cards) { return true }
+        }
+        return false
+    }
 
     // MARK: - CPU practice bot (M1e)
 
