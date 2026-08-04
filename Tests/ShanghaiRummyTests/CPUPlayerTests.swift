@@ -239,6 +239,7 @@ final class CPUPlayerTests: XCTestCase {
 
     // MARK: - VM integration
 
+    @MainActor
     func testViewModelStepPumpsCPUTurn() {
         let built = GameFactory.newVsCPU(you: "You",
                                          cpuNames: ["Bot"],
