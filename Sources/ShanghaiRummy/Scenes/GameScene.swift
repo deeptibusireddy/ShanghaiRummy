@@ -256,6 +256,13 @@ final class GameScene: SKScene {
         )
         for (i, player) in vm.state.players.enumerated() {
             let seat = seats[i]
+            // The bottom seat is "You" — rendered instead as a compact HUD
+            // in the bottom-left corner so the middle bottom stays clear for
+            // hand + staging tray.
+            if seat.edge == .bottom {
+                buildYouHUD(player: player, isCurrent: player.id == vm.currentPlayer.id)
+                continue
+            }
             let isCurrent = player.id == vm.currentPlayer.id
             let isYou = i == vm.state.currentTurnIndex
 
@@ -354,6 +361,10 @@ final class GameScene: SKScene {
             let melds = meldsByOwner[player.id] ?? []
             guard !melds.isEmpty else { continue }
             let seat = seats[i]
+            // Bottom seat ("You") own melds render inside the You-HUD strip
+            // rather than on the field; skip here so they don't collide with
+            // the hand + tray.
+            if seat.edge == .bottom { continue }
             drawMelds(melds, near: seat)
         }
     }
@@ -395,6 +406,89 @@ final class GameScene: SKScene {
         }
     }
 
+    /// Compact bottom-left HUD standing in for the "You" seat card. Shows
+    /// avatar + name + level/score chip + a small horizontal strip of your
+    /// own melds (scaled ~35%). Leaves the whole bottom-center clear for the
+    /// hand fan and staging tray.
+    private func buildYouHUD(player: Player, isCurrent: Bool) {
+        let hudX: CGFloat = 90
+        let hudY: CGFloat = 42
+        let avatarRadius: CGFloat = 16
+
+        if isCurrent {
+            let halo = SKShapeNode(circleOfRadius: avatarRadius + 6)
+            halo.fillColor = theme.turnGlow.withAlphaComponent(0.35)
+            halo.strokeColor = theme.turnGlow
+            halo.lineWidth = 2
+            halo.glowWidth = 6
+            halo.position = CGPoint(x: hudX, y: hudY)
+            halo.zPosition = 1
+            seatsLayer.addChild(halo)
+        }
+
+        let avatarColor = theme.avatarColors[0 % theme.avatarColors.count]
+        let avatar = SKShapeNode(circleOfRadius: avatarRadius)
+        avatar.fillColor = avatarColor
+        avatar.strokeColor = UIColor(white: 1.0, alpha: 0.9)
+        avatar.lineWidth = 1.5
+        avatar.position = CGPoint(x: hudX, y: hudY)
+        avatar.zPosition = 3
+        seatsLayer.addChild(avatar)
+        let initial = SKLabelNode(text: String(player.name.prefix(1)).uppercased())
+        initial.fontName = theme.titleFont
+        initial.fontSize = 16
+        initial.fontColor = .white
+        initial.horizontalAlignmentMode = .center
+        initial.verticalAlignmentMode = .center
+        initial.position = CGPoint(x: hudX, y: hudY)
+        initial.zPosition = 4
+        seatsLayer.addChild(initial)
+
+        // "You  Lv 2  •  45 pts"
+        let text = "\(player.name)  Lv \(player.currentLevel)  •  \(player.totalScore) pts"
+        let label = SKLabelNode(text: text)
+        label.fontName = theme.titleFont
+        label.fontSize = 12
+        label.fontColor = theme.seatTitle
+        label.horizontalAlignmentMode = .left
+        label.verticalAlignmentMode = .center
+        label.position = CGPoint(x: hudX + avatarRadius + 8, y: hudY + 7)
+        label.zPosition = 3
+        seatsLayer.addChild(label)
+
+        // Own melds strip: thumbnails at 35% scale, wrapped at scene width.
+        let ownMelds = vm.state.melds.filter { $0.ownerId == player.id }
+        guard !ownMelds.isEmpty else {
+            let empty = SKLabelNode(text: "No melds down yet")
+            empty.fontName = theme.bodyFont
+            empty.fontSize = 10
+            empty.fontColor = theme.pileLabel
+            empty.horizontalAlignmentMode = .left
+            empty.verticalAlignmentMode = .center
+            empty.position = CGPoint(x: hudX + avatarRadius + 8, y: hudY - 8)
+            empty.zPosition = 3
+            seatsLayer.addChild(empty)
+            return
+        }
+
+        let scale: CGFloat = 0.35
+        let cardW = CardNode.size.width * scale
+        let overlap = cardW * 0.42
+        let meldGap: CGFloat = 8
+        var x: CGFloat = hudX + avatarRadius + 8
+        let y: CGFloat = hudY - 10
+        for meld in ownMelds {
+            for (idx, card) in meld.cards.enumerated() {
+                let node = CardNode(card: card, faceUp: true, theme: theme)
+                node.setScale(scale)
+                node.position = CGPoint(x: x + CGFloat(idx) * overlap + cardW / 2, y: y)
+                node.zPosition = 3 + CGFloat(idx) * 0.01
+                seatsLayer.addChild(node)
+            }
+            x += CGFloat(meld.cards.count - 1) * overlap + cardW + meldGap
+        }
+    }
+
     private func buildHand() {
         handLayer.removeAllChildren()
         let hand = vm.unstagedCards
@@ -431,13 +525,30 @@ final class GameScene: SKScene {
 
     /// Y coordinate for the (unstaged) hand fan.
     private var handRowY: CGFloat { 74 }
-    /// Y coordinate for the staging tray row.
-    private var trayRowY: CGFloat { handRowY + CardNode.size.height + 32 }
-    /// The tray's droppable rectangle in scene coordinates.
+    /// Y coordinate for the staging tray row (just above the hand fan).
+    private var trayRowY: CGFloat { handRowY + CardNode.size.height + 12 }
+
+    /// The tray's droppable rectangle in scene coordinates. Auto-widths to
+    /// the staged cards (or a minimum size when empty) so it doesn't span
+    /// the entire bottom edge.
     private func trayDropZone() -> CGRect {
-        let h = CardNode.size.height + 44
-        return CGRect(x: 24, y: trayRowY - h / 2,
-                      width: size.width - 48, height: h)
+        let cardWidth = CardNode.size.width
+        let spacing: CGFloat = 8
+        let count = max(vm.stagedCards.count, 0)
+        let contentW: CGFloat
+        if count == 0 {
+            contentW = 200
+        } else {
+            contentW = CGFloat(count) * cardWidth + CGFloat(count - 1) * spacing
+        }
+        let panelW = contentW + 40
+        let panelH: CGFloat = CardNode.size.height + 28
+        return CGRect(
+            x: size.width / 2 - panelW / 2,
+            y: trayRowY - panelH / 2,
+            width: panelW,
+            height: panelH
+        )
     }
 
     private func buildStagingTray() {
@@ -446,7 +557,7 @@ final class GameScene: SKScene {
         let zone = trayDropZone()
         let panel = SKShapeNode(rect: CGRect(x: -zone.width / 2, y: -zone.height / 2,
                                              width: zone.width, height: zone.height),
-                                cornerRadius: 14)
+                                cornerRadius: 12)
         panel.position = CGPoint(x: zone.midX, y: zone.midY)
         panel.fillColor = theme.contractPillBg.withAlphaComponent(0.35)
         panel.strokeColor = trayStrokeColor()
@@ -454,18 +565,18 @@ final class GameScene: SKScene {
         panel.zPosition = 1
         stagingLayer.addChild(panel)
 
-        // Status label (top-left of tray).
+        // Status label above the panel (out of the way of the cards).
         let status = SKLabelNode(text: trayStatusText())
         status.fontName = theme.bodyFont
-        status.fontSize = 13
+        status.fontSize = 11
         status.fontColor = trayStrokeColor()
-        status.horizontalAlignmentMode = .left
-        status.verticalAlignmentMode = .top
-        status.position = CGPoint(x: zone.minX + 16, y: zone.maxY - 8)
+        status.horizontalAlignmentMode = .center
+        status.verticalAlignmentMode = .bottom
+        status.position = CGPoint(x: zone.midX, y: zone.maxY + 4)
         status.zPosition = 2
         stagingLayer.addChild(status)
 
-        // Render staged cards centered.
+        // Render staged cards centered inside the panel.
         let staged = vm.stagedCards
         guard !staged.isEmpty else { return }
         let cardWidth = CardNode.size.width
