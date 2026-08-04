@@ -206,8 +206,12 @@ final class GameScene: SKScene {
             stock.zPosition = 4
             stock.name = "stock"
             pilesLayer.addChild(stock)
-            addPileLabel(at: CGPoint(x: stockPos.x, y: stockPos.y - CardNode.size.height / 2 - 14),
-                         text: "Stock  \(vm.state.stock.count)")
+            // Label to the LEFT of the stock so the vertical strip below the
+            // piles stays free for the staging tray.
+            addPileLabel(at: CGPoint(x: stockPos.x - CardNode.size.width / 2 - 8,
+                                     y: stockPos.y),
+                         text: "Stock\n\(vm.state.stock.count)",
+                         align: .right)
         }
 
         // Discard: show top 3 cards fanned so history is visible.
@@ -231,18 +235,23 @@ final class GameScene: SKScene {
                 }
                 pilesLayer.addChild(node)
             }
-            addPileLabel(at: CGPoint(x: basePos.x, y: basePos.y - CardNode.size.height / 2 - 14),
-                         text: "Discard  \(vm.state.discard.count)")
+            addPileLabel(at: CGPoint(x: basePos.x + CardNode.size.width / 2 + 8,
+                                     y: basePos.y),
+                         text: "Discard\n\(vm.state.discard.count)",
+                         align: .left)
         }
     }
 
-    private func addPileLabel(at position: CGPoint, text: String) {
+    private func addPileLabel(at position: CGPoint,
+                              text: String,
+                              align: SKLabelHorizontalAlignmentMode = .center) {
         let l = SKLabelNode(text: text)
         l.fontName = theme.bodyFont
-        l.fontSize = 12
+        l.fontSize = 11
         l.fontColor = theme.pileLabel
-        l.horizontalAlignmentMode = .center
-        l.verticalAlignmentMode = .top
+        l.numberOfLines = 2
+        l.horizontalAlignmentMode = align
+        l.verticalAlignmentMode = .center
         l.position = position
         pilesLayer.addChild(l)
     }
