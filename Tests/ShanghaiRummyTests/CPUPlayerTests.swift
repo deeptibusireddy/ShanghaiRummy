@@ -246,19 +246,23 @@ final class CPUPlayerTests: XCTestCase {
                                          seed: 7)
         let vm = GameViewModel(state: built.state)
         vm.cpuPlayerIds = built.cpuIds
-        // Advance to the CPU's turn: You draw, then discard.
+        // newGame seats "You" at index 0 as dealer, so the Bot (index 1)
+        // is up first. Pump their turn so control returns to You.
+        vm.runAllCPUTurns()
+        XCTAssertFalse(vm.isCurrentPlayerCPU,
+                       "CPU should have played and handed control back to You")
+
+        // You draws + discards. The auto-pump inside dispatch should then
+        // run the Bot's next turn immediately.
         let you = vm.currentPlayer
-        XCTAssertFalse(vm.isCurrentPlayerCPU)
         _ = vm.dispatch(.draw(playerId: you.id, source: .stock))
-        // Whatever You discards, the auto-pump should hand the turn back to You.
         let card = vm.currentPlayer.hand.max(by: { $0.points < $1.points })!
         _ = vm.dispatch(.discard(playerId: you.id, card: card))
-        // After dispatch the CPU should have played its turn(s), so it's
-        // either You's turn again, or the round/game ended.
         XCTAssertTrue(
             vm.state.currentPlayerId == you.id
             || vm.state.phase == .roundEnded
-            || vm.state.phase == .gameEnded
+            || vm.state.phase == .gameEnded,
+            "After You's discard the auto-pump should have played the Bot's turn"
         )
     }
 }
