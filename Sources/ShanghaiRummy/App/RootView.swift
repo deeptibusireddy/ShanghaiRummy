@@ -41,6 +41,14 @@ struct RootView: View {
                         // If it's already a CPU's first turn, let them play.
                         vm.runAllCPUTurns()
                         activeGame = vm
+                    } else if activeGame == nil,
+                              CommandLine.arguments.contains("--demo-hand-over") {
+                        activeTheme = themeFromArgs()
+                        activeGame = GameViewModel(state: GameFactory.demoHandOver())
+                    } else if activeGame == nil,
+                              CommandLine.arguments.contains("--demo-game-over") {
+                        activeTheme = themeFromArgs()
+                        activeGame = GameViewModel(state: GameFactory.demoGameOver())
                     }
                 }
         }

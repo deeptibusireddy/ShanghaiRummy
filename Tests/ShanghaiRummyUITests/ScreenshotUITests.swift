@@ -83,6 +83,24 @@ final class ScreenshotUITests: XCTestCase {
         snapshot(named: "07-staging-tray-triplet")
     }
 
+    func testCaptureHandOver() throws {
+        let app = XCUIApplication()
+        app.launchArguments += ["--demo-hand-over", "--theme-felt"]
+        app.launch()
+        _ = app.navigationBars["Hand 3"].waitForExistence(timeout: 5)
+        Thread.sleep(forTimeInterval: 0.9)
+        snapshot(named: "08-hand-over-scoreboard")
+    }
+
+    func testCaptureGameOver() throws {
+        let app = XCUIApplication()
+        app.launchArguments += ["--demo-game-over", "--theme-felt"]
+        app.launch()
+        _ = app.navigationBars["Hand 10"].waitForExistence(timeout: 5)
+        Thread.sleep(forTimeInterval: 0.9)
+        snapshot(named: "09-game-over-final")
+    }
+
     // MARK: - Helpers
 
     private func snapshot(named name: String) {

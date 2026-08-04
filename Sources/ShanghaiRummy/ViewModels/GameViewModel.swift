@@ -145,6 +145,74 @@ public final class GameViewModel: ObservableObject {
     /// The next player has acknowledged the pass-and-play prompt.
     public func acknowledgeTurnPassed() { isBetweenTurns = false }
 
+    // MARK: - End-of-hand summary (M2e)
+
+    /// One row of the round-over scoreboard.
+    public struct HandSummaryRow: Identifiable, Equatable {
+        public let id: UUID          // player id
+        public let name: String
+        /// Penalty added this round (0 for the player who went out).
+        public let roundPoints: Int
+        /// Cumulative total AFTER this round's points are added.
+        public let totalAfter: Int
+        /// The contract level this player is on FOR THE ROUND JUST PLAYED.
+        public let currentLevel: Int
+        /// True if this player will advance a level when the next hand is dealt
+        /// (i.e., they went down this hand).
+        public let didLevelUp: Bool
+        /// True if this player emptied their hand this round.
+        public let wentOut: Bool
+    }
+
+    /// Round-over scoreboard rows sorted by cumulative total ascending.
+    /// Non-nil only while `phase == .roundEnded`. Computed on demand.
+    public var pendingHandSummary: [HandSummaryRow]? {
+        guard state.phase == .roundEnded else { return nil }
+        let wentOutId = state.players.first {
+            $0.hand.isEmpty && $0.hasGoneDownThisRound
+        }?.id
+        let scores = Scoring.endOfRound(players: state.players,
+                                        wentOutPlayerId: wentOutId)
+        let rows = state.players.map { p -> HandSummaryRow in
+            let round = scores[p.id] ?? 0
+            return HandSummaryRow(
+                id: p.id,
+                name: p.name,
+                roundPoints: round,
+                totalAfter: p.totalScore + round,
+                currentLevel: p.currentLevel,
+                didLevelUp: p.hasGoneDownThisRound,
+                wentOut: p.id == wentOutId
+            )
+        }
+        return rows.sorted { $0.totalAfter < $1.totalAfter }
+    }
+
+    /// One row of the final scoreboard.
+    public struct FinalScoreRow: Identifiable, Equatable {
+        public let id: UUID
+        public let name: String
+        public let totalScore: Int
+        public let currentLevel: Int
+        public let isWinner: Bool
+    }
+
+    /// Final scoreboard, non-nil only while `phase == .gameEnded`. Sorted
+    /// by score ascending (lowest = winner in Shanghai Rummy).
+    public var finalScoreboard: [FinalScoreRow]? {
+        guard state.phase == .gameEnded else { return nil }
+        let winners = Set(state.gameWinnerIds)
+        let rows = state.players.map { p in
+            FinalScoreRow(
+                id: p.id, name: p.name,
+                totalScore: p.totalScore,
+                currentLevel: p.currentLevel,
+                isWinner: winners.contains(p.id)
+            )
+        }
+        return rows.sorted { $0.totalScore < $1.totalScore }
+    }
+
     // MARK: - Staging (M2d)
 
     /// Toggle a card's staged state. Staged cards render above the hand fan

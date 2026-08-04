@@ -196,4 +196,72 @@ public enum GameFactory {
             randomSeed: 42
         )
     }
+
+    /// A rigged end-of-hand state used only by CI screenshots and previews.
+    /// Sam has just gone out. Round 3 just finished; every other player is
+    /// holding some penalty cards. Trigger by launching the app with
+    /// `--demo-hand-over`.
+    public static func demoHandOver() -> GameState {
+        func c(_ suit: Suit, _ rank: Rank) -> Card { Card(suit: suit, rank: rank) }
+        let you = Player(name: "You",
+                         hand: [c(.hearts, .king), c(.spades, .queen), c(.diamonds, .four)],
+                         totalScore: 40,
+                         hasGoneDownThisRound: true,
+                         currentLevel: 3)
+        let alex = Player(name: "Alex",
+                          hand: [c(.hearts, .ace), c(.spades, .ace), c(.clubs, .nine)],
+                          totalScore: 85,
+                          hasGoneDownThisRound: true,
+                          currentLevel: 3)
+        let jordan = Player(name: "Jordan",
+                            hand: [c(.spades, .king), c(.hearts, .jack),
+                                   c(.diamonds, .ten), Card.joker()],
+                            totalScore: 20,
+                            hasGoneDownThisRound: false,
+                            currentLevel: 2)
+        let sam = Player(name: "Sam",
+                         hand: [],
+                         totalScore: 10,
+                         hasGoneDownThisRound: true,
+                         currentLevel: 3)
+        return GameState(
+            players: [you, alex, jordan, sam],
+            currentRound: 3,
+            currentTurnIndex: 3,
+            dealerIndex: 2,
+            stock: Array(repeating: c(.clubs, .four), count: 12),
+            discard: [c(.hearts, .three)],
+            melds: [],
+            phase: .roundEnded,
+            stockReshufflesUsed: 0,
+            randomSeed: 42
+        )
+    }
+
+    /// A rigged end-of-game state used only by CI screenshots and previews.
+    /// You just finished level 10 with the lowest score. Trigger with
+    /// `--demo-game-over`.
+    public static func demoGameOver() -> GameState {
+        func c(_ suit: Suit, _ rank: Rank) -> Card { Card(suit: suit, rank: rank) }
+        let you = Player(name: "You", hand: [],
+                         totalScore: 245, currentLevel: 11)
+        let alex = Player(name: "Alex", hand: [],
+                          totalScore: 380, currentLevel: 9)
+        let jordan = Player(name: "Jordan", hand: [],
+                            totalScore: 320, currentLevel: 10)
+        let sam = Player(name: "Sam", hand: [],
+                         totalScore: 410, currentLevel: 8)
+        return GameState(
+            players: [you, alex, jordan, sam],
+            currentRound: 10,
+            currentTurnIndex: 0,
+            dealerIndex: 3,
+            stock: [], discard: [c(.hearts, .three)],
+            melds: [],
+            phase: .gameEnded,
+            stockReshufflesUsed: 0,
+            randomSeed: 42,
+            gameWinnerIds: [you.id]
+        )
+    }
 }
