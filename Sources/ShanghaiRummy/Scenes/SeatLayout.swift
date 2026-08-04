@@ -98,10 +98,12 @@ enum SeatLayout {
         return seats
     }
 
-    /// Center point of the shared piles (stock + discard). Positioned by
-    /// absolute offset from the top so a fixed gap remains between piles and
-    /// the current player's tray + hand at the bottom.
+    /// Center point of the shared piles (stock + discard). Positioned in the
+    /// upper 60-70% of the scene so the bottom stays free for the current
+    /// player's hand fan, meld staging tray, and personal HUD. Clamped to a
+    /// sensible minimum so tiny scenes still lay out cleanly.
     static func pileCenter(sceneSize: CGSize) -> CGPoint {
-        CGPoint(x: sceneSize.width / 2, y: sceneSize.height - 110)
+        CGPoint(x: sceneSize.width / 2,
+                y: max(220, sceneSize.height * 0.72))
     }
 }
