@@ -23,7 +23,7 @@ Sign in at https://appstoreconnect.apple.com/ and do these once:
 
 3. **Create the App Store Connect record** — https://appstoreconnect.apple.com/apps → "+" → New App
    - Platform: iOS
-   - Name: `Shanghai Rummy`
+   - Name: `Shanghai Rummy Nights` *(App Store listing name; on-device home-screen name stays "Shanghai Rummy")*
    - Primary language: English (U.S.)
    - Bundle ID: pick the one you just registered
    - SKU: `shanghai-rummy-001` (any unique string)
