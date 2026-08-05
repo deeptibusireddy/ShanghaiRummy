@@ -63,3 +63,6 @@ GoogleService-Info.plist
 
 # Local CI screenshot downloads
 preview/
+
+artifacts_*/
+
