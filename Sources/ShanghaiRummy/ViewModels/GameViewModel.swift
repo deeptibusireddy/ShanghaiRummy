@@ -213,6 +213,46 @@ public final class GameViewModel: ObservableObject {
         return rows.sorted { $0.totalScore < $1.totalScore }
     }
 
+    // MARK: - Hand display order (M2f)
+
+    /// Per-player, UI-only ordering of hand card IDs so the human can
+    /// arrange their fan for readability. Cleared and rebuilt whenever a
+    /// hand contains an ID not yet tracked (newly drawn card is appended);
+    /// missing IDs (played cards) are pruned lazily on access.
+    ///
+    /// Keyed by player ID so multiple players in hot-seat mode keep their
+    /// own preferred order across turns.
+    @Published private var handOrderByPlayer: [UUID: [UUID]] = [:]
+
+    /// Current player's hand in the user's chosen display order. New cards
+    /// (drawn from stock/discard) show up at the right end. Played cards
+    /// vanish from the fan.
+    public var orderedHand: [Card] {
+        let hand = currentPlayer.hand
+        let ids = Set(hand.map { $0.id })
+        var order = (handOrderByPlayer[currentPlayer.id] ?? [])
+            .filter { ids.contains($0) }
+        for c in hand where !order.contains(c.id) {
+            order.append(c.id)
+        }
+        let byId = Dictionary(uniqueKeysWithValues: hand.map { ($0.id, $0) })
+        return order.compactMap { byId[$0] }
+    }
+
+    /// Move `cardId` in the current player's display order to `targetIndex`
+    /// (clamped). No-op if the card isn't in the hand. `targetIndex` is
+    /// interpreted against the ORDERED hand — the caller (scene) computes
+    /// it from the drop x-position vs. slot centers.
+    public func moveHandCard(_ cardId: UUID, to targetIndex: Int) {
+        var order = orderedHand.map { $0.id }
+        guard let from = order.firstIndex(of: cardId) else { return }
+        let clamped = max(0, min(targetIndex, order.count - 1))
+        guard clamped != from else { return }
+        order.remove(at: from)
+        order.insert(cardId, at: clamped)
+        handOrderByPlayer[currentPlayer.id] = order
+    }
+
     // MARK: - Staging (M2d)
 
     /// Toggle a card's staged state. Staged cards render above the hand fan
@@ -227,14 +267,14 @@ public final class GameViewModel: ObservableObject {
         }
     }
 
-    /// Cards currently staged, in the order they appear in the player's hand.
+    /// Cards currently staged, in the display order used by the hand fan.
     public var stagedCards: [Card] {
-        currentPlayer.hand.filter { stagedCardIds.contains($0.id) }
+        orderedHand.filter { stagedCardIds.contains($0.id) }
     }
 
     /// Cards remaining in-hand after staging (rendered in the hand fan).
     public var unstagedCards: [Card] {
-        currentPlayer.hand.filter { !stagedCardIds.contains($0.id) }
+        orderedHand.filter { !stagedCardIds.contains($0.id) }
     }
 
     /// Live validation of the current staging tray. `nil` when empty; on

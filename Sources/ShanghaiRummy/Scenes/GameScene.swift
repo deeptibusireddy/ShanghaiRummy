@@ -42,6 +42,11 @@ final class GameScene: SKScene {
     private var draggingCardId: UUID?
     private var discardTargetRing: SKShapeNode?
 
+    /// Slot centers of the current hand fan captured during buildHand().
+    /// Used by touchesEnded to compute a reorder target index from the
+    /// drop x-position when the user drags a card within the hand row.
+    private var handSlots: [(id: UUID, x: CGFloat, y: CGFloat)] = []
+
     init(size: CGSize, viewModel: GameViewModel, theme: VisualTheme = .cozyWood) {
         self.vm = viewModel
         self.theme = theme
@@ -446,9 +451,11 @@ final class GameScene: SKScene {
 
     private func buildHand() {
         handLayer.removeAllChildren()
+        handSlots.removeAll()
         // On the main table, always show the full hand — staging is a modal
-        // concept surfaced through the Build Meld button.
-        let hand = vm.currentPlayer.hand
+        // concept surfaced through the Build Meld button. Ordered via the
+        // VM so the user can reorganize by drag-within-hand-row (M2f).
+        let hand = vm.orderedHand
         guard !hand.isEmpty else { return }
 
         let cardWidth = CardNode.size.width
@@ -475,6 +482,7 @@ final class GameScene: SKScene {
             node.zRotation = angle
             node.zPosition = 4 + CGFloat(i) * 0.01
             handLayer.addChild(node)
+            handSlots.append((id: card.id, x: x, y: y))
         }
     }
 
@@ -485,31 +493,36 @@ final class GameScene: SKScene {
 
     // MARK: - Build Meld button (opens modal overlay, M2d-b)
 
-    /// A small chip in the bottom-right that toggles the meld staging overlay.
-    /// Only visible on the current player's turn.
+    /// A prominent chip in the bottom-right that toggles the meld staging
+    /// overlay. Only visible on the current player's turn. Pulses gently
+    /// when the user has staged a valid meld (or after go-down when a hand
+    /// card could be laid off), so the "declare it" affordance is obvious.
     private func buildMeldButton() {
         meldButtonLayer.removeAllChildren()
         guard vm.currentPlayerName == "You" else { return }
 
-        let chipW: CGFloat = 118
-        let chipH: CGFloat = 28
-        let chipX: CGFloat = size.width - chipW / 2 - 24
-        let chipY: CGFloat = handRowY
+        let chipW: CGFloat = 168
+        let chipH: CGFloat = 44
+        let chipX: CGFloat = size.width - chipW / 2 - 20
+        // Sit above the hand fan so it's clearly separated from the cards.
+        let chipY: CGFloat = handRowY + CardNode.size.height / 2 + 14
         let chip = SKShapeNode(rectOf: CGSize(width: chipW, height: chipH),
-                               cornerRadius: 14)
+                               cornerRadius: 22)
         chip.fillColor = theme.contractPillBg
         chip.strokeColor = theme.turnGlow
-        chip.lineWidth = 1.5
+        chip.lineWidth = 2.5
+        chip.glowWidth = 2
         chip.position = CGPoint(x: chipX, y: chipY)
         chip.zPosition = 20
         chip.name = "build-meld-button"
         meldButtonLayer.addChild(chip)
 
         let count = vm.stagedCardIds.count
-        let text = count == 0 ? "Build Meld" : "Build Meld (\(count))"
-        let label = SKLabelNode(text: text)
+        let hasGoneDown = vm.currentPlayer.hasGoneDownThisRound
+        let label = SKLabelNode(text: buildMeldButtonText(count: count,
+                                                          hasGoneDown: hasGoneDown))
         label.fontName = theme.titleFont
-        label.fontSize = 12
+        label.fontSize = 15
         label.fontColor = theme.contractPillText
         label.horizontalAlignmentMode = .center
         label.verticalAlignmentMode = .center
@@ -517,6 +530,31 @@ final class GameScene: SKScene {
         label.zPosition = 21
         label.name = "build-meld-button"
         meldButtonLayer.addChild(label)
+
+        // Pulse when there's something meaningful the user could do: a
+        // valid staged meld to save, or an already-satisfied contract they
+        // could confirm. Draws the eye to the button without being noisy.
+        let shouldPulse: Bool = {
+            if case .success = vm.stagedValidation { return true }
+            if vm.canConfirmGoDown { return true }
+            return false
+        }()
+        if shouldPulse {
+            let pulse = SKAction.sequence([
+                SKAction.scale(to: 1.08, duration: 0.55),
+                SKAction.scale(to: 1.0, duration: 0.55)
+            ])
+            chip.run(SKAction.repeatForever(pulse))
+        }
+    }
+
+    /// Text shown on the Build Meld chip. Communicates state (staging
+    /// count, or "Declare" once ready, or "Lay Off" after go-down).
+    private func buildMeldButtonText(count: Int, hasGoneDown: Bool) -> String {
+        if hasGoneDown { return "Melds" }
+        if vm.canConfirmGoDown { return "Declare Meld!" }
+        if count == 0 { return "Build Meld" }
+        return "Build Meld (\(count))"
     }
 
     // MARK: - Meld staging overlay (modal, M2d-b)
@@ -861,6 +899,19 @@ final class GameScene: SKScene {
                     return
                 }
             }
+            // Drag ended within the hand row band → reorder (M2f).
+            if isInHandRowBand(point) {
+                let targetIdx = reorderTargetIndex(forDropX: point.x, draggedId: id)
+                vm.moveHandCard(id, to: targetIdx)
+                draggingCard = nil
+                draggingCardId = nil
+                clearDiscardTarget()
+                // Force a rebuild in case the target index equaled the
+                // original (no publish → no auto-rebuild from the Combine
+                // sink), which would leave the lifted card visually offset.
+                rebuildDynamicLayers()
+                return
+            }
         }
 
         cancelDrag()
@@ -903,6 +954,30 @@ final class GameScene: SKScene {
                 return
             }
         }
+    }
+
+    // MARK: - Hand reorder helpers (M2f)
+
+    /// True if `point` sits in the vertical band occupied by the hand fan —
+    /// used to distinguish "drop back to reorder" from "cancel drag".
+    private func isInHandRowBand(_ point: CGPoint) -> Bool {
+        let halfH = CardNode.size.height * 0.75
+        let center = handRowY
+        return point.y >= center - halfH && point.y <= center + halfH
+    }
+
+    /// Given a drop x-position, compute the target index (in `vm.orderedHand`)
+    /// where the dragged card should land. Uses the slot centers captured
+    /// during `buildHand`. Filters out the dragged card so we get the index
+    /// AFTER removal.
+    private func reorderTargetIndex(forDropX x: CGFloat, draggedId: UUID) -> Int {
+        let slots = handSlots.filter { $0.id != draggedId }
+        guard !slots.isEmpty else { return 0 }
+        // Insert before the first slot whose center is to the right of x.
+        for (i, slot) in slots.enumerated() where x < slot.x {
+            return i
+        }
+        return slots.count
     }
 
     // MARK: - Drag helpers
