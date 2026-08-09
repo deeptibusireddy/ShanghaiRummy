@@ -494,12 +494,18 @@ final class GameScene: SKScene {
     // MARK: - Build Meld button (opens modal overlay, M2d-b)
 
     /// A prominent chip in the bottom-right that toggles the meld staging
-    /// overlay. Only visible on the current player's turn. Pulses gently
-    /// when the user has staged a valid meld (or after go-down when a hand
-    /// card could be laid off), so the "declare it" affordance is obvious.
+    /// overlay. Visible whenever the current player is a human (i.e. not a
+    /// CPU bot) — hot-seat, GameKit, and vs-CPU practice all share the
+    /// same on-device player at the bottom seat. Pulses when a valid meld
+    /// is staged or the contract is satisfied so the "declare it" moment
+    /// is unmissable.
     private func buildMeldButton() {
         meldButtonLayer.removeAllChildren()
-        guard vm.currentPlayerName == "You" else { return }
+        // Only hide the button on CPU turns. In hot-seat and multiplayer,
+        // every human seat needs to reach the staging overlay to build,
+        // declare, and lay off melds — gating on player name (e.g. == "You")
+        // silently broke hot-seat matches whose players are named "Player 1".
+        guard !vm.isCurrentPlayerCPU else { return }
 
         let chipW: CGFloat = 168
         let chipH: CGFloat = 44
