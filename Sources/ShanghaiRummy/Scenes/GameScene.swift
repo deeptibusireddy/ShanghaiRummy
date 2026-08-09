@@ -938,20 +938,29 @@ final class GameScene: SKScene {
                 _ = vm.confirmGoDown()
                 return
             }
-            if let name = node.name, name.hasPrefix("overlay-draft:") {
-                if let idxStr = name.split(separator: ":").last,
-                   let idx = Int(idxStr) {
-                    vm.removeDraftMeld(at: idx)
+            // Walk up to find the named ancestor for card / draft-meld
+            // taps — the touch usually lands on a child sprite (the card
+            // background rect or a label) whose parent CardNode carries
+            // the "overlay-card-*" / "overlay-draft:*" name.
+            var ancestor: SKNode? = node
+            while let t = ancestor {
+                if let name = t.name {
+                    if name.hasPrefix("overlay-draft:") {
+                        if let idxStr = name.split(separator: ":").last,
+                           let idx = Int(idxStr) {
+                            vm.removeDraftMeld(at: idx)
+                        }
+                        return
+                    }
+                    if name.hasPrefix("overlay-card-") {
+                        if let idStr = name.split(separator: ":").last,
+                           let uuid = UUID(uuidString: String(idStr)) {
+                            vm.toggleStaged(cardId: uuid)
+                        }
+                        return
+                    }
                 }
-                return
-            }
-            if let name = node.name, name.hasPrefix("overlay-card-") {
-                // Parse UUID and toggle staged.
-                if let idStr = name.split(separator: ":").last,
-                   let uuid = UUID(uuidString: String(idStr)) {
-                    vm.toggleStaged(cardId: uuid)
-                }
-                return
+                ancestor = t.parent
             }
         }
     }
