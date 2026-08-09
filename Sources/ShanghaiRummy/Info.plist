@@ -28,5 +28,7 @@
     <string>Shanghai Rummy uses Game Center to let you play turn-based matches with family and friends.</string>
     <key>ITSAppUsesNonExemptEncryption</key>
     <false/>
+    <key>UIRequiresFullScreen</key>
+    <true/>
 </dict>
 </plist>
