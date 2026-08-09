@@ -1,4 +1,15 @@
-# Xcode Cloud → TestFlight (No Mac needed) 🚀
+# Xcode Cloud → TestFlight (No Mac needed after one-time bootstrap) 🚀
+
+> **⚠️ IMPORTANT — Read this first:**
+> Apple's docs claim Xcode Cloud can be set up entirely from the web. **This is only partially true.**
+> The **very first** enablement (creating the initial `ciProduct`) must be done from Xcode on a Mac — one time.
+> After that one-time click-through, EVERYTHING else works from Windows/web/API.
+>
+> **For that one-time step, see one of:**
+> - `docs/FRIEND_WITH_MAC_RUNBOOK.md` — ask a friend/family member with a Mac to do it in 10 min (free)
+> - `docs/TESTFLIGHT_RUNBOOK.md` — rent MacinCloud for 20–30 min (~$1–3)
+>
+> This document describes what happens AFTER that bootstrap is done.
 
 **Goal:** Ship Shanghai Rummy Nights to TestFlight on your iPhone using **only a web browser** on Windows. Apple builds the app in their cloud on every push to `main`.
 
