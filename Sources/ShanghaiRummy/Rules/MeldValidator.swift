@@ -57,28 +57,39 @@ public enum MeldValidator {
     /// Cards must be presented in display order (lowest natural rank → highest).
     /// Wild cards are inferred to fill their positional slot.
     public static func validateSequence(_ cards: [Card]) -> Result<Void, ValidationError> {
-        guard !cards.isEmpty else { return .failure(.emptyMeld) }
-        guard cards.count >= RulesConfig.minSequenceSize else {
-            return .failure(.tooFewCards(min: RulesConfig.minSequenceSize, got: cards.count))
-        }
-        let maxWilds = RulesConfig.maxWilds(inMeldOfSize: cards.count)
-        let wilds = cards.filter(\.isWild).count
-        if wilds > maxWilds { return .failure(.tooManyWilds(max: maxWilds, got: wilds)) }
+        if let error = sequencePrecheck(cards) { return .failure(error) }
 
-        // All non-wilds must share a suit.
-        let naturalSuits = cards.compactMap { $0.isWild ? nil : $0.suit }
-        guard let first = naturalSuits.first else {
-            return .failure(.cannotDetermineNaturalRank)
-        }
-        guard naturalSuits.allSatisfy({ $0 == first }) else {
-            return .failure(.sequenceMixedSuits)
-        }
-
-        // Try Ace-low first. If that fails and the meld contains an Ace, try Ace-high.
+        // Try both Ace interpretations. Ace-high must also be checked when a
+        // trailing wild represents the Ace, for example J-Q-K-joker.
         if consecutiveCheck(cards, aceHigh: false) { return .success(()) }
-        let containsAce = cards.contains { !$0.isWild && $0.rank == .ace }
-        if containsAce && consecutiveCheck(cards, aceHigh: true) { return .success(()) }
+        if consecutiveCheck(cards, aceHigh: true) { return .success(()) }
         return .failure(.sequenceNotConsecutive)
+    }
+
+    /// Accept cards in any hand order and return a legal display order.
+    /// Existing valid positional order is preserved so explicitly placed wilds
+    /// keep their intended rank.
+    public static func arrangedSequence(
+        _ cards: [Card]
+    ) -> Result<[Card], ValidationError> {
+        if let error = sequencePrecheck(cards) { return .failure(error) }
+        if case .success = validateSequence(cards) { return .success(cards) }
+
+        let candidates =
+            sequenceCandidates(from: cards, aceHigh: false)
+            + sequenceCandidates(from: cards, aceHigh: true)
+        guard let best = candidates.min(by: { lhs, rhs in
+            if lhs.leadingWilds != rhs.leadingWilds {
+                return lhs.leadingWilds < rhs.leadingWilds
+            }
+            if lhs.trailingWilds != rhs.trailingWilds {
+                return lhs.trailingWilds < rhs.trailingWilds
+            }
+            return lhs.startRank > rhs.startRank
+        }) else {
+            return .failure(.sequenceNotConsecutive)
+        }
+        return .success(best.cards)
     }
 
     /// Convenience: try both meld kinds, return whichever succeeds (triplet first).
@@ -117,6 +128,83 @@ public enum MeldValidator {
     }
 
     // MARK: - Internal
+
+    private struct SequenceCandidate {
+        let cards: [Card]
+        let leadingWilds: Int
+        let trailingWilds: Int
+        let startRank: Int
+    }
+
+    private static func sequencePrecheck(_ cards: [Card]) -> ValidationError? {
+        guard !cards.isEmpty else { return .emptyMeld }
+        guard cards.count >= RulesConfig.minSequenceSize else {
+            return .tooFewCards(min: RulesConfig.minSequenceSize, got: cards.count)
+        }
+        let maxWilds = RulesConfig.maxWilds(inMeldOfSize: cards.count)
+        let wildCount = cards.filter(\.isWild).count
+        if wildCount > maxWilds {
+            return .tooManyWilds(max: maxWilds, got: wildCount)
+        }
+
+        let naturalSuits = cards.compactMap { $0.isWild ? nil : $0.suit }
+        guard let firstSuit = naturalSuits.first else {
+            return .cannotDetermineNaturalRank
+        }
+        guard naturalSuits.allSatisfy({ $0 == firstSuit }) else {
+            return .sequenceMixedSuits
+        }
+        return nil
+    }
+
+    private static func sequenceCandidates(
+        from cards: [Card],
+        aceHigh: Bool
+    ) -> [SequenceCandidate] {
+        let naturals = cards.filter { !$0.isWild }
+        let wilds = cards.filter(\.isWild)
+        let lowestRank = aceHigh ? 2 : 1
+        let highestRank = aceHigh ? 14 : 13
+        let latestStart = highestRank - cards.count + 1
+        guard latestStart >= lowestRank else { return [] }
+
+        var naturalsByRank: [Int: Card] = [:]
+        for card in naturals {
+            guard let rank = card.rank else { return [] }
+            let value = rank == .ace && aceHigh ? 14 : rank.rawValue
+            guard naturalsByRank[value] == nil else { return [] }
+            naturalsByRank[value] = card
+        }
+
+        var candidates: [SequenceCandidate] = []
+        for start in lowestRank...latestStart {
+            let end = start + cards.count - 1
+            guard naturalsByRank.keys.allSatisfy({
+                $0 >= start && $0 <= end
+            }) else { continue }
+
+            var arranged: [Card] = []
+            var wildIndex = 0
+            for value in start...end {
+                if let natural = naturalsByRank[value] {
+                    arranged.append(natural)
+                } else {
+                    arranged.append(wilds[wildIndex])
+                    wildIndex += 1
+                }
+            }
+            candidates.append(
+                SequenceCandidate(
+                    cards: arranged,
+                    leadingWilds: arranged.prefix(while: { $0.isWild }).count,
+                    trailingWilds: arranged.reversed()
+                        .prefix(while: { $0.isWild }).count,
+                    startRank: start
+                )
+            )
+        }
+        return candidates
+    }
 
     /// Given cards in intended sequence order, check that non-wild positions
     /// match a monotonically increasing rank progression with same suit.

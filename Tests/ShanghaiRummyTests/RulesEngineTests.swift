@@ -52,6 +52,11 @@ final class MeldValidatorTripletTests: XCTestCase {
         let cards = [c(.spades, .seven), c(.hearts, .seven), j(), w(.clubs)]
         XCTAssertNoThrow(try MeldValidator.validateTriplet(cards).get())
     }
+
+    func testTripletAllowsRepeatedSuitFromMultipleDecks() {
+        let cards = [c(.spades, .four), c(.spades, .four), c(.diamonds, .four)]
+        XCTAssertNoThrow(try MeldValidator.validateTriplet(cards).get())
+    }
 }
 
 // MARK: - MeldValidator: Sequences
@@ -64,6 +69,33 @@ final class MeldValidatorSequenceTests: XCTestCase {
 
     func testValidSequenceWithMiddleJoker() {
         let cards = [c(.clubs, .five), c(.clubs, .six), j(), c(.clubs, .eight)]
+        XCTAssertNoThrow(try MeldValidator.validateSequence(cards).get())
+    }
+
+    func testArrangesNineQueenAndTwoJokersIntoValidSequence() throws {
+        let nine = c(.diamonds, .nine)
+        let queen = c(.diamonds, .queen)
+        let firstJoker = j()
+        let secondJoker = j()
+
+        let arranged = try MeldValidator.arrangedSequence(
+            [nine, queen, firstJoker, secondJoker]
+        ).get()
+
+        XCTAssertEqual(arranged.first?.id, nine.id)
+        XCTAssertEqual(arranged.last?.id, queen.id)
+        XCTAssertTrue(arranged[1].isWild)
+        XCTAssertTrue(arranged[2].isWild)
+        XCTAssertNoThrow(try MeldValidator.validateSequence(arranged).get())
+    }
+
+    func testTrailingJokerCanRepresentHighAce() {
+        let cards = [
+            c(.diamonds, .jack),
+            c(.diamonds, .queen),
+            c(.diamonds, .king),
+            j(),
+        ]
         XCTAssertNoThrow(try MeldValidator.validateSequence(cards).get())
     }
 

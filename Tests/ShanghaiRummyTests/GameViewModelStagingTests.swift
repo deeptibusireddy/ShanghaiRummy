@@ -119,4 +119,24 @@ final class GameViewModelStagingTests: XCTestCase {
                        [cards[3].id, cards[0].id, cards[1].id, cards[2].id])
         XCTAssertEqual(vm.stagedCards.map(\.id), [cards[1].id])
     }
+
+    func testStagingArrangesNineQueenAndTwoJokersBeforeSaving() throws {
+        let nine = Card(suit: .diamonds, rank: .nine)
+        let queen = Card(suit: .diamonds, rank: .queen)
+        let firstJoker = Card.joker()
+        let secondJoker = Card.joker()
+        let vm = makeVM(hand: [nine, queen, firstJoker, secondJoker])
+        for card in vm.currentPlayer.hand {
+            vm.toggleStaged(cardId: card.id)
+        }
+
+        let kind = try vm.stagedValidation?.get()
+        XCTAssertEqual(kind, .sequence)
+        XCTAssertEqual(vm.stagedCards.first?.id, nine.id)
+        XCTAssertEqual(vm.stagedCards.last?.id, queen.id)
+        XCTAssertTrue(vm.saveStagedAsMeld())
+        XCTAssertNoThrow(
+            try MeldValidator.validateSequence(vm.contractDraft[0]).get()
+        )
+    }
 }

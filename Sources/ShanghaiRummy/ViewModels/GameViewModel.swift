@@ -302,9 +302,17 @@ public final class GameViewModel: ObservableObject {
         }
     }
 
-    /// Cards currently staged, in the display order used by the hand fan.
+    /// Cards currently staged. Valid sequences are returned in canonical table
+    /// order even when their cards were scattered throughout the hand.
     public var stagedCards: [Card] {
-        orderedHand.filter { stagedCardIds.contains($0.id) }
+        let selected = orderedHand.filter { stagedCardIds.contains($0.id) }
+        if case .success = MeldValidator.validateTriplet(selected) {
+            return selected
+        }
+        if case .success(let arranged) = MeldValidator.arrangedSequence(selected) {
+            return arranged
+        }
+        return selected
     }
 
     /// Cards remaining in-hand after staging (rendered in the hand fan).

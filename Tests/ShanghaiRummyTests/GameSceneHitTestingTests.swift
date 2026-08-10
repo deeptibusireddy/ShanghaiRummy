@@ -64,4 +64,51 @@ final class GameSceneHitTestingTests: XCTestCase {
             "When both targets are valid, the nearest center should win"
         )
     }
+
+    func testOverlappingHandFanAssignsEveryExposedSliceToItsCard() {
+        let diamondFour = UUID()
+        let clubFour = UUID()
+        let firstSpadeFour = UUID()
+        let secondSpadeFour = UUID()
+        let slots: [(id: UUID, x: CGFloat, y: CGFloat)] = [
+            (diamondFour, 100, 80),
+            (clubFour, 127, 80),
+            (firstSpadeFour, 154, 80),
+            (secondSpadeFour, 181, 80),
+        ]
+        let cardSize = CGSize(width: 68, height: 96)
+
+        XCTAssertEqual(
+            GameScene.handCardId(
+                at: CGPoint(x: 80, y: 80),
+                slots: slots,
+                cardSize: cardSize
+            ),
+            diamondFour
+        )
+        XCTAssertEqual(
+            GameScene.handCardId(
+                at: CGPoint(x: 105, y: 80),
+                slots: slots,
+                cardSize: cardSize
+            ),
+            clubFour
+        )
+        XCTAssertEqual(
+            GameScene.handCardId(
+                at: CGPoint(x: 132, y: 80),
+                slots: slots,
+                cardSize: cardSize
+            ),
+            firstSpadeFour
+        )
+        XCTAssertEqual(
+            GameScene.handCardId(
+                at: CGPoint(x: 170, y: 80),
+                slots: slots,
+                cardSize: cardSize
+            ),
+            secondSpadeFour
+        )
+    }
 }

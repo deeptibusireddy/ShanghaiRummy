@@ -985,6 +985,17 @@ final class GameScene: SKScene {
             return
         }
 
+        if let uuid = Self.handCardId(
+            at: point,
+            slots: handSlots,
+            cardSize: CardNode.size
+        ), let hit = handLayer.children.first(where: {
+            $0.name == "card:\(uuid.uuidString)"
+        }) as? CardNode {
+            beginDrag(card: hit, id: uuid)
+            return
+        }
+
         for node in nodes(at: point) {
             var target: SKNode? = node
             while let t = target, !(t.name?.hasPrefix("card:") ?? false) {
@@ -1213,6 +1224,36 @@ final class GameScene: SKScene {
         let halfH = CardNode.size.height * 0.75
         let center = handRowY
         return point.y >= center - halfH && point.y <= center + halfH
+    }
+
+    static func handCardId(
+        at point: CGPoint,
+        slots: [(id: UUID, x: CGFloat, y: CGFloat)],
+        cardSize: CGSize
+    ) -> UUID? {
+        let halfWidth = cardSize.width / 2
+        let halfHeight = cardSize.height / 2 + 4
+        for index in slots.indices {
+            let slot = slots[index]
+            guard point.y >= slot.y - halfHeight,
+                  point.y <= slot.y + halfHeight else { continue }
+
+            let left = slot.x - halfWidth
+            let fullRight = slot.x + halfWidth
+            let visibleRight: CGFloat
+            if index < slots.index(before: slots.endIndex) {
+                let nextLeft = slots[index + 1].x - halfWidth
+                visibleRight = min(fullRight, nextLeft)
+            } else {
+                visibleRight = fullRight
+            }
+            let includesRightEdge = index == slots.index(before: slots.endIndex)
+            if point.x >= left,
+               point.x < visibleRight || (includesRightEdge && point.x <= visibleRight) {
+                return slot.id
+            }
+        }
+        return nil
     }
 
     private func reorderTargetId(forDropX x: CGFloat, draggedId: UUID) -> UUID? {
