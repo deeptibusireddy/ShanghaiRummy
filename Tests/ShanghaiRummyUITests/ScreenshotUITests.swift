@@ -5,20 +5,25 @@ import XCTest
 /// uploads them as an artifact — so the developer can preview the app from
 /// Windows without a Mac.
 ///
-/// M2b note: game interactions (draw/discard) happen on SpriteKit nodes which
-/// XCUITest can't identify by label without accessibility identifiers. We
-/// therefore only screenshot the three navigable SwiftUI screens (home, setup,
-/// game scaffold). Interaction screenshots (drawn card, pass-and-play) return
-/// in M2d once we wire up accessibility identifiers on the sprites.
+/// Demo launch arguments provide deterministic mid-game, staging, and scoring
+/// states without depending on coordinate-driven SpriteKit interactions.
 final class ScreenshotUITests: XCTestCase {
+    private var app: XCUIApplication!
 
     override func setUpWithError() throws {
         continueAfterFailure = false
         XCUIDevice.shared.orientation = .landscapeLeft
+        app = XCUIApplication()
+    }
+
+    override func tearDownWithError() throws {
+        if let app, app.state != .notRunning {
+            app.terminate()
+        }
+        app = nil
     }
 
     func testCaptureScreens() throws {
-        let app = XCUIApplication()
         app.launch()
 
         snapshot(named: "01-home-menu")
@@ -44,7 +49,6 @@ final class ScreenshotUITests: XCTestCase {
     func testCaptureMidGamePreview() throws {
         // Boots directly into a rigged 4-player mid-game state so we can
         // preview the table populated with melds from every player.
-        let app = XCUIApplication()
         app.launchArguments += ["--demo-mid-game"]
         app.launch()
         XCTAssertTrue(app.buttons["quit-game"].waitForExistence(timeout: 5))
@@ -53,7 +57,6 @@ final class ScreenshotUITests: XCTestCase {
     }
 
     func testCaptureMidGameCasinoFelt() throws {
-        let app = XCUIApplication()
         app.launchArguments += ["--demo-mid-game", "--theme-felt"]
         app.launch()
         XCTAssertTrue(app.buttons["quit-game"].waitForExistence(timeout: 5))
@@ -62,7 +65,6 @@ final class ScreenshotUITests: XCTestCase {
     }
 
     func testCaptureMidGameMinimalModern() throws {
-        let app = XCUIApplication()
         app.launchArguments += ["--demo-mid-game", "--theme-minimal"]
         app.launch()
         XCTAssertTrue(app.buttons["quit-game"].waitForExistence(timeout: 5))
@@ -71,7 +73,6 @@ final class ScreenshotUITests: XCTestCase {
     }
 
     func testCaptureStagingTray() throws {
-        let app = XCUIApplication()
         app.launchArguments += ["--demo-mid-game", "--demo-stage-triplet"]
         app.launch()
         XCTAssertTrue(app.buttons["quit-game"].waitForExistence(timeout: 5))
@@ -80,8 +81,7 @@ final class ScreenshotUITests: XCTestCase {
     }
 
     func testCaptureHandOver() throws {
-        let app = XCUIApplication()
-        app.launchArguments += ["--demo-hand-over", "--theme-felt"]
+        app.launchArguments += ["--demo-hand-over"]
         app.launch()
         XCTAssertTrue(app.buttons["quit-game"].waitForExistence(timeout: 5))
         Thread.sleep(forTimeInterval: 0.9)
@@ -89,8 +89,7 @@ final class ScreenshotUITests: XCTestCase {
     }
 
     func testCaptureGameOver() throws {
-        let app = XCUIApplication()
-        app.launchArguments += ["--demo-game-over", "--theme-felt"]
+        app.launchArguments += ["--demo-game-over"]
         app.launch()
         XCTAssertTrue(app.buttons["quit-game"].waitForExistence(timeout: 5))
         Thread.sleep(forTimeInterval: 0.9)

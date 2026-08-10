@@ -46,6 +46,7 @@ jobs:
             -destination "platform=iOS Simulator,id=$DEVICE_ID" \
             -configuration Debug \
             -resultBundlePath TestResults.xcresult \
+            -retry-tests-on-failure \
             CODE_SIGNING_ALLOWED=NO \
             build test \
             | xcbeautify --renderer github-actions

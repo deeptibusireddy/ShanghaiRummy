@@ -693,7 +693,7 @@ final class GameScene: SKScene {
 
         let rect = stagingTrayRect
         let backing = SKShapeNode(rect: rect, cornerRadius: 18)
-        backing.fillColor = theme.contractPillBg.withAlphaComponent(0.82)
+        backing.fillColor = theme.contractPillBg.withAlphaComponent(0.96)
         backing.strokeColor = stagingStatusColor.withAlphaComponent(0.8)
         backing.lineWidth = 1.5
         backing.zPosition = 12
@@ -711,6 +711,13 @@ final class GameScene: SKScene {
         status.zPosition = 14
         stagingLayer.addChild(status)
 
+        let contentRect = CGRect(
+            x: rect.minX,
+            y: rect.minY,
+            width: rect.width - 54,
+            height: rect.height
+        )
+
         if vm.stagedCards.isEmpty {
             let hint = SKLabelNode(text: "Tap a card or drag it here")
             hint.fontName = theme.bodyFont
@@ -722,10 +729,17 @@ final class GameScene: SKScene {
             hint.zPosition = 14
             stagingLayer.addChild(hint)
         } else {
-            addStagedCards(in: rect)
+            addStagedCards(in: contentRect)
+            addSmallControl(
+                title: "CLEAR",
+                name: "clear-staging",
+                at: CGPoint(x: rect.maxX - 26, y: rect.midY - 6),
+                size: CGSize(width: 42, height: 26),
+                to: stagingLayer
+            )
         }
 
-        addDraftChips(in: rect)
+        addDraftChips(in: contentRect)
     }
 
     private func addStagedCards(in rect: CGRect) {
@@ -738,7 +752,7 @@ final class GameScene: SKScene {
             step = 0
         } else {
             step = min(cardW + 5,
-                       max(23, (available - cardW) / CGFloat(cards.count - 1)))
+                       max(0, (available - cardW) / CGFloat(cards.count - 1)))
         }
         let total = cardW + CGFloat(max(0, cards.count - 1)) * step
         let startX = rect.midX - total / 2 + cardW / 2
@@ -799,18 +813,14 @@ final class GameScene: SKScene {
         addActionButton(title: action.title, name: action.name,
                         enabled: action.enabled, emphasized: action.emphasized)
 
-        if !vm.stagedCardIds.isEmpty {
-            addSmallControl(title: "CLEAR", name: "clear-staging",
-                            at: CGPoint(x: size.width - horizontalEdgeInset - 82,
-                                        y: stagingTrayY + 38))
-        }
-
         addSmallControl(title: "RANK", name: "sort-rank",
                         at: CGPoint(x: size.width - horizontalEdgeInset - 76,
-                                    y: size.height - 31))
+                                    y: size.height - 31),
+                        to: actionLayer)
         addSmallControl(title: "SUIT", name: "sort-suit",
                         at: CGPoint(x: size.width - horizontalEdgeInset - 24,
-                                    y: size.height - 31))
+                                    y: size.height - 31),
+                        to: actionLayer)
     }
 
     private var contextAction: (title: String, name: String?, enabled: Bool,
@@ -885,27 +895,33 @@ final class GameScene: SKScene {
         }
     }
 
-    private func addSmallControl(title: String, name: String, at position: CGPoint) {
-        let button = SKShapeNode(rectOf: CGSize(width: 48, height: 40),
-                                 cornerRadius: 20)
+    private func addSmallControl(
+        title: String,
+        name: String,
+        at position: CGPoint,
+        size controlSize: CGSize = CGSize(width: 48, height: 40),
+        to layer: SKNode
+    ) {
+        let button = SKShapeNode(rectOf: controlSize,
+                                 cornerRadius: controlSize.height / 2)
         button.fillColor = theme.contractPillBg
         button.strokeColor = theme.feltStroke.withAlphaComponent(0.8)
         button.lineWidth = 1
         button.position = position
         button.zPosition = 25
         button.name = name
-        actionLayer.addChild(button)
+        layer.addChild(button)
 
         let label = SKLabelNode(text: title)
         label.fontName = theme.titleFont
-        label.fontSize = 8
+        label.fontSize = controlSize.height < 30 ? 7 : 8
         label.fontColor = theme.seatSub
         label.horizontalAlignmentMode = .center
         label.verticalAlignmentMode = .center
         label.position = position
         label.zPosition = 26
         label.name = name
-        actionLayer.addChild(label)
+        layer.addChild(label)
     }
 
     private var stagingStatusText: String {
