@@ -60,6 +60,9 @@ final class GameViewModelGoDownTests: XCTestCase {
         XCTAssertEqual(v.contractDraft[0].count, 3)
         XCTAssertTrue(v.stagedCardIds.isEmpty,
                       "Save should clear the staging tray")
+        XCTAssertFalse(v.unstagedCards.contains(where: {
+            Set(hand.prefix(3).map(\.id)).contains($0.id)
+        }), "Saved draft cards must not reappear in the hand fan")
     }
 
     func testRemoveDraftMeldUndoes() {
@@ -70,6 +73,7 @@ final class GameViewModelGoDownTests: XCTestCase {
         XCTAssertEqual(v.contractDraft.count, 1)
         v.removeDraftMeld(at: 0)
         XCTAssertTrue(v.contractDraft.isEmpty)
+        XCTAssertEqual(Set(v.unstagedCards.map(\.id)), Set(hand.map(\.id)))
     }
 
     // MARK: - Contract shape
@@ -114,7 +118,6 @@ final class GameViewModelGoDownTests: XCTestCase {
         XCTAssertTrue(v.currentPlayer.hasGoneDownThisRound)
         XCTAssertEqual(v.state.melds.count, 2)
         XCTAssertTrue(v.contractDraft.isEmpty)
-        XCTAssertFalse(v.isMeldOverlayOpen)
     }
 
     func testConfirmGoDownNoOpWhenIncomplete() {
@@ -175,6 +178,23 @@ final class GameViewModelGoDownTests: XCTestCase {
         XCTAssertFalse(v.layoffTappedHandCard(extra))
     }
 
+    func testLayoffRejectsBeforeDrawing() {
+        let owner = UUID()
+        let existing = Meld(
+            kind: .triplet,
+            cards: [c(.hearts, .king), c(.spades, .king), c(.diamonds, .king)],
+            ownerId: owner
+        )
+        let extra = c(.clubs, .king)
+        let v = vm(hand: [extra],
+                   phase: .awaitingDraw,
+                   melds: [existing],
+                   hasGoneDown: true)
+
+        XCTAssertFalse(v.canLayOff(extra, to: existing))
+        XCTAssertFalse(v.layoffHandCard(extra, to: existing.id))
+    }
+
     func testLayoffReturnsFalseWhenNoMatch() {
         let owner = UUID()
         let existing = Meld(
@@ -187,5 +207,28 @@ final class GameViewModelGoDownTests: XCTestCase {
                    melds: [existing],
                    hasGoneDown: true)
         XCTAssertFalse(v.layoffTappedHandCard(mismatch))
+    }
+
+    func testLayoffCanTargetTheSpecificVisibleMeld() {
+        let owner = UUID()
+        let kings = Meld(
+            kind: .triplet,
+            cards: [c(.hearts, .king), c(.spades, .king), c(.diamonds, .king)],
+            ownerId: owner
+        )
+        let sevens = Meld(
+            kind: .triplet,
+            cards: [c(.hearts, .seven), c(.spades, .seven), c(.diamonds, .seven)],
+            ownerId: owner
+        )
+        let extraKing = c(.clubs, .king)
+        let v = vm(hand: [extraKing],
+                   melds: [sevens, kings],
+                   hasGoneDown: true)
+
+        XCTAssertFalse(v.layoffHandCard(extraKing, to: sevens.id))
+        XCTAssertTrue(v.canLayOff(extraKing, to: kings))
+        XCTAssertTrue(v.layoffHandCard(extraKing, to: kings.id))
+        XCTAssertEqual(v.state.melds.first(where: { $0.id == kings.id })?.cards.count, 4)
     }
 }

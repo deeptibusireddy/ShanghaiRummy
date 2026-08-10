@@ -3,7 +3,7 @@ import SwiftUI
 struct RootView: View {
     @EnvironmentObject var gameCenter: GameCenterManager
     @State private var activeGame: GameViewModel?
-    @State private var activeTheme: VisualTheme = .cozyWood
+    @State private var activeTheme: VisualTheme = .gameNight
     @State private var showingSetup = false
 
     var body: some View {
@@ -23,7 +23,14 @@ struct RootView: View {
                     if activeGame == nil,
                        CommandLine.arguments.contains("--demo-mid-game") {
                         activeTheme = themeFromArgs()
-                        let vm = GameViewModel(state: GameFactory.demoMidGame())
+                        var state = GameFactory.demoMidGame()
+                        if CommandLine.arguments.contains("--demo-stage-triplet") {
+                            let playerId = state.currentPlayerId
+                            state.players[state.currentTurnIndex].hasGoneDownThisRound = false
+                            state.players[state.currentTurnIndex].laidDownThisTurn = false
+                            state.melds.removeAll { $0.ownerId == playerId }
+                        }
+                        let vm = GameViewModel(state: state)
                         if CommandLine.arguments.contains("--demo-stage-triplet") {
                             stageFirstTriplet(in: vm)
                         }
@@ -55,13 +62,15 @@ struct RootView: View {
     }
 
     /// Stage the first triplet-forming set of cards in the current player's
-    /// hand (if any) so the meld tray renders in demo screenshots.
+    /// hand (if any) so the inline meld tray renders in demo screenshots.
     private func stageFirstTriplet(in vm: GameViewModel) {
+        if vm.state.phase == .awaitingDraw {
+            vm.drawFromStock()
+        }
         let hand = vm.currentPlayer.hand
         let byRank = Dictionary(grouping: hand, by: { $0.rank })
         for (_, cards) in byRank where cards.count >= 3 {
             for card in cards.prefix(3) { vm.toggleStaged(cardId: card.id) }
-            vm.isMeldOverlayOpen = true
             return
         }
     }
@@ -69,7 +78,7 @@ struct RootView: View {
     private func themeFromArgs() -> VisualTheme {
         if CommandLine.arguments.contains("--theme-felt") { return .casinoFelt }
         if CommandLine.arguments.contains("--theme-minimal") { return .minimalModern }
-        return .cozyWood
+        return .gameNight
     }
 
     private var homeMenu: some View {

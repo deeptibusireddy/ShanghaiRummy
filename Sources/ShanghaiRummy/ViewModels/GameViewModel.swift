@@ -25,11 +25,6 @@ public final class GameViewModel: ObservableObject {
     /// preview meld legality before committing (M2d-b).
     @Published public private(set) var stagedCardIds: Set<UUID> = []
 
-    /// Whether the "Build Meld" modal overlay is visible. Toggled by the
-    /// on-table button chip; kept on the VM so UI tests can drive it via a
-    /// launch flag.
-    @Published public var isMeldOverlayOpen: Bool = false
-
     /// IDs of players controlled by the CPU practice bot (M1e). Empty in
     /// hot-seat / GameKit modes.
     @Published public var cpuPlayerIds: Set<UUID> = []
@@ -86,7 +81,6 @@ public final class GameViewModel: ObservableObject {
                 isBetweenTurns = !(outgoingIsCPU || incomingIsCPU)
                 stagedCardIds.removeAll()
                 contractDraft.removeAll()
-                isMeldOverlayOpen = false
                 // Auto-pump the CPU's turn(s) so the UI never has to wait on
                 // a bot. Re-entrancy guard prevents recursion from the loop.
                 if incomingIsCPU && !isRunningCPUTurns {
@@ -239,18 +233,58 @@ public final class GameViewModel: ObservableObject {
         return order.compactMap { byId[$0] }
     }
 
-    /// Move `cardId` in the current player's display order to `targetIndex`
-    /// (clamped). No-op if the card isn't in the hand. `targetIndex` is
-    /// interpreted against the ORDERED hand — the caller (scene) computes
-    /// it from the drop x-position vs. slot centers.
-    public func moveHandCard(_ cardId: UUID, to targetIndex: Int) {
+    /// Reorder relative to another visible card. This remains correct while
+    /// some cards are staged and therefore absent from the hand fan.
+    public func moveHandCard(_ cardId: UUID, before targetId: UUID?) {
         var order = orderedHand.map { $0.id }
         guard let from = order.firstIndex(of: cardId) else { return }
-        let clamped = max(0, min(targetIndex, order.count - 1))
-        guard clamped != from else { return }
         order.remove(at: from)
-        order.insert(cardId, at: clamped)
+        if let targetId, let target = order.firstIndex(of: targetId) {
+            order.insert(cardId, at: target)
+        } else {
+            order.append(cardId)
+        }
         handOrderByPlayer[currentPlayer.id] = order
+    }
+
+    public func sortHandByRank() {
+        let sorted = orderedHand.sorted {
+            rankSortKey($0) < rankSortKey($1)
+        }
+        handOrderByPlayer[currentPlayer.id] = sorted.map(\.id)
+    }
+
+    public func sortHandBySuit() {
+        let sorted = orderedHand.sorted {
+            suitSortKey($0) < suitSortKey($1)
+        }
+        handOrderByPlayer[currentPlayer.id] = sorted.map(\.id)
+    }
+
+    private func rankSortKey(_ card: Card) -> String {
+        let wildBucket = card.isWild ? 1 : 0
+        let rank = card.rank?.rawValue ?? 99
+        let suit = suitIndex(card.suit)
+        return String(format: "%01d-%02d-%01d-%@",
+                      wildBucket, rank, suit, card.id.uuidString)
+    }
+
+    private func suitSortKey(_ card: Card) -> String {
+        let wildBucket = card.isWild ? 1 : 0
+        let suit = suitIndex(card.suit)
+        let rank = card.rank?.rawValue ?? 99
+        return String(format: "%01d-%01d-%02d-%@",
+                      wildBucket, suit, rank, card.id.uuidString)
+    }
+
+    private func suitIndex(_ suit: Suit?) -> Int {
+        switch suit {
+        case .clubs: return 0
+        case .diamonds: return 1
+        case .hearts: return 2
+        case .spades: return 3
+        case .none: return 4
+        }
     }
 
     // MARK: - Staging (M2d)
@@ -259,7 +293,8 @@ public final class GameViewModel: ObservableObject {
     /// and are the working set for the next `.goDown` or `.addToMeld` action.
     /// Silently ignored if the card isn't in the current player's hand.
     public func toggleStaged(cardId: UUID) {
-        guard currentPlayer.hand.contains(where: { $0.id == cardId }) else { return }
+        guard currentPlayer.hand.contains(where: { $0.id == cardId }),
+              !draftCardIds.contains(cardId) else { return }
         if stagedCardIds.contains(cardId) {
             stagedCardIds.remove(cardId)
         } else {
@@ -274,7 +309,9 @@ public final class GameViewModel: ObservableObject {
 
     /// Cards remaining in-hand after staging (rendered in the hand fan).
     public var unstagedCards: [Card] {
-        orderedHand.filter { !stagedCardIds.contains($0.id) }
+        orderedHand.filter {
+            !stagedCardIds.contains($0.id) && !draftCardIds.contains($0.id)
+        }
     }
 
     /// Live validation of the current staging tray. `nil` when empty; on
@@ -296,6 +333,10 @@ public final class GameViewModel: ObservableObject {
     /// but not yet committed. Committed together on `confirmGoDown`.
     @Published public private(set) var contractDraft: [[Card]] = []
 
+    private var draftCardIds: Set<UUID> {
+        Set(contractDraft.flatMap { $0.map(\.id) })
+    }
+
     /// Move the current staged tray into the draft as a new completed
     /// meld. No-op if staging is empty or invalid.
     @discardableResult
@@ -307,7 +348,7 @@ public final class GameViewModel: ObservableObject {
     }
 
     /// Undo one saved draft meld: cards return to the hand's un-staged pool.
-    /// (They're still in `currentPlayer.hand` — the draft is a UI overlay.)
+    /// They're still in `currentPlayer.hand`; the draft is UI-side state.
     public func removeDraftMeld(at index: Int) {
         guard contractDraft.indices.contains(index) else { return }
         contractDraft.remove(at: index)
@@ -344,7 +385,7 @@ public final class GameViewModel: ObservableObject {
         return draftShape == contractShape && !contractShape.isEmpty
     }
 
-    /// Progress summary for the overlay ("Need 1 more triplet of 3", etc.).
+    /// Progress summary for the inline meld tray.
     public var goDownProgressText: String {
         guard let c = state.contract(forPlayer: currentPlayer.id) else {
             return "No contract"
@@ -378,7 +419,6 @@ public final class GameViewModel: ObservableObject {
         if ok {
             contractDraft.removeAll()
             stagedCardIds.removeAll()
-            isMeldOverlayOpen = false
         }
         return ok
     }
@@ -393,22 +433,40 @@ public final class GameViewModel: ObservableObject {
         guard currentPlayer.hasGoneDownThisRound,
               !currentPlayer.laidDownThisTurn else { return false }
         for meld in state.melds {
-            let appended = meld.cards + [card]
-            let prepended = [card] + meld.cards
-            if isValid(meld.kind, cards: appended) {
-                return dispatch(.addToMeld(playerId: currentPlayer.id,
-                                           meldId: meld.id,
-                                           cardsAtStart: [],
-                                           cardsAtEnd: [card]))
-            }
-            if isValid(meld.kind, cards: prepended) {
-                return dispatch(.addToMeld(playerId: currentPlayer.id,
-                                           meldId: meld.id,
-                                           cardsAtStart: [card],
-                                           cardsAtEnd: []))
-            }
+            if layoffHandCard(card, to: meld.id) { return true }
         }
         return false
+    }
+
+    public func canLayOff(_ card: Card, to meld: Meld) -> Bool {
+        guard state.phase == .awaitingMeldOrDiscard,
+              currentPlayer.hasGoneDownThisRound,
+              !currentPlayer.laidDownThisTurn,
+              currentPlayer.hand.contains(where: { $0.id == card.id }) else {
+            return false
+        }
+        return isValid(meld.kind, cards: meld.cards + [card])
+            || isValid(meld.kind, cards: [card] + meld.cards)
+    }
+
+    public func canLayOffAnyHandCard(to meld: Meld) -> Bool {
+        currentPlayer.hand.contains { canLayOff($0, to: meld) }
+    }
+
+    @discardableResult
+    public func layoffHandCard(_ card: Card, to meldId: UUID) -> Bool {
+        guard let meld = state.melds.first(where: { $0.id == meldId }),
+              canLayOff(card, to: meld) else { return false }
+        if isValid(meld.kind, cards: meld.cards + [card]) {
+            return dispatch(.addToMeld(playerId: currentPlayer.id,
+                                       meldId: meld.id,
+                                       cardsAtStart: [],
+                                       cardsAtEnd: [card]))
+        }
+        return dispatch(.addToMeld(playerId: currentPlayer.id,
+                                   meldId: meld.id,
+                                   cardsAtStart: [card],
+                                   cardsAtEnd: []))
     }
 
     private func isValid(_ kind: Meld.Kind, cards: [Card]) -> Bool {

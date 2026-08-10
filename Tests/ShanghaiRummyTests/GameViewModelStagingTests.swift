@@ -11,6 +11,23 @@ final class GameViewModelStagingTests: XCTestCase {
         GameViewModel.newHotSeat(playerNames: ["A", "B"], seed: 42)
     }
 
+    private func makeVM(hand: [Card]) -> GameViewModel {
+        let players = [Player(name: "A", hand: hand), Player(name: "B")]
+        let state = GameState(
+            players: players,
+            currentRound: 1,
+            currentTurnIndex: 0,
+            dealerIndex: 1,
+            stock: [Card(suit: .clubs, rank: .four)],
+            discard: [Card(suit: .hearts, rank: .three)],
+            melds: [],
+            phase: .awaitingMeldOrDiscard,
+            stockReshufflesUsed: 0,
+            randomSeed: 1
+        )
+        return GameViewModel(state: state)
+    }
+
     func testInitialStagingIsEmpty() {
         let vm = makeVM()
         XCTAssertTrue(vm.stagedCardIds.isEmpty)
@@ -56,5 +73,50 @@ final class GameViewModelStagingTests: XCTestCase {
         vm.discard(toss)
         // Successful discard should advance the turn and clear staging.
         XCTAssertTrue(vm.stagedCardIds.isEmpty)
+    }
+
+    func testRankSortPutsNaturalCardsInRankOrderAndWildsLast() {
+        let king = Card(suit: .hearts, rank: .king)
+        let three = Card(suit: .clubs, rank: .three)
+        let ace = Card(suit: .spades, rank: .ace)
+        let joker = Card.joker()
+        let five = Card(suit: .diamonds, rank: .five)
+        let vm = makeVM(hand: [king, three, ace, joker, five])
+
+        vm.sortHandByRank()
+
+        XCTAssertEqual(vm.orderedHand.map(\.id),
+                       [ace.id, three.id, five.id, king.id, joker.id])
+    }
+
+    func testSuitSortUsesConsistentSuitGroupsAndWildsLast() {
+        let king = Card(suit: .hearts, rank: .king)
+        let three = Card(suit: .clubs, rank: .three)
+        let ace = Card(suit: .spades, rank: .ace)
+        let joker = Card.joker()
+        let five = Card(suit: .diamonds, rank: .five)
+        let vm = makeVM(hand: [king, three, ace, joker, five])
+
+        vm.sortHandBySuit()
+
+        XCTAssertEqual(vm.orderedHand.map(\.id),
+                       [three.id, five.id, king.id, ace.id, joker.id])
+    }
+
+    func testRelativeReorderRemainsCorrectWhileAnotherCardIsStaged() {
+        let cards = [
+            Card(suit: .clubs, rank: .three),
+            Card(suit: .diamonds, rank: .four),
+            Card(suit: .hearts, rank: .five),
+            Card(suit: .spades, rank: .six),
+        ]
+        let vm = makeVM(hand: cards)
+        vm.toggleStaged(cardId: cards[1].id)
+
+        vm.moveHandCard(cards[3].id, before: cards[0].id)
+
+        XCTAssertEqual(vm.orderedHand.map(\.id),
+                       [cards[3].id, cards[0].id, cards[1].id, cards[2].id])
+        XCTAssertEqual(vm.stagedCards.map(\.id), [cards[1].id])
     }
 }

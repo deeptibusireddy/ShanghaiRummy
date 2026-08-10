@@ -35,9 +35,7 @@ final class ScreenshotUITests: XCTestCase {
         // Start the game with the default 2 players.
         app.buttons["Start"].tap()
 
-        // Game container appears — nav bar shows "Hand 1". SpriteKit scene
-        // paints the felt, piles, seats, and the current player's hand.
-        _ = app.navigationBars["Hand 1"].waitForExistence(timeout: 5)
+        XCTAssertTrue(app.buttons["quit-game"].waitForExistence(timeout: 5))
         // Small pause so the scene finishes its first frame.
         Thread.sleep(forTimeInterval: 0.5)
         snapshot(named: "03-hand-1-scaffold")
@@ -49,16 +47,16 @@ final class ScreenshotUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments += ["--demo-mid-game"]
         app.launch()
-        _ = app.navigationBars["Hand 4"].waitForExistence(timeout: 5)
+        XCTAssertTrue(app.buttons["quit-game"].waitForExistence(timeout: 5))
         Thread.sleep(forTimeInterval: 0.7)
-        snapshot(named: "04-mid-game-cozy-wood")
+        snapshot(named: "04-mid-game-game-night")
     }
 
     func testCaptureMidGameCasinoFelt() throws {
         let app = XCUIApplication()
         app.launchArguments += ["--demo-mid-game", "--theme-felt"]
         app.launch()
-        _ = app.navigationBars["Hand 4"].waitForExistence(timeout: 5)
+        XCTAssertTrue(app.buttons["quit-game"].waitForExistence(timeout: 5))
         Thread.sleep(forTimeInterval: 0.7)
         snapshot(named: "05-mid-game-casino-felt")
     }
@@ -67,18 +65,16 @@ final class ScreenshotUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments += ["--demo-mid-game", "--theme-minimal"]
         app.launch()
-        _ = app.navigationBars["Hand 4"].waitForExistence(timeout: 5)
+        XCTAssertTrue(app.buttons["quit-game"].waitForExistence(timeout: 5))
         Thread.sleep(forTimeInterval: 0.7)
         snapshot(named: "06-mid-game-minimal-modern")
     }
 
     func testCaptureStagingTray() throws {
         let app = XCUIApplication()
-        app.launchArguments += [
-            "--demo-mid-game", "--theme-felt", "--demo-stage-triplet"
-        ]
+        app.launchArguments += ["--demo-mid-game", "--demo-stage-triplet"]
         app.launch()
-        _ = app.navigationBars["Hand 4"].waitForExistence(timeout: 5)
+        XCTAssertTrue(app.buttons["quit-game"].waitForExistence(timeout: 5))
         Thread.sleep(forTimeInterval: 0.9)
         snapshot(named: "07-staging-tray-triplet")
     }
@@ -87,7 +83,7 @@ final class ScreenshotUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments += ["--demo-hand-over", "--theme-felt"]
         app.launch()
-        _ = app.navigationBars["Hand 3"].waitForExistence(timeout: 5)
+        XCTAssertTrue(app.buttons["quit-game"].waitForExistence(timeout: 5))
         Thread.sleep(forTimeInterval: 0.9)
         snapshot(named: "08-hand-over-scoreboard")
     }
@@ -96,7 +92,7 @@ final class ScreenshotUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments += ["--demo-game-over", "--theme-felt"]
         app.launch()
-        _ = app.navigationBars["Hand 10"].waitForExistence(timeout: 5)
+        XCTAssertTrue(app.buttons["quit-game"].waitForExistence(timeout: 5))
         Thread.sleep(forTimeInterval: 0.9)
         snapshot(named: "09-game-over-final")
     }
@@ -111,4 +107,3 @@ final class ScreenshotUITests: XCTestCase {
         add(attachment)
     }
 }
-

@@ -1,60 +1,64 @@
 import SwiftUI
 
-/// Placeholder game container. Renders a text-only view of the game state so we
-/// can drive turns end-to-end before the SpriteKit scene lands in M2b.
-///
-/// Every action goes through `GameViewModel` so we'll be able to swap the
-/// SpriteKit scene in without touching the view model.
+/// Full-screen gameplay shell. Core turn interactions live in SpriteKit;
+/// SwiftUI owns system-level presentation such as quit, pass-and-play privacy,
+/// errors, and end-of-hand summaries.
 struct GameContainerView: View {
     @StateObject var vm: GameViewModel
     let theme: VisualTheme
     let onExit: () -> Void
 
-    init(vm: GameViewModel, theme: VisualTheme = .cozyWood, onExit: @escaping () -> Void) {
+    init(vm: GameViewModel, theme: VisualTheme = .gameNight, onExit: @escaping () -> Void) {
         _vm = StateObject(wrappedValue: vm)
         self.theme = theme
         self.onExit = onExit
     }
 
     var body: some View {
-        NavigationStack {
-            ZStack {
-                // SpriteKit scene fills the screen.
-                GameSceneView(vm: vm, theme: theme)
-                    .background(Color(theme.background))
-                // Overlay controls (error, scoreboard summary, toolbar) drawn
-                // above the scene. In M2d these move into the scene proper.
-                VStack {
-                    Spacer()
-                    if let err = vm.lastError {
-                        Text(err)
-                            .font(.footnote)
-                            .foregroundStyle(.white)
-                            .padding(8)
-                            .background(RoundedRectangle(cornerRadius: 8).fill(.red.opacity(0.85)))
-                            .padding(.bottom, 8)
-                    }
+        ZStack(alignment: .topLeading) {
+            GameSceneView(vm: vm, theme: theme)
+                .background(Color(theme.background))
+                .accessibilityIdentifier("game-table")
+
+            Button(action: onExit) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 15, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.9))
+                    .frame(width: 44, height: 44)
+                    .background(.ultraThinMaterial, in: Circle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Quit game")
+            .accessibilityIdentifier("quit-game")
+            .padding(.leading, 14)
+            .padding(.top, 8)
+
+            VStack {
+                Spacer()
+                if let err = vm.lastError {
+                    Text(err)
+                        .font(.system(.footnote, design: .rounded, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 9)
+                        .background(.red.opacity(0.88), in: Capsule())
+                        .padding(.bottom, 12)
+                        .frame(maxWidth: .infinity)
                 }
             }
-            .navigationTitle("Hand \(vm.state.currentRound)")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Quit") { onExit() }
-                }
+        }
+        .statusBarHidden(true)
+        .sheet(isPresented: $vm.isBetweenTurns) {
+            PassAndPlayView(nextPlayerName: vm.currentPlayerName) {
+                vm.acknowledgeTurnPassed()
             }
-            .sheet(isPresented: $vm.isBetweenTurns) {
-                PassAndPlayView(nextPlayerName: vm.currentPlayerName) {
-                    vm.acknowledgeTurnPassed()
-                }
-                .interactiveDismissDisabled(true)
-            }
-            .overlay {
-                if vm.isHandOver {
-                    handOverOverlay
-                } else if vm.isGameOver {
-                    gameOverOverlay
-                }
+            .interactiveDismissDisabled(true)
+        }
+        .overlay {
+            if vm.isHandOver {
+                handOverOverlay
+            } else if vm.isGameOver {
+                gameOverOverlay
             }
         }
     }

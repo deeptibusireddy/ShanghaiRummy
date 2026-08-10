@@ -1,17 +1,15 @@
 import SpriteKit
 import Combine
+import UIKit
 
 /// SpriteKit scene rendering the whole table.
 ///
-/// Layout (all themes):
-///   • Felt fills the screen with a warm-gold rim.
-///   • Soft radial spotlight + faint "SR" monogram behind the piles for depth.
-///   • Stock (face-down) + discard (top-3 fan) centered above midline.
-///   • One seat per player around the edges (via SeatLayout).
-///     Each seat: avatar circle with initial, name row, level + score chip.
-///     Current seat gets a pulsing gold halo.
-///   • Contract pill sits below the banner text at the top edge.
-///   • The current player's hand fans slightly along the bottom.
+/// Layout:
+///   • Full-bleed twilight table with restrained ambient color.
+///   • Turn/contract ribbon across the top and social seat pills at the edges.
+///   • Stock + discard in the center, with public melds attached to owners.
+///   • Adaptive hand fan along the bottom.
+///   • Persistent inline meld tray and one contextual action at hand level.
 ///
 /// The scene observes GameViewModel.state via a Combine subscription and
 /// rebuilds dynamic layers on every change. Static layers (felt, glow,
@@ -24,15 +22,15 @@ final class GameScene: SKScene {
 
     private let feltNode = SKShapeNode()
     private let glowNode = SKShapeNode()
-    private let emblemNode = SKLabelNode(text: "")
+    private let ambienceLayer = SKNode()
+    private let headerLayer = SKNode()
     private let shadowsLayer = SKNode()
     private let pilesLayer = SKNode()
     private let seatsLayer = SKNode()
     private let meldsLayer = SKNode()
+    private let stagingLayer = SKNode()
     private let handLayer = SKNode()
-    private let meldButtonLayer = SKNode()
-    private let overlayLayer = SKNode()
-    private let bannerLabel = SKLabelNode(text: "")
+    private let actionLayer = SKNode()
 
     // Drag-and-drop state (M2d-a).
     private var draggingCard: CardNode?
@@ -41,13 +39,16 @@ final class GameScene: SKScene {
     private var dragOriginZ: CGFloat = 0
     private var draggingCardId: UUID?
     private var discardTargetRing: SKShapeNode?
+    private var stagingBacking: SKShapeNode?
+    private var meldTargetNodes: [UUID: SKShapeNode] = [:]
+    private var lastRenderedHandOwnerId: UUID?
+    private var lastRenderedHandIds: Set<UUID> = []
+    private var isAnimatingTurnAction = false
 
-    /// Slot centers of the current hand fan captured during buildHand().
-    /// Used by touchesEnded to compute a reorder target index from the
-    /// drop x-position when the user drags a card within the hand row.
+    /// Slot centers captured during `buildHand`, used for drag reordering.
     private var handSlots: [(id: UUID, x: CGFloat, y: CGFloat)] = []
 
-    init(size: CGSize, viewModel: GameViewModel, theme: VisualTheme = .cozyWood) {
+    init(size: CGSize, viewModel: GameViewModel, theme: VisualTheme = .gameNight) {
         self.vm = viewModel
         self.theme = theme
         super.init(size: size)
@@ -59,13 +60,14 @@ final class GameScene: SKScene {
 
     override func didMove(to view: SKView) {
         buildStaticLayers()
+        addChild(headerLayer)
         addChild(shadowsLayer)
         addChild(pilesLayer)
         addChild(seatsLayer)
         addChild(meldsLayer)
+        addChild(stagingLayer)
         addChild(handLayer)
-        addChild(meldButtonLayer)
-        addChild(overlayLayer)
+        addChild(actionLayer)
         rebuildDynamicLayers()
         subscribeToViewModel()
     }
@@ -75,62 +77,55 @@ final class GameScene: SKScene {
         rebuildDynamicLayers()
     }
 
-    // MARK: - Static layers (felt, glow, emblem, banner)
+    // MARK: - Static table
 
     private func buildStaticLayers() {
         feltNode.removeFromParent()
         glowNode.removeFromParent()
-        emblemNode.removeFromParent()
-        bannerLabel.removeFromParent()
+        ambienceLayer.removeFromParent()
+        ambienceLayer.removeAllChildren()
 
-        // Felt with rounded corners + wide rim.
-        let inset: CGFloat = 12
-        let rect = CGRect(origin: CGPoint(x: inset, y: inset),
-                          size: CGSize(width: size.width - 2 * inset,
-                                       height: size.height - 2 * inset))
-        feltNode.path = CGPath(roundedRect: rect,
-                               cornerWidth: 22, cornerHeight: 22,
-                               transform: nil)
+        // Full-bleed twilight table. The older inset felt/gold-rim treatment
+        // made the scene resemble a desktop card-game skin.
+        let rect = CGRect(origin: .zero, size: size)
+        feltNode.path = CGPath(rect: rect, transform: nil)
         feltNode.fillColor = theme.feltFill
         feltNode.strokeColor = theme.feltStroke
         feltNode.lineWidth = theme.feltStrokeWidth
         feltNode.zPosition = -10
         addChild(feltNode)
 
-        // Soft radial spotlight behind piles.
+        // Layered pools of color create depth without a literal felt texture.
         let center = SeatLayout.pileCenter(sceneSize: size)
-        let glowSize: CGFloat = min(size.width, size.height) * 0.85
+        let glowSize: CGFloat = min(size.width, size.height) * 1.05
         glowNode.path = CGPath(ellipseIn: CGRect(x: -glowSize / 2, y: -glowSize / 2,
                                                  width: glowSize, height: glowSize),
                                transform: nil)
-        glowNode.fillColor = theme.feltGlow.withAlphaComponent(0.20)
+        glowNode.fillColor = theme.feltGlow.withAlphaComponent(0.14)
         glowNode.strokeColor = .clear
         glowNode.position = center
         glowNode.zPosition = -9
         glowNode.blendMode = .add
         addChild(glowNode)
 
-        // Faint center monogram behind piles.
-        emblemNode.text = "SR"
-        emblemNode.fontName = theme.titleFont
-        emblemNode.fontSize = 96
-        emblemNode.fontColor = theme.emblemColor
-        emblemNode.horizontalAlignmentMode = .center
-        emblemNode.verticalAlignmentMode = .center
-        emblemNode.position = center
-        emblemNode.zPosition = -8
-        addChild(emblemNode)
+        addAmbientGlow(at: CGPoint(x: size.width * 0.16, y: size.height * 0.12),
+                       size: min(size.width, size.height) * 0.72,
+                       color: theme.turnGlow.withAlphaComponent(0.055))
+        addAmbientGlow(at: CGPoint(x: size.width * 0.88, y: size.height * 0.82),
+                       size: min(size.width, size.height) * 0.86,
+                       color: theme.feltGlow.withAlphaComponent(0.07))
+        ambienceLayer.zPosition = -8
+        addChild(ambienceLayer)
+    }
 
-        // Combined banner: turn + contract, single line at the top edge so
-        // opponent seats and shared piles get the full vertical budget.
-        bannerLabel.fontName = theme.titleFont
-        bannerLabel.fontSize = 14
-        bannerLabel.fontColor = theme.bannerText
-        bannerLabel.horizontalAlignmentMode = .center
-        bannerLabel.verticalAlignmentMode = .top
-        bannerLabel.position = CGPoint(x: size.width / 2, y: size.height - 12)
-        bannerLabel.zPosition = 5
-        addChild(bannerLabel)
+    private func addAmbientGlow(at position: CGPoint, size diameter: CGFloat,
+                               color: UIColor) {
+        let glow = SKShapeNode(circleOfRadius: diameter / 2)
+        glow.fillColor = color
+        glow.strokeColor = .clear
+        glow.position = position
+        glow.blendMode = .add
+        ambienceLayer.addChild(glow)
     }
 
     // MARK: - Dynamic layers (rebuild on state change)
@@ -148,88 +143,185 @@ final class GameScene: SKScene {
     }
 
     private func rebuildDynamicLayers() {
-        let name = vm.currentPlayerName
-        let turnPhrase = (name == "You") ? "Your turn" : "\(name)'s turn"
-        bannerLabel.text = "\(turnPhrase)  —  Level \(vm.currentPlayer.currentLevel) of \(RulesConfig.maxLevel)  •  \(vm.currentContractDescription)"
+        buildHeader()
         shadowsLayer.removeAllChildren()
         buildPiles()
         buildSeats()
         buildMelds()
+        buildStagingTray()
         buildHand()
-        buildMeldButton()
-        buildMeldOverlay()
+        buildContextActions()
+    }
+
+    private func buildHeader() {
+        headerLayer.removeAllChildren()
+
+        let width = min(size.width - 300, 520)
+        let height: CGFloat = 48
+        let center = CGPoint(x: size.width / 2, y: size.height - 31)
+        let panel = SKShapeNode(rectOf: CGSize(width: width, height: height),
+                                cornerRadius: 24)
+        panel.fillColor = theme.contractPillBg.withAlphaComponent(0.92)
+        panel.strokeColor = theme.feltStroke
+        panel.lineWidth = 1
+        panel.position = center
+        panel.zPosition = 30
+        headerLayer.addChild(panel)
+
+        let activeDot = SKShapeNode(circleOfRadius: 4)
+        activeDot.fillColor = theme.turnGlow
+        activeDot.strokeColor = .clear
+        activeDot.position = CGPoint(x: center.x - width / 2 + 18,
+                                     y: center.y + 9)
+        activeDot.zPosition = 31
+        headerLayer.addChild(activeDot)
+        let pulse = SKAction.sequence([
+            .fadeAlpha(to: 0.45, duration: 0.65),
+            .fadeAlpha(to: 1.0, duration: 0.65),
+        ])
+        activeDot.run(.repeatForever(pulse))
+
+        let turn = SKLabelNode(text: "\(vm.currentPlayerName)'s turn")
+        turn.fontName = theme.titleFont
+        turn.fontSize = 15
+        turn.fontColor = theme.bannerText
+        turn.horizontalAlignmentMode = .left
+        turn.verticalAlignmentMode = .center
+        turn.position = CGPoint(x: activeDot.position.x + 10,
+                                y: center.y + 9)
+        turn.zPosition = 31
+        headerLayer.addChild(turn)
+
+        let phase = SKLabelNode(text: phaseInstruction)
+        phase.fontName = theme.bodyFont
+        phase.fontSize = 11
+        phase.fontColor = theme.seatSub
+        phase.horizontalAlignmentMode = .left
+        phase.verticalAlignmentMode = .center
+        phase.position = CGPoint(x: turn.position.x, y: center.y - 10)
+        phase.zPosition = 31
+        headerLayer.addChild(phase)
+
+        let contract = SKLabelNode(
+            text: "HAND \(vm.state.currentRound)  •  LV \(vm.currentPlayer.currentLevel)  •  \(vm.currentContractDescription)"
+        )
+        contract.fontName = theme.titleFont
+        contract.fontSize = 11
+        contract.fontColor = theme.contractPillText
+        contract.horizontalAlignmentMode = .right
+        contract.verticalAlignmentMode = .center
+        contract.position = CGPoint(x: center.x + width / 2 - 18,
+                                    y: center.y)
+        contract.zPosition = 31
+        headerLayer.addChild(contract)
+    }
+
+    private var phaseInstruction: String {
+        switch vm.state.phase {
+        case .awaitingDraw:
+            return "Choose the stock or discard pile"
+        case .awaitingMeldOrDiscard:
+            if vm.currentPlayer.hasGoneDownThisRound {
+                if vm.currentPlayer.laidDownThisTurn {
+                    return "Contract complete — drag a card to discard"
+                }
+                return "Lay off a card or drag one to discard"
+            }
+            return "Build your contract or drag a card to discard"
+        case .roundEnded:
+            return "Hand complete"
+        case .gameEnded:
+            return "Match complete"
+        }
     }
 
     private func buildPiles() {
         pilesLayer.removeAllChildren()
         let center = SeatLayout.pileCenter(sceneSize: size)
-        let gap: CGFloat = 14
+        let gap: CGFloat = 34
+        let pileScale: CGFloat = 0.90
+        let pileWidth = CardNode.size.width * pileScale
+        let pileHeight = CardNode.size.height * pileScale
+        let zoneSize = CGSize(width: pileWidth + 24, height: pileHeight + 34)
 
-        // Stock (face-down) with a subtle stack effect.
         if let top = vm.state.stock.last {
-            let stockPos = CGPoint(x: center.x - CardNode.size.width / 2 - gap / 2,
+            let stockPos = CGPoint(x: center.x - pileWidth / 2 - gap / 2,
                                    y: center.y)
-            // Under-card for depth.
+            pilesLayer.addChild(pileZone(at: stockPos, size: zoneSize,
+                                         name: "stock"))
             if vm.state.stock.count > 1 {
                 let under = CardNode(card: top, faceUp: false, theme: theme)
-                under.position = CGPoint(x: stockPos.x + 2, y: stockPos.y - 2)
+                under.position = CGPoint(x: stockPos.x + 3, y: stockPos.y - 3)
+                under.setScale(pileScale)
                 under.zPosition = 3
                 pilesLayer.addChild(under)
             }
             let stock = CardNode(card: top, faceUp: false, theme: theme)
-            attachShadow(to: stock, at: stockPos)
+            stock.setScale(pileScale)
+            attachShadow(to: stock, at: stockPos, scale: pileScale)
             stock.position = stockPos
             stock.zPosition = 4
             stock.name = "stock"
             pilesLayer.addChild(stock)
-            // Label to the LEFT of the stock so the vertical strip below the
-            // piles stays free for the staging tray.
-            addPileLabel(at: CGPoint(x: stockPos.x - CardNode.size.width / 2 - 8,
-                                     y: stockPos.y),
-                         text: "Stock\n\(vm.state.stock.count)",
-                         align: .right)
+            addPileCaption(at: CGPoint(
+                x: stockPos.x,
+                y: stockPos.y - pileHeight / 2 - 12
+            ), title: "STOCK", count: vm.state.stock.count)
         }
 
-        // Discard: show top 3 cards fanned so history is visible.
         if !vm.state.discard.isEmpty {
-            let basePos = CGPoint(x: center.x + CardNode.size.width / 2 + gap / 2,
+            let basePos = CGPoint(x: center.x + pileWidth / 2 + gap / 2,
                                   y: center.y)
+            pilesLayer.addChild(pileZone(at: basePos, size: zoneSize,
+                                         name: "discard"))
             let recent = Array(vm.state.discard.suffix(3))
             for (i, card) in recent.enumerated() {
                 let isTop = (i == recent.count - 1)
-                let stackIdx = recent.count - 1 - i    // 2 (bottom) ... 0 (top)
+                let stackIdx = recent.count - 1 - i
                 let offset = CGFloat(stackIdx) * 4
                 let rotation = CGFloat(stackIdx) * -0.04
                 let pos = CGPoint(x: basePos.x - offset, y: basePos.y + offset)
                 let node = CardNode(card: card, faceUp: true, theme: theme)
+                node.setScale(pileScale)
                 node.position = pos
                 node.zRotation = rotation
                 node.zPosition = 4 + CGFloat(i)
                 if isTop {
-                    attachShadow(to: node, at: pos, rotation: rotation)
+                    attachShadow(to: node, at: pos, rotation: rotation,
+                                 scale: pileScale)
                     node.name = "discard"
                 }
                 pilesLayer.addChild(node)
             }
-            addPileLabel(at: CGPoint(x: basePos.x + CardNode.size.width / 2 + 8,
-                                     y: basePos.y),
-                         text: "Discard\n\(vm.state.discard.count)",
-                         align: .left)
+            addPileCaption(at: CGPoint(
+                x: basePos.x,
+                y: basePos.y - pileHeight / 2 - 12
+            ), title: "DISCARD", count: vm.state.discard.count)
         }
     }
 
-    private func addPileLabel(at position: CGPoint,
-                              text: String,
-                              align: SKLabelHorizontalAlignmentMode = .center) {
-        let l = SKLabelNode(text: text)
-        l.fontName = theme.bodyFont
-        l.fontSize = 11
-        l.fontColor = theme.pileLabel
-        l.numberOfLines = 2
-        l.horizontalAlignmentMode = align
-        l.verticalAlignmentMode = .center
-        l.position = position
-        pilesLayer.addChild(l)
+    private func pileZone(at position: CGPoint, size zoneSize: CGSize,
+                          name: String) -> SKShapeNode {
+        let zone = SKShapeNode(rectOf: zoneSize, cornerRadius: 16)
+        zone.fillColor = theme.seatBgOther.withAlphaComponent(0.42)
+        zone.strokeColor = theme.feltStroke.withAlphaComponent(0.75)
+        zone.lineWidth = 1
+        zone.position = CGPoint(x: position.x, y: position.y - 5)
+        zone.zPosition = 1
+        zone.name = name
+        return zone
+    }
+
+    private func addPileCaption(at position: CGPoint, title: String, count: Int) {
+        let label = SKLabelNode(text: "\(title)  \(count)")
+        label.fontName = theme.titleFont
+        label.fontSize = 9
+        label.fontColor = theme.pileLabel
+        label.horizontalAlignmentMode = .center
+        label.verticalAlignmentMode = .center
+        label.position = position
+        label.zPosition = 8
+        pilesLayer.addChild(label)
     }
 
     private func buildSeats() {
@@ -241,98 +333,70 @@ final class GameScene: SKScene {
         )
         for (i, player) in vm.state.players.enumerated() {
             let seat = seats[i]
-            // The bottom seat is "You" — rendered instead as a compact HUD
-            // in the bottom-left corner so the middle bottom stays clear for
-            // hand + staging tray.
             if seat.edge == .bottom {
-                buildYouHUD(player: player, isCurrent: player.id == vm.currentPlayer.id)
+                buildCurrentPlayerHUD(player: player, colorIndex: i)
                 continue
             }
-            let isCurrent = player.id == vm.currentPlayer.id
-            let isYou = i == vm.state.currentTurnIndex
 
-            let bgWidth: CGFloat = 158
-            let bgHeight: CGFloat = 52
-
-            // Turn glow halo behind current player's seat.
-            if isCurrent {
-                let halo = SKShapeNode(
-                    rectOf: CGSize(width: bgWidth + 14, height: bgHeight + 14),
-                    cornerRadius: 14)
-                halo.fillColor = theme.turnGlow.withAlphaComponent(0.40)
-                halo.strokeColor = theme.turnGlow
-                halo.lineWidth = 2
-                halo.glowWidth = 8
-                halo.position = seat.anchor
-                halo.zPosition = 1
-                seatsLayer.addChild(halo)
-            }
-
+            let bgWidth: CGFloat = 138
+            let bgHeight: CGFloat = 42
             let bg = SKShapeNode(rectOf: CGSize(width: bgWidth, height: bgHeight),
-                                 cornerRadius: 10)
-            bg.fillColor = isCurrent ? theme.seatBgCurrent : theme.seatBgOther
-            bg.strokeColor = theme.cardStroke
+                                 cornerRadius: 21)
+            bg.fillColor = theme.seatBgOther
+            bg.strokeColor = theme.feltStroke.withAlphaComponent(0.7)
+            bg.lineWidth = 1
             bg.position = seat.anchor
             bg.zPosition = 2
             seatsLayer.addChild(bg)
 
-            // Avatar circle on the left side of the seat.
             let avatarColor = theme.avatarColors[i % theme.avatarColors.count]
-            let avatarRadius: CGFloat = 16
-            let avatarX = seat.anchor.x - bgWidth / 2 + avatarRadius + 6
+            let avatarRadius: CGFloat = 14
+            let avatarX = seat.anchor.x - bgWidth / 2 + avatarRadius + 7
             let avatar = SKShapeNode(circleOfRadius: avatarRadius)
             avatar.fillColor = avatarColor
-            avatar.strokeColor = UIColor(white: 1.0, alpha: 0.9)
-            avatar.lineWidth = 1.5
+            avatar.strokeColor = UIColor.white.withAlphaComponent(0.75)
+            avatar.lineWidth = 1
             avatar.position = CGPoint(x: avatarX, y: seat.anchor.y)
             avatar.zPosition = 3
             seatsLayer.addChild(avatar)
             let initial = SKLabelNode(text: String(player.name.prefix(1)).uppercased())
             initial.fontName = theme.titleFont
-            initial.fontSize = 16
-            initial.fontColor = UIColor.white
+            initial.fontSize = 14
+            initial.fontColor = .white
             initial.horizontalAlignmentMode = .center
             initial.verticalAlignmentMode = .center
             initial.position = CGPoint(x: avatarX, y: seat.anchor.y)
             initial.zPosition = 4
             seatsLayer.addChild(initial)
 
-            // Name text right of the avatar.
-            let nameX = avatarX + avatarRadius + 8
-            let title = SKLabelNode(text: (isYou ? "▸ " : "") + player.name)
+            let nameX = avatarX + avatarRadius + 7
+            let title = SKLabelNode(text: player.name)
             title.fontName = theme.titleFont
-            title.fontSize = 14
+            title.fontSize = 12
             title.fontColor = theme.seatTitle
             title.horizontalAlignmentMode = .left
             title.verticalAlignmentMode = .center
-            title.position = CGPoint(x: nameX, y: seat.anchor.y + 8)
+            title.position = CGPoint(x: nameX, y: seat.anchor.y + 7)
             title.zPosition = 3
             seatsLayer.addChild(title)
 
-            // Level + score as a chip.
-            let chipText = "Lv \(player.currentLevel)  •  \(player.totalScore) pts"
-            let chipLabel = SKLabelNode(text: chipText)
-            chipLabel.fontName = theme.bodyFont
-            chipLabel.fontSize = 11
-            chipLabel.fontColor = theme.scoreChipText
-            chipLabel.horizontalAlignmentMode = .center
-            chipLabel.verticalAlignmentMode = .center
-            let chipWidth = CGFloat(chipText.count) * 5.6 + 12
-            let chip = SKShapeNode(rectOf: CGSize(width: chipWidth, height: 16),
-                                   cornerRadius: 8)
-            chip.fillColor = theme.scoreChipBg
-            chip.strokeColor = .clear
-            chip.position = CGPoint(x: nameX + chipWidth / 2, y: seat.anchor.y - 9)
-            chip.zPosition = 3
-            seatsLayer.addChild(chip)
-            chipLabel.position = chip.position
-            chipLabel.zPosition = 4
-            seatsLayer.addChild(chipLabel)
+            let detail = SKLabelNode(
+                text: "\(player.hand.count) cards  •  Lv \(player.currentLevel)"
+            )
+            detail.fontName = theme.bodyFont
+            detail.fontSize = 9
+            detail.fontColor = theme.seatSub
+            detail.horizontalAlignmentMode = .left
+            detail.verticalAlignmentMode = .center
+            detail.position = CGPoint(x: nameX, y: seat.anchor.y - 8)
+            detail.zPosition = 3
+            seatsLayer.addChild(detail)
         }
     }
 
     private func buildMelds() {
         meldsLayer.removeAllChildren()
+        meldTargetNodes.removeAll()
         let seats = SeatLayout.seats(
             playerCount: vm.state.players.count,
             youIndex: vm.state.currentTurnIndex,
@@ -346,11 +410,6 @@ final class GameScene: SKScene {
             let melds = meldsByOwner[player.id] ?? []
             guard !melds.isEmpty else { continue }
             let seat = seats[i]
-            // Bottom seat (current on-device player) — render own melds in a
-            // dedicated strip above the hand fan so the player can see what
-            // they've laid down and target layoff taps. The strip sits between
-            // the You HUD avatar (left) and the Build Meld chip (right), just
-            // above the top of the fan.
             if seat.edge == .bottom {
                 drawOwnMeldsAboveHand(melds)
                 continue
@@ -359,54 +418,29 @@ final class GameScene: SKScene {
         }
     }
 
-    /// Renders the current on-device player's own melds in a horizontal
-    /// strip above the hand fan. Cards use the same 40% scale as opponent
-    /// melds for visual consistency, and lay out left-to-right centered on
-    /// the felt so the strip stays clear of the You HUD and Build Meld chip.
     private func drawOwnMeldsAboveHand(_ melds: [Meld]) {
-        let scale: CGFloat = 0.40
+        let scale: CGFloat = 0.42
         let cardW = CardNode.size.width * scale
         let cardH = CardNode.size.height * scale
         let overlap: CGFloat = cardW * 0.42
-        let meldGap: CGFloat = 10
+        let meldGap: CGFloat = 14
 
         let widths = melds.map { CGFloat($0.cards.count - 1) * overlap + cardW }
         let totalWidth = widths.reduce(0, +) + CGFloat(melds.count - 1) * meldGap
 
-        // Vertical: above the hand fan, aligned with the You HUD row.
-        let rowY = handRowY + CardNode.size.height / 2 + 18 + cardH / 2 - 2
-        // Horizontal: center on the felt, clamped so it stays clear of the
-        // Build Meld chip on the right and the You HUD avatar on the left.
-        let leftMargin: CGFloat = 30 + 28 + 6 + 90   // avatar + label estimate
-        let rightMargin: CGFloat = 168 + 20 + 10     // chip width + gap
-        let minCenter = leftMargin + totalWidth / 2
-        let maxCenter = size.width - rightMargin - totalWidth / 2
-        // If the strip won't fit, fall back to just centered on the felt.
-        let centerX: CGFloat = {
-            if minCenter <= maxCenter {
-                return min(max(size.width / 2, minCenter), maxCenter)
-            }
-            return size.width / 2
-        }()
+        let rowY = tableauLaneY
+        let minCenter = stagingTrayRect.minX + totalWidth / 2
+        let maxCenter = stagingTrayRect.maxX - totalWidth / 2
+        let centerX = minCenter <= maxCenter
+            ? min(max(size.width / 2, minCenter), maxCenter)
+            : size.width / 2
         var x = centerX - totalWidth / 2
 
-        // Faint background chip so the strip reads as its own row.
-        let padX: CGFloat = 8
-        let padY: CGFloat = 4
-        let backing = SKShapeNode(
-            rect: CGRect(x: x - padX, y: rowY - cardH / 2 - padY,
-                         width: totalWidth + padX * 2,
-                         height: cardH + padY * 2),
-            cornerRadius: 6
-        )
-        backing.fillColor = theme.contractPillBg.withAlphaComponent(0.35)
-        backing.strokeColor = theme.turnGlow.withAlphaComponent(0.25)
-        backing.lineWidth = 1
-        backing.zPosition = 2
-        meldsLayer.addChild(backing)
-
-        for meld in melds {
-            let count = meld.cards.count
+        for (meldIndex, meld) in melds.enumerated() {
+            let width = widths[meldIndex]
+            addMeldTarget(for: meld,
+                          rect: CGRect(x: x - 6, y: rowY - cardH / 2 - 5,
+                                       width: width + 12, height: cardH + 10))
             for (idx, card) in meld.cards.enumerated() {
                 let node = CardNode(card: card, faceUp: true, theme: theme)
                 node.setScale(scale)
@@ -414,39 +448,54 @@ final class GameScene: SKScene {
                 if idx == 0 { attachShadow(to: node, at: pos, scale: scale) }
                 node.position = pos
                 node.zPosition = 3 + CGFloat(idx) * 0.01
+                node.name = "meld:\(meld.id.uuidString)"
                 meldsLayer.addChild(node)
             }
-            x += CGFloat(count - 1) * overlap + cardW + meldGap
+            x += width + meldGap
         }
     }
 
     private func drawMelds(_ melds: [Meld], near seat: SeatLayout.Seat) {
-        let scale: CGFloat = 0.40
+        let useCompactMelds = (size.width < 720
+            && (seat.edge == .left || seat.edge == .right))
+            || (seat.edge == .top && vm.state.players.count >= 5)
+        let scale: CGFloat = useCompactMelds ? 0.26 : 0.38
         let cardW = CardNode.size.width * scale
         let cardH = CardNode.size.height * scale
         let overlap: CGFloat = cardW * 0.42
-        let meldGap: CGFloat = 10
-        // Height of the seat card visual (must match buildSeats).
-        let bgHalfHeight: CGFloat = 52 / 2
+        let meldGap: CGFloat = useCompactMelds ? 6 : 10
+        let bgHalfHeight: CGFloat = 42 / 2
+        let bgHalfWidth: CGFloat = 138 / 2
 
         let widths = melds.map { CGFloat($0.cards.count - 1) * overlap + cardW }
         let totalWidth = widths.reduce(0, +) + CGFloat(melds.count - 1) * meldGap
 
-        // Melds always sit BELOW the seat card, in the corridor between the
-        // seat card and the shared piles. This keeps each player's melds
-        // clearly attached to their own seat and prevents the top-seat melds
-        // from bleeding into the stock/discard fan.
         let padding: CGFloat = 6
-        let rowY = seat.anchor.y - bgHalfHeight - padding - cardH / 2
-        // Clamp x-range to the felt so wide meld rows don't clip the rim.
-        let margin: CGFloat = 30
-        let minCenter = margin + totalWidth / 2
-        let maxCenter = size.width - margin - totalWidth / 2
-        let centerX = min(max(seat.anchor.x, minCenter), maxCenter)
+        let rowY: CGFloat
+        let centerX: CGFloat
+        switch seat.edge {
+        case .left:
+            rowY = seat.anchor.y
+            centerX = seat.anchor.x + bgHalfWidth + padding + totalWidth / 2
+        case .right:
+            rowY = seat.anchor.y
+            centerX = seat.anchor.x - bgHalfWidth - padding - totalWidth / 2
+        case .top where vm.state.players.count < 5:
+            rowY = seat.anchor.y
+            centerX = seat.anchor.x - bgHalfWidth - padding - totalWidth / 2
+        default:
+            rowY = seat.anchor.y - bgHalfHeight - padding - cardH / 2
+            let margin: CGFloat = 24
+            centerX = min(max(seat.anchor.x, margin + totalWidth / 2),
+                          size.width - margin - totalWidth / 2)
+        }
         var x = centerX - totalWidth / 2
 
-        for meld in melds {
-            let count = meld.cards.count
+        for (meldIndex, meld) in melds.enumerated() {
+            let width = widths[meldIndex]
+            addMeldTarget(for: meld,
+                          rect: CGRect(x: x - 5, y: rowY - cardH / 2 - 4,
+                                       width: width + 10, height: cardH + 8))
             for (idx, card) in meld.cards.enumerated() {
                 let node = CardNode(card: card, faceUp: true, theme: theme)
                 node.setScale(scale)
@@ -454,398 +503,433 @@ final class GameScene: SKScene {
                 if idx == 0 { attachShadow(to: node, at: pos, scale: scale) }
                 node.position = pos
                 node.zPosition = 3 + CGFloat(idx) * 0.01
+                node.name = "meld:\(meld.id.uuidString)"
                 meldsLayer.addChild(node)
             }
-            x += CGFloat(count - 1) * overlap + cardW + meldGap
+            x += width + meldGap
         }
     }
 
-    /// Compact bottom-left HUD standing in for the "You" seat card. Shows
-    /// avatar + name + level/score chip + a small horizontal strip of your
-    /// own melds (scaled ~35%). Leaves the whole bottom-center clear for the
-    /// hand fan and staging tray.
-    private func buildYouHUD(player: Player, isCurrent: Bool) {
-        // Position above the hand fan (not beside it) so the HUD label never
-        // clips or hides behind the leftmost hand cards. Left-aligned to the
-        // felt edge, above the fan and below the left-seat meld strip.
-        let avatarRadius: CGFloat = 14
-        let hudX: CGFloat = 30 + avatarRadius
-        let hudY: CGFloat = handRowY + CardNode.size.height / 2 + 18
+    private func addMeldTarget(for meld: Meld, rect: CGRect) {
+        let acceptsLayoff = vm.canLayOffAnyHandCard(to: meld)
+        let target = SKShapeNode(rect: rect, cornerRadius: 8)
+        target.fillColor = theme.contractPillBg.withAlphaComponent(0.28)
+        target.strokeColor = acceptsLayoff
+            ? UIColor(red: 0.38, green: 0.86, blue: 0.66, alpha: 0.48)
+            : theme.feltStroke.withAlphaComponent(0.45)
+        target.lineWidth = acceptsLayoff ? 1.5 : 1
+        target.zPosition = 2
+        target.name = "meld:\(meld.id.uuidString)"
+        meldsLayer.addChild(target)
+        meldTargetNodes[meld.id] = target
+    }
 
-        if isCurrent {
-            let halo = SKShapeNode(circleOfRadius: avatarRadius + 5)
-            halo.fillColor = theme.turnGlow.withAlphaComponent(0.35)
-            halo.strokeColor = theme.turnGlow
-            halo.lineWidth = 2
-            halo.glowWidth = 5
-            halo.position = CGPoint(x: hudX, y: hudY)
-            halo.zPosition = 1
-            seatsLayer.addChild(halo)
-        }
+    private func buildCurrentPlayerHUD(player: Player, colorIndex: Int) {
+        let panelSize = CGSize(width: 174, height: 46)
+        let center = CGPoint(x: horizontalEdgeInset + panelSize.width / 2,
+                             y: stagingTrayY)
+        let panel = SKShapeNode(rectOf: panelSize, cornerRadius: 23)
+        panel.fillColor = theme.seatBgCurrent
+        panel.strokeColor = theme.turnGlow.withAlphaComponent(0.85)
+        panel.lineWidth = 1.5
+        panel.position = center
+        panel.zPosition = 2
+        seatsLayer.addChild(panel)
 
-        let avatarColor = theme.avatarColors[0 % theme.avatarColors.count]
+        let ringPulse = SKAction.sequence([
+            .fadeAlpha(to: 0.5, duration: 0.7),
+            .fadeAlpha(to: 1.0, duration: 0.7),
+        ])
+        panel.run(.repeatForever(ringPulse))
+
+        let avatarRadius: CGFloat = 15
+        let avatarPosition = CGPoint(x: center.x - panelSize.width / 2 + 24,
+                                     y: center.y)
+        let avatarColor = theme.avatarColors[colorIndex % theme.avatarColors.count]
         let avatar = SKShapeNode(circleOfRadius: avatarRadius)
         avatar.fillColor = avatarColor
-        avatar.strokeColor = UIColor(white: 1.0, alpha: 0.9)
-        avatar.lineWidth = 1.5
-        avatar.position = CGPoint(x: hudX, y: hudY)
+        avatar.strokeColor = UIColor.white.withAlphaComponent(0.8)
+        avatar.lineWidth = 1
+        avatar.position = avatarPosition
         avatar.zPosition = 3
         seatsLayer.addChild(avatar)
         let initial = SKLabelNode(text: String(player.name.prefix(1)).uppercased())
         initial.fontName = theme.titleFont
-        initial.fontSize = 14
+        initial.fontSize = 15
         initial.fontColor = .white
         initial.horizontalAlignmentMode = .center
         initial.verticalAlignmentMode = .center
-        initial.position = CGPoint(x: hudX, y: hudY)
+        initial.position = avatarPosition
         initial.zPosition = 4
         seatsLayer.addChild(initial)
 
+        let textX = avatarPosition.x + avatarRadius + 8
+        let name = SKLabelNode(text: player.name)
+        name.fontName = theme.titleFont
+        name.fontSize = 12
+        name.fontColor = theme.seatTitle
+        name.horizontalAlignmentMode = .left
+        name.verticalAlignmentMode = .center
+        name.position = CGPoint(x: textX, y: center.y + 8)
+        name.zPosition = 3
+        seatsLayer.addChild(name)
+
         let ownMeldCount = vm.state.melds.filter { $0.ownerId == player.id }.count
-        let meldsFragment = ownMeldCount == 0 ? "" : "  •  \(ownMeldCount) meld\(ownMeldCount == 1 ? "" : "s") down"
-        let text = "\(player.name)  Lv \(player.currentLevel)  •  \(player.totalScore) pts\(meldsFragment)"
-        let label = SKLabelNode(text: text)
-        label.fontName = theme.titleFont
-        label.fontSize = 11
-        label.fontColor = theme.seatTitle
-        label.horizontalAlignmentMode = .left
-        label.verticalAlignmentMode = .center
-        label.position = CGPoint(x: hudX + avatarRadius + 6, y: hudY)
-        label.zPosition = 3
-        seatsLayer.addChild(label)
+        let status = ownMeldCount == 0
+            ? "Lv \(player.currentLevel)  •  \(player.totalScore) pts"
+            : "\(ownMeldCount) down  •  \(player.totalScore) pts"
+        let detail = SKLabelNode(text: status)
+        detail.fontName = theme.bodyFont
+        detail.fontSize = 9
+        detail.fontColor = theme.seatSub
+        detail.horizontalAlignmentMode = .left
+        detail.verticalAlignmentMode = .center
+        detail.position = CGPoint(x: textX, y: center.y - 9)
+        detail.zPosition = 3
+        seatsLayer.addChild(detail)
     }
 
     private func buildHand() {
         handLayer.removeAllChildren()
         handSlots.removeAll()
-        // On the main table, always show the full hand — staging is a modal
-        // concept surfaced through the Build Meld button. Ordered via the
-        // VM so the user can reorganize by drag-within-hand-row (M2f).
-        let hand = vm.orderedHand
+        let hand = vm.unstagedCards
+        let ownerId = vm.currentPlayer.id
+        let currentIds = Set(vm.currentPlayer.hand.map(\.id))
+        let newlyDrawnIds = lastRenderedHandOwnerId == ownerId
+            ? currentIds.subtracting(lastRenderedHandIds)
+            : []
+        lastRenderedHandOwnerId = ownerId
+        lastRenderedHandIds = currentIds
         guard !hand.isEmpty else { return }
 
         let cardWidth = CardNode.size.width
-        let spacing: CGFloat = 8
-        let totalWidth = CGFloat(hand.count) * cardWidth + CGFloat(hand.count - 1) * spacing
+        let availableWidth = size.width - horizontalEdgeInset * 2 - 8
+        let step: CGFloat
+        if hand.count == 1 {
+            step = 0
+        } else {
+            step = min(cardWidth + 8,
+                       max(27, (availableWidth - cardWidth) / CGFloat(hand.count - 1)))
+        }
+        let totalWidth = cardWidth + CGFloat(hand.count - 1) * step
         let startX = (size.width - totalWidth) / 2 + cardWidth / 2
         let baseY: CGFloat = handRowY
-        // Slight arc: middle cards raised, edges lowered. Fan rotation ±3°.
-        let maxLift: CGFloat = 6
-        let maxAngle: CGFloat = 0.05  // radians (~2.9°)
+        let maxLift: CGFloat = 8
+        let maxAngle: CGFloat = 0.035
 
         for (i, card) in hand.enumerated() {
             let node = CardNode(card: card, faceUp: true, theme: theme)
             node.name = "card:\(card.id.uuidString)"
             let centeredIdx = CGFloat(i) - CGFloat(hand.count - 1) / 2
-            let norm = centeredIdx / max(1, CGFloat(hand.count - 1) / 2) // -1...1
-            let lift = maxLift * (1 - norm * norm) // parabolic
-            let x = startX + CGFloat(i) * (cardWidth + spacing)
+            let norm = centeredIdx / max(1, CGFloat(hand.count - 1) / 2)
+            let lift = maxLift * (1 - norm * norm)
+            let x = startX + CGFloat(i) * step
             let y = baseY + lift
             let angle = -norm * maxAngle
             let pos = CGPoint(x: x, y: y)
-            attachShadow(to: node, at: pos, rotation: angle)
-            node.position = pos
-            node.zRotation = angle
             node.zPosition = 4 + CGFloat(i) * 0.01
-            handLayer.addChild(node)
+            if newlyDrawnIds.contains(card.id) {
+                node.position = SeatLayout.pileCenter(sceneSize: size)
+                node.zRotation = 0
+                node.setScale(0.78)
+                node.alpha = 0.25
+                handLayer.addChild(node)
+
+                let move = SKAction.move(to: pos, duration: 0.24)
+                move.timingMode = .easeOut
+                let settle = SKAction.group([
+                    move,
+                    .rotate(toAngle: angle, duration: 0.24,
+                            shortestUnitArc: true),
+                    .scale(to: 1.0, duration: 0.24),
+                    .fadeAlpha(to: 1.0, duration: 0.16),
+                ])
+                node.run(settle) { [weak self, weak node] in
+                    guard let self, let node else { return }
+                    self.attachShadow(to: node, at: pos, rotation: angle)
+                }
+            } else {
+                attachShadow(to: node, at: pos, rotation: angle)
+                node.position = pos
+                node.zRotation = angle
+                handLayer.addChild(node)
+            }
             handSlots.append((id: card.id, x: x, y: y))
         }
     }
 
     // MARK: - Layout constants
 
-    /// Y coordinate for the (unstaged) hand fan. Sits near the bottom edge.
-    private var handRowY: CGFloat { max(45, size.height * 0.11) }
+    private var handRowY: CGFloat {
+        max(CardNode.size.height / 2 + 18, size.height * 0.15)
+    }
 
-    // MARK: - Build Meld button (opens modal overlay, M2d-b)
+    private var horizontalEdgeInset: CGFloat {
+        size.width >= 780 ? 54 : 24
+    }
 
-    /// A prominent chip in the bottom-right that toggles the meld staging
-    /// overlay. Visible whenever the current player is a human (i.e. not a
-    /// CPU bot) — hot-seat, GameKit, and vs-CPU practice all share the
-    /// same on-device player at the bottom seat. Pulses when a valid meld
-    /// is staged or the contract is satisfied so the "declare it" moment
-    /// is unmissable.
-    private func buildMeldButton() {
-        meldButtonLayer.removeAllChildren()
-        // Only hide the button on CPU turns. In hot-seat and multiplayer,
-        // every human seat needs to reach the staging overlay to build,
-        // declare, and lay off melds — gating on player name (e.g. == "You")
-        // silently broke hot-seat matches whose players are named "Player 1".
+    private var stagingTrayY: CGFloat {
+        handRowY + CardNode.size.height / 2 + 36
+    }
+
+    private var stagingTrayRect: CGRect {
+        let left = horizontalEdgeInset + 186
+        let right = size.width - horizontalEdgeInset - 176
+        let width = max(210, right - left)
+        return CGRect(x: left, y: stagingTrayY - 28,
+                      width: width, height: 56)
+    }
+
+    private var tableauLaneY: CGFloat { stagingTrayY }
+
+    // MARK: - Inline staging and contextual actions
+
+    private func buildStagingTray() {
+        stagingLayer.removeAllChildren()
+        stagingBacking = nil
+        guard !vm.isCurrentPlayerCPU,
+              vm.state.phase == .awaitingMeldOrDiscard,
+              !vm.currentPlayer.hasGoneDownThisRound else { return }
+
+        let rect = stagingTrayRect
+        let backing = SKShapeNode(rect: rect, cornerRadius: 18)
+        backing.fillColor = theme.contractPillBg.withAlphaComponent(0.82)
+        backing.strokeColor = stagingStatusColor.withAlphaComponent(0.8)
+        backing.lineWidth = 1.5
+        backing.zPosition = 12
+        backing.name = "staging-zone"
+        stagingLayer.addChild(backing)
+        stagingBacking = backing
+
+        let status = SKLabelNode(text: stagingStatusText)
+        status.fontName = theme.titleFont
+        status.fontSize = 10
+        status.fontColor = stagingStatusColor
+        status.horizontalAlignmentMode = .left
+        status.verticalAlignmentMode = .center
+        status.position = CGPoint(x: rect.minX + 14, y: rect.maxY - 13)
+        status.zPosition = 14
+        stagingLayer.addChild(status)
+
+        if vm.stagedCards.isEmpty {
+            let hint = SKLabelNode(text: "Tap a card or drag it here")
+            hint.fontName = theme.bodyFont
+            hint.fontSize = 12
+            hint.fontColor = theme.seatSub
+            hint.horizontalAlignmentMode = .center
+            hint.verticalAlignmentMode = .center
+            hint.position = CGPoint(x: rect.midX, y: rect.midY - 8)
+            hint.zPosition = 14
+            stagingLayer.addChild(hint)
+        } else {
+            addStagedCards(in: rect)
+        }
+
+        addDraftChips(in: rect)
+    }
+
+    private func addStagedCards(in rect: CGRect) {
+        let cards = vm.stagedCards
+        let scale: CGFloat = 0.44
+        let cardW = CardNode.size.width * scale
+        let available = rect.width - 28
+        let step: CGFloat
+        if cards.count <= 1 {
+            step = 0
+        } else {
+            step = min(cardW + 5,
+                       max(23, (available - cardW) / CGFloat(cards.count - 1)))
+        }
+        let total = cardW + CGFloat(max(0, cards.count - 1)) * step
+        let startX = rect.midX - total / 2 + cardW / 2
+        for (index, card) in cards.enumerated() {
+            let node = CardNode(card: card, faceUp: true, theme: theme)
+            node.setScale(scale)
+            node.position = CGPoint(x: startX + CGFloat(index) * step,
+                                    y: rect.midY - 8)
+            node.zPosition = 15 + CGFloat(index) * 0.01
+            node.name = "staged-card:\(card.id.uuidString)"
+            stagingLayer.addChild(node)
+        }
+    }
+
+    private func addDraftChips(in rect: CGRect) {
+        guard !vm.contractDraft.isEmpty else { return }
+        let gap: CGFloat = 8
+        let widths = vm.contractDraft.map { draft in
+            let names = draft.map { CardNode.shortName($0) }
+            return min(CGFloat(names.joined(separator: " ").count) * 5.4 + 24,
+                150)
+        }
+        let total = widths.reduce(0, +) + CGFloat(widths.count - 1) * gap
+        var x = max(rect.midX, rect.maxX - total - 10)
+        for (index, draft) in vm.contractDraft.enumerated() {
+            let width = widths[index]
+            let center = CGPoint(x: x + width / 2, y: rect.maxY - 11)
+            let chip = SKShapeNode(rectOf: CGSize(width: width, height: 22),
+                                   cornerRadius: 11)
+            chip.fillColor = UIColor(red: 0.12, green: 0.36, blue: 0.28, alpha: 0.96)
+            chip.strokeColor = UIColor(red: 0.38, green: 0.86, blue: 0.66, alpha: 0.9)
+            chip.lineWidth = 1
+            chip.position = center
+            chip.zPosition = 16
+            chip.name = "draft-meld:\(index)"
+            stagingLayer.addChild(chip)
+
+            let cards = draft.map { CardNode.shortName($0) }.joined(separator: " ")
+            let label = SKLabelNode(text: "✓ \(cards)")
+            label.fontName = theme.titleFont
+            label.fontSize = 9
+            label.fontColor = UIColor(red: 0.72, green: 0.96, blue: 0.82, alpha: 1)
+            label.horizontalAlignmentMode = .center
+            label.verticalAlignmentMode = .center
+            label.position = center
+            label.zPosition = 17
+            label.name = "draft-meld:\(index)"
+            stagingLayer.addChild(label)
+            x += width + gap
+        }
+    }
+
+    private func buildContextActions() {
+        actionLayer.removeAllChildren()
         guard !vm.isCurrentPlayerCPU else { return }
 
-        let chipW: CGFloat = 168
-        let chipH: CGFloat = 44
-        let chipX: CGFloat = size.width - chipW / 2 - 20
-        // Sit above the hand fan so it's clearly separated from the cards.
-        let chipY: CGFloat = handRowY + CardNode.size.height / 2 + 14
-        let chip = SKShapeNode(rectOf: CGSize(width: chipW, height: chipH),
-                               cornerRadius: 22)
-        chip.fillColor = theme.contractPillBg
-        chip.strokeColor = theme.turnGlow
-        chip.lineWidth = 2.5
-        chip.glowWidth = 2
-        chip.position = CGPoint(x: chipX, y: chipY)
-        chip.zPosition = 20
-        chip.name = "build-meld-button"
-        meldButtonLayer.addChild(chip)
+        let action = contextAction
+        addActionButton(title: action.title, name: action.name,
+                        enabled: action.enabled, emphasized: action.emphasized)
 
-        let count = vm.stagedCardIds.count
-        let hasGoneDown = vm.currentPlayer.hasGoneDownThisRound
-        let label = SKLabelNode(text: buildMeldButtonText(count: count,
-                                                          hasGoneDown: hasGoneDown))
-        label.fontName = theme.titleFont
-        label.fontSize = 15
-        label.fontColor = theme.contractPillText
-        label.horizontalAlignmentMode = .center
-        label.verticalAlignmentMode = .center
-        label.position = chip.position
-        label.zPosition = 21
-        label.name = "build-meld-button"
-        meldButtonLayer.addChild(label)
-
-        // Pulse when there's something meaningful the user could do: a
-        // valid staged meld to save, or an already-satisfied contract they
-        // could confirm. Draws the eye to the button without being noisy.
-        let shouldPulse: Bool = {
-            if case .success = vm.stagedValidation { return true }
-            if vm.canConfirmGoDown { return true }
-            return false
-        }()
-        if shouldPulse {
-            let pulse = SKAction.sequence([
-                SKAction.scale(to: 1.08, duration: 0.55),
-                SKAction.scale(to: 1.0, duration: 0.55)
-            ])
-            chip.run(SKAction.repeatForever(pulse))
+        if !vm.stagedCardIds.isEmpty {
+            addSmallControl(title: "CLEAR", name: "clear-staging",
+                            at: CGPoint(x: size.width - horizontalEdgeInset - 82,
+                                        y: stagingTrayY + 38))
         }
+
+        addSmallControl(title: "RANK", name: "sort-rank",
+                        at: CGPoint(x: size.width - horizontalEdgeInset - 76,
+                                    y: size.height - 31))
+        addSmallControl(title: "SUIT", name: "sort-suit",
+                        at: CGPoint(x: size.width - horizontalEdgeInset - 24,
+                                    y: size.height - 31))
     }
 
-    /// Text shown on the Build Meld chip. Communicates state (staging
-    /// count, or "Declare" once ready, or "Lay Off" after go-down).
-    private func buildMeldButtonText(count: Int, hasGoneDown: Bool) -> String {
-        if hasGoneDown { return "Melds" }
-        if vm.canConfirmGoDown { return "Declare Meld!" }
-        if count == 0 { return "Build Meld" }
-        return "Build Meld (\(count))"
-    }
-
-    // MARK: - Meld staging overlay (modal, M2d-b)
-
-    /// Renders a full-screen dimmed panel with staged cards row, hand row,
-    /// live validator, and Cancel / Confirm buttons. When open, all touches
-    /// on the underlying table are blocked.
-    private func buildMeldOverlay() {
-        overlayLayer.removeAllChildren()
-        guard vm.isMeldOverlayOpen else { return }
-
-        // Dim the underlying scene.
-        let dim = SKShapeNode(rect: CGRect(origin: .zero, size: size))
-        dim.fillColor = UIColor.black.withAlphaComponent(0.62)
-        dim.strokeColor = .clear
-        dim.zPosition = 100
-        dim.name = "overlay-dim"
-        overlayLayer.addChild(dim)
-
-        // Central panel — taller now to fit a "draft" row up top.
-        let panelW = min(size.width - 60, 720)
-        let panelH = min(size.height - 20, 370)
-        let panel = SKShapeNode(rectOf: CGSize(width: panelW, height: panelH),
-                                cornerRadius: 16)
-        panel.fillColor = theme.feltFill
-        panel.strokeColor = theme.turnGlow
-        panel.lineWidth = 2
-        panel.glowWidth = 4
-        panel.position = CGPoint(x: size.width / 2, y: size.height / 2)
-        panel.zPosition = 101
-        panel.name = "overlay-panel"
-        overlayLayer.addChild(panel)
-
-        let cx = panel.position.x
-        let cy = panel.position.y
-        let top = cy + panelH / 2
-
-        // Title.
-        let title = SKLabelNode(text: "Build Meld")
-        title.fontName = theme.titleFont
-        title.fontSize = 18
-        title.fontColor = theme.bannerText
-        title.horizontalAlignmentMode = .center
-        title.verticalAlignmentMode = .top
-        title.position = CGPoint(x: cx, y: top - 10)
-        title.zPosition = 102
-        overlayLayer.addChild(title)
-
-        // Progress toward contract (draft-aware).
-        let progress = SKLabelNode(text: vm.goDownProgressText)
-        progress.fontName = theme.bodyFont
-        progress.fontSize = 12
-        progress.fontColor = vm.canConfirmGoDown
-            ? UIColor(red: 0.55, green: 0.85, blue: 0.55, alpha: 1.0)
-            : theme.pileLabel
-        progress.horizontalAlignmentMode = .center
-        progress.verticalAlignmentMode = .top
-        progress.position = CGPoint(x: cx, y: top - 32)
-        progress.zPosition = 102
-        overlayLayer.addChild(progress)
-
-        // Draft row: saved melds so far (compact strip).
-        let draftRowY = top - 78
-        addOverlayDraftRow(y: draftRowY, cx: cx, panelWidth: panelW)
-
-        // Status text (from validator on the current staged tray).
-        let status = SKLabelNode(text: overlayStatusText())
-        status.fontName = theme.bodyFont
-        status.fontSize = 12
-        status.fontColor = overlayStatusColor()
-        status.horizontalAlignmentMode = .center
-        status.verticalAlignmentMode = .center
-        status.position = CGPoint(x: cx, y: cy + 62)
-        status.zPosition = 102
-        overlayLayer.addChild(status)
-
-        // Staged cards row.
-        let stagedRowY = cy + 22
-        addOverlayCardRow(vm.stagedCards, y: stagedRowY, tag: "staged")
-        addOverlayRowLabel(text: "Staged  —  tap to remove",
-                           y: stagedRowY + CardNode.size.height / 2 + 6, cx: cx)
-
-        // Hand row.
-        let handRowInOverlayY = cy - 74
-        addOverlayCardRow(vm.unstagedCards, y: handRowInOverlayY, tag: "unstaged")
-        addOverlayRowLabel(text: "Your hand  —  tap to stage",
-                           y: handRowInOverlayY + CardNode.size.height / 2 + 6, cx: cx)
-
-        // Cancel + Save Meld + Go Down at the bottom.
-        let btnY = cy - panelH / 2 + 22
-        let stagedValid = (try? vm.stagedValidation?.get()) != nil
-        let hasGoneDown = vm.currentPlayer.hasGoneDownThisRound
-        addOverlayButton(text: "Cancel", cx: cx - 140, cy: btnY,
-                         name: "overlay-cancel", enabled: true)
-        addOverlayButton(text: "Save Meld", cx: cx, cy: btnY,
-                         name: "overlay-save-meld",
-                         enabled: stagedValid && !hasGoneDown)
-        addOverlayButton(text: "Go Down", cx: cx + 140, cy: btnY,
-                         name: "overlay-confirm",
-                         enabled: vm.canConfirmGoDown)
-    }
-
-    /// Mini strip near the top of the overlay showing melds the player has
-    /// saved into their go-down draft. Each meld is tappable to undo.
-    private func addOverlayDraftRow(y: CGFloat, cx: CGFloat, panelWidth: CGFloat) {
-        let melds = vm.contractDraft
-        addOverlayRowLabel(text: melds.isEmpty
-                           ? "Draft: (empty) — build a meld below, then Save"
-                           : "Draft  —  tap a meld to undo",
-                           y: y + 18, cx: cx)
-        guard !melds.isEmpty else { return }
-        // Lay each mini-meld left-to-right; scale cards down to fit.
-        let scale: CGFloat = 0.45
-        let cardW = CardNode.size.width * scale
-        let intraMeldGap: CGFloat = 2
-        let interMeldGap: CGFloat = 16
-        let widths = melds.map { CGFloat($0.count) * cardW + CGFloat($0.count - 1) * intraMeldGap }
-        let total = widths.reduce(0, +) + CGFloat(max(0, melds.count - 1)) * interMeldGap
-        var x = cx - total / 2
-        for (mi, meld) in melds.enumerated() {
-            let meldW = widths[mi]
-            for (ci, card) in meld.enumerated() {
-                let node = CardNode(card: card, faceUp: true, theme: theme)
-                node.setScale(scale)
-                node.position = CGPoint(x: x + cardW / 2 + CGFloat(ci) * (cardW + intraMeldGap),
-                                        y: y)
-                node.zPosition = 103
-                node.name = "overlay-draft:\(mi)"
-                overlayLayer.addChild(node)
+    private var contextAction: (title: String, name: String?, enabled: Bool,
+                                emphasized: Bool) {
+        switch vm.state.phase {
+        case .awaitingDraw:
+            return ("CHOOSE A PILE", nil, false, false)
+        case .awaitingMeldOrDiscard:
+            if vm.currentPlayer.hasGoneDownThisRound {
+                if vm.currentPlayer.laidDownThisTurn {
+                    return ("DISCARD TO END", nil, false, false)
+                }
+                return ("TAP OR DRAG TO MELD", nil, false, false)
             }
-            x += meldW + interMeldGap
+            if vm.canConfirmGoDown {
+                return ("GO DOWN", "go-down", true, true)
+            }
+            if case .some(.success(_)) = vm.stagedValidation {
+                return ("SAVE MELD", "save-meld", true, true)
+            }
+            if !vm.stagedCardIds.isEmpty {
+                return ("KEEP BUILDING", nil, false, false)
+            }
+            if !vm.contractDraft.isEmpty {
+                return ("BUILD NEXT MELD", nil, false, false)
+            }
+            return ("TAP CARDS TO MELD", nil, false, false)
+        case .roundEnded:
+            return ("HAND COMPLETE", nil, false, false)
+        case .gameEnded:
+            return ("GAME COMPLETE", nil, false, false)
         }
     }
 
-    private func addOverlayCardRow(_ cards: [Card], y: CGFloat, tag: String) {
-        guard !cards.isEmpty else {
-            // Empty-state placeholder.
-            let placeholder = SKLabelNode(text: "—")
-            placeholder.fontName = theme.bodyFont
-            placeholder.fontSize = 22
-            placeholder.fontColor = theme.contractPillText.withAlphaComponent(0.5)
-            placeholder.horizontalAlignmentMode = .center
-            placeholder.verticalAlignmentMode = .center
-            placeholder.position = CGPoint(x: size.width / 2, y: y)
-            placeholder.zPosition = 102
-            overlayLayer.addChild(placeholder)
-            return
-        }
-        let cardW = CardNode.size.width
-        let spacing: CGFloat = 8
-        let total = CGFloat(cards.count) * cardW + CGFloat(cards.count - 1) * spacing
-        let startX = size.width / 2 - total / 2 + cardW / 2
-        for (i, card) in cards.enumerated() {
-            let node = CardNode(card: card, faceUp: true, theme: theme)
-            let pos = CGPoint(x: startX + CGFloat(i) * (cardW + spacing), y: y)
-            node.position = pos
-            node.zPosition = 103
-            node.name = "overlay-card-\(tag):\(card.id.uuidString)"
-            overlayLayer.addChild(node)
-        }
-    }
+    private func addActionButton(title: String, name: String?, enabled: Bool,
+                                 emphasized: Bool) {
+        let width: CGFloat = 164
+        let height: CGFloat = 46
+        let center = CGPoint(x: size.width - horizontalEdgeInset - width / 2,
+                             y: stagingTrayY)
+        let button = SKShapeNode(rectOf: CGSize(width: width, height: height),
+                                 cornerRadius: 23)
+        button.fillColor = enabled
+            ? theme.turnGlow
+            : theme.contractPillBg.withAlphaComponent(0.82)
+        button.strokeColor = enabled
+            ? UIColor.white.withAlphaComponent(0.45)
+            : theme.feltStroke.withAlphaComponent(0.6)
+        button.lineWidth = enabled ? 1.5 : 1
+        button.position = center
+        button.zPosition = 20
+        button.name = name
+        actionLayer.addChild(button)
 
-    private func addOverlayRowLabel(text: String, y: CGFloat, cx: CGFloat) {
-        let l = SKLabelNode(text: text)
-        l.fontName = theme.bodyFont
-        l.fontSize = 11
-        l.fontColor = theme.pileLabel
-        l.horizontalAlignmentMode = .center
-        l.verticalAlignmentMode = .bottom
-        l.position = CGPoint(x: cx, y: y)
-        l.zPosition = 102
-        overlayLayer.addChild(l)
-    }
-
-    private func addOverlayButton(text: String, cx: CGFloat, cy: CGFloat,
-                                  name: String, enabled: Bool) {
-        let w: CGFloat = 120
-        let h: CGFloat = 30
-        let chip = SKShapeNode(rectOf: CGSize(width: w, height: h),
-                               cornerRadius: 15)
-        chip.fillColor = enabled ? theme.contractPillBg : theme.contractPillBg.withAlphaComponent(0.4)
-        chip.strokeColor = enabled ? theme.turnGlow : theme.pileLabel.withAlphaComponent(0.4)
-        chip.lineWidth = 1.5
-        chip.position = CGPoint(x: cx, y: cy)
-        chip.zPosition = 104
-        chip.name = enabled ? name : nil
-        overlayLayer.addChild(chip)
-        let label = SKLabelNode(text: text)
+        let label = SKLabelNode(text: title)
         label.fontName = theme.titleFont
-        label.fontSize = 13
-        label.fontColor = enabled ? theme.contractPillText : theme.contractPillText.withAlphaComponent(0.5)
+        label.fontSize = 12
+        label.fontColor = enabled ? theme.blackSuit : theme.seatSub
         label.horizontalAlignmentMode = .center
         label.verticalAlignmentMode = .center
-        label.position = chip.position
-        label.zPosition = 105
-        label.name = enabled ? name : nil
-        overlayLayer.addChild(label)
-    }
+        label.position = center
+        label.zPosition = 21
+        label.name = name
+        actionLayer.addChild(label)
 
-    private func overlayStatusText() -> String {
-        switch vm.stagedValidation {
-        case .none:
-            return "Tap cards below to stage them"
-        case .some(.success(let kind)):
-            let label = (kind == .triplet) ? "SET" : "RUN"
-            return "✓ Valid \(label) — \(vm.stagedCards.count) cards"
-        case .some(.failure(let err)):
-            return "✗ \(err.description)"
+        if emphasized {
+            let pulse = SKAction.sequence([
+                .scale(to: 1.045, duration: 0.55),
+                .scale(to: 1.0, duration: 0.55),
+            ])
+            button.run(.repeatForever(pulse))
         }
     }
 
-    private func overlayStatusColor() -> UIColor {
+    private func addSmallControl(title: String, name: String, at position: CGPoint) {
+        let button = SKShapeNode(rectOf: CGSize(width: 48, height: 40),
+                                 cornerRadius: 20)
+        button.fillColor = theme.contractPillBg
+        button.strokeColor = theme.feltStroke.withAlphaComponent(0.8)
+        button.lineWidth = 1
+        button.position = position
+        button.zPosition = 25
+        button.name = name
+        actionLayer.addChild(button)
+
+        let label = SKLabelNode(text: title)
+        label.fontName = theme.titleFont
+        label.fontSize = 8
+        label.fontColor = theme.seatSub
+        label.horizontalAlignmentMode = .center
+        label.verticalAlignmentMode = .center
+        label.position = position
+        label.zPosition = 26
+        label.name = name
+        actionLayer.addChild(label)
+    }
+
+    private var stagingStatusText: String {
         switch vm.stagedValidation {
-        case .some(.success):
-            return UIColor(red: 0.55, green: 0.85, blue: 0.55, alpha: 1.0)
-        case .some(.failure):
-            return UIColor(red: 0.95, green: 0.55, blue: 0.55, alpha: 1.0)
         case .none:
-            return theme.pileLabel
+            if vm.canConfirmGoDown { return "CONTRACT READY" }
+            if !vm.contractDraft.isEmpty { return "BUILD NEXT MELD" }
+            return vm.goDownProgressText.uppercased()
+        case .some(.success(let kind)):
+            let type = kind == .triplet ? "SET" : "RUN"
+            return "VALID \(type)  •  \(vm.stagedCards.count) CARDS"
+        case .some(.failure(let error)):
+            return error.description.uppercased()
+        }
+    }
+
+    private var stagingStatusColor: UIColor {
+        switch vm.stagedValidation {
+        case .some(.success(_)):
+            return UIColor(red: 0.38, green: 0.86, blue: 0.66, alpha: 1)
+        case .some(.failure(_)):
+            return UIColor(red: 0.96, green: 0.42, blue: 0.45, alpha: 1)
+        case .none:
+            return theme.contractPillText
         }
     }
 
@@ -877,32 +961,14 @@ final class GameScene: SKScene {
     // MARK: - Input
 
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
-        guard let touch = touches.first else { return }
+        guard !isAnimatingTurnAction, let touch = touches.first else { return }
         let point = touch.location(in: self)
 
-        // If the meld overlay is open, all touches route to it exclusively.
-        if vm.isMeldOverlayOpen {
-            handleOverlayTap(at: point)
+        if let name = interactiveName(at: point),
+           handleImmediateControl(name) {
             return
         }
 
-        // Build-Meld button tap opens the overlay.
-        for node in nodes(at: point) {
-            if node.name == "build-meld-button" {
-                vm.isMeldOverlayOpen = true
-                return
-            }
-        }
-
-        // Pile taps come first (they don't start drags).
-        for node in nodes(at: point) {
-            if node.name == "stock" || node.parent?.name == "stock" {
-                vm.drawFromStock()
-                return
-            }
-        }
-
-        // Try to begin a hand-card drag. Only the current player can drag.
         for node in nodes(at: point) {
             var target: SKNode? = node
             while let t = target, !(t.name?.hasPrefix("card:") ?? false) {
@@ -920,67 +986,77 @@ final class GameScene: SKScene {
     }
 
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
-        if vm.isMeldOverlayOpen { return }
         guard let touch = touches.first, let card = draggingCard else { return }
         card.position = touch.location(in: self)
     }
 
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
-        if vm.isMeldOverlayOpen { return } // handled in touchesBegan
         guard let touch = touches.first else {
             cancelDrag()
             return
         }
         let point = touch.location(in: self)
 
-        if draggingCard == nil {
-            // No drag in progress → treat as a tap. Currently the only
-            // remaining tap target is the discard pile (for drawFromDiscard);
-            // hand-card discards are drag-only now.
-            for node in nodes(at: point) {
-                if node.name == "discard" || node.parent?.name == "discard" {
-                    vm.drawFromDiscard()
-                    return
-                }
-            }
-            return
-        }
+        guard draggingCard != nil else { return }
 
-        // Resolve drag drop.
         if let id = draggingCardId,
            let card = vm.currentPlayer.hand.first(where: { $0.id == id }) {
-            // Drop on discard pile → discard.
-            if discardDropZone().contains(point) {
-                let ok = vm.dispatch(.discard(playerId: vm.currentPlayer.id, card: card))
-                if ok {
-                    draggingCard = nil
-                    draggingCardId = nil
-                    clearDiscardTarget()
-                    return
-                }
+            if vm.state.phase == .awaitingMeldOrDiscard,
+               discardDropZone().contains(point) {
+                guard let node = draggingCard else { return }
+                animateDiscard(card, node: node)
+                return
             }
-            // Not a drop: was it a tap (barely moved from origin)?
+
+            if vm.state.phase == .awaitingMeldOrDiscard,
+               !vm.currentPlayer.hasGoneDownThisRound,
+               stagingTrayRect.contains(point) {
+                vm.toggleStaged(cardId: id)
+                selectionFeedback()
+                completeDrag()
+                return
+            }
+
+            if let meldId = meldId(at: point) {
+                if vm.layoffHandCard(card, to: meldId) {
+                    successFeedback()
+                    completeDrag()
+                } else {
+                    warningFeedback()
+                    cancelDrag()
+                }
+                return
+            }
+
             let dx = point.x - dragOrigin.x
             let dy = point.y - dragOrigin.y
             let tapThreshold: CGFloat = 10
             if abs(dx) < tapThreshold && abs(dy) < tapThreshold {
-                if vm.layoffTappedHandCard(card) {
-                    draggingCard = nil
-                    draggingCardId = nil
-                    clearDiscardTarget()
+                guard vm.state.phase == .awaitingMeldOrDiscard else {
+                    warningFeedback()
+                    cancelDrag()
                     return
                 }
+                if vm.currentPlayer.hasGoneDownThisRound {
+                    if vm.layoffTappedHandCard(card) {
+                        successFeedback()
+                        completeDrag()
+                    } else {
+                        warningFeedback()
+                        cancelDrag()
+                    }
+                    return
+                }
+                vm.toggleStaged(cardId: id)
+                selectionFeedback()
+                completeDrag()
+                return
             }
-            // Drag ended within the hand row band → reorder (M2f).
+
             if isInHandRowBand(point) {
-                let targetIdx = reorderTargetIndex(forDropX: point.x, draggedId: id)
-                vm.moveHandCard(id, to: targetIdx)
-                draggingCard = nil
-                draggingCardId = nil
-                clearDiscardTarget()
-                // Force a rebuild in case the target index equaled the
-                // original (no publish → no auto-rebuild from the Combine
-                // sink), which would leave the lifted card visually offset.
+                let targetId = reorderTargetId(forDropX: point.x, draggedId: id)
+                vm.moveHandCard(id, before: targetId)
+                completeDrag()
                 rebuildDynamicLayers()
                 return
             }
@@ -993,48 +1069,91 @@ final class GameScene: SKScene {
         cancelDrag()
     }
 
-    /// Handles a tap while the meld overlay is open: buttons + card toggles.
-    private func handleOverlayTap(at point: CGPoint) {
+    private func handleImmediateControl(_ name: String) -> Bool {
+        switch name {
+        case "stock":
+            guard vm.canDrawFromStock else {
+                warningFeedback()
+                return true
+            }
+            let previousPhase = vm.state.phase
+            vm.drawFromStock()
+            if previousPhase != vm.state.phase { selectionFeedback() }
+            return true
+        case "discard":
+            guard vm.canDrawFromDiscard else {
+                warningFeedback()
+                return true
+            }
+            let previousPhase = vm.state.phase
+            vm.drawFromDiscard()
+            if previousPhase != vm.state.phase { selectionFeedback() }
+            return true
+        case "save-meld":
+            if vm.saveStagedAsMeld() {
+                successFeedback()
+            } else {
+                warningFeedback()
+            }
+            return true
+        case "go-down":
+            if vm.confirmGoDown() {
+                successFeedback()
+            } else {
+                warningFeedback()
+            }
+            return true
+        case "clear-staging":
+            vm.clearStaging()
+            selectionFeedback()
+            return true
+        case "sort-rank":
+            vm.sortHandByRank()
+            selectionFeedback()
+            return true
+        case "sort-suit":
+            vm.sortHandBySuit()
+            selectionFeedback()
+            return true
+        default:
+            break
+        }
+
+        if name.hasPrefix("staged-card:"),
+           let id = uuidSuffix(in: name) {
+            vm.toggleStaged(cardId: id)
+            selectionFeedback()
+            return true
+        }
+        if name.hasPrefix("draft-meld:"),
+           let index = Int(name.split(separator: ":").last ?? "") {
+            vm.removeDraftMeld(at: index)
+            selectionFeedback()
+            return true
+        }
+        return false
+    }
+
+    private func interactiveName(at point: CGPoint) -> String? {
         for node in nodes(at: point) {
-            if node.name == "overlay-cancel" {
-                vm.clearStaging()
-                vm.clearContractDraft()
-                vm.isMeldOverlayOpen = false
-                return
-            }
-            if node.name == "overlay-save-meld" {
-                _ = vm.saveStagedAsMeld()
-                return
-            }
-            if node.name == "overlay-confirm" {
-                _ = vm.confirmGoDown()
-                return
-            }
-            // Walk up to find the named ancestor for card / draft-meld
-            // taps — the touch usually lands on a child sprite (the card
-            // background rect or a label) whose parent CardNode carries
-            // the "overlay-card-*" / "overlay-draft:*" name.
-            var ancestor: SKNode? = node
-            while let t = ancestor {
-                if let name = t.name {
-                    if name.hasPrefix("overlay-draft:") {
-                        if let idxStr = name.split(separator: ":").last,
-                           let idx = Int(idxStr) {
-                            vm.removeDraftMeld(at: idx)
-                        }
-                        return
-                    }
-                    if name.hasPrefix("overlay-card-") {
-                        if let idStr = name.split(separator: ":").last,
-                           let uuid = UUID(uuidString: String(idStr)) {
-                            vm.toggleStaged(cardId: uuid)
-                        }
-                        return
-                    }
-                }
-                ancestor = t.parent
+            var candidate: SKNode? = node
+            while let current = candidate {
+                if let name = current.name { return name }
+                candidate = current.parent
             }
         }
+        return nil
+    }
+
+    private func uuidSuffix(in name: String) -> UUID? {
+        guard let suffix = name.split(separator: ":").last else { return nil }
+        return UUID(uuidString: String(suffix))
+    }
+
+    private func meldId(at point: CGPoint) -> UUID? {
+        guard let name = interactiveName(at: point),
+              name.hasPrefix("meld:") else { return nil }
+        return uuidSuffix(in: name)
     }
 
     // MARK: - Hand reorder helpers (M2f)
@@ -1047,18 +1166,12 @@ final class GameScene: SKScene {
         return point.y >= center - halfH && point.y <= center + halfH
     }
 
-    /// Given a drop x-position, compute the target index (in `vm.orderedHand`)
-    /// where the dragged card should land. Uses the slot centers captured
-    /// during `buildHand`. Filters out the dragged card so we get the index
-    /// AFTER removal.
-    private func reorderTargetIndex(forDropX x: CGFloat, draggedId: UUID) -> Int {
+    private func reorderTargetId(forDropX x: CGFloat, draggedId: UUID) -> UUID? {
         let slots = handSlots.filter { $0.id != draggedId }
-        guard !slots.isEmpty else { return 0 }
-        // Insert before the first slot whose center is to the right of x.
-        for (i, slot) in slots.enumerated() where x < slot.x {
-            return i
+        for slot in slots where x < slot.x {
+            return slot.id
         }
-        return slots.count
+        return nil
     }
 
     // MARK: - Drag helpers
@@ -1073,12 +1186,22 @@ final class GameScene: SKScene {
         card.zPosition = 500
         card.zRotation = 0
         card.run(SKAction.scale(to: 1.08, duration: 0.08))
-        highlightDiscardTarget()
+        guard let value = vm.currentPlayer.hand.first(where: { $0.id == id }) else {
+            return
+        }
+        if vm.state.phase == .awaitingMeldOrDiscard {
+            highlightDiscardTarget()
+            if vm.currentPlayer.hasGoneDownThisRound {
+                highlightCompatibleMeldTargets(for: value)
+            } else {
+                highlightStagingTarget()
+            }
+        }
     }
 
     private func cancelDrag() {
         guard let card = draggingCard else {
-            clearDiscardTarget()
+            clearDragTargets()
             return
         }
         let snap = SKAction.group([
@@ -1092,22 +1215,63 @@ final class GameScene: SKScene {
         }
         draggingCard = nil
         draggingCardId = nil
-        clearDiscardTarget()
+        clearDragTargets()
+    }
+
+    private func completeDrag() {
+        draggingCard = nil
+        draggingCardId = nil
+        clearDragTargets()
+    }
+
+    private func animateDiscard(_ card: Card, node: CardNode) {
+        isAnimatingTurnAction = true
+        draggingCard = nil
+        draggingCardId = nil
+        clearDragTargets()
+
+        node.zPosition = 600
+        let move = SKAction.move(to: CGPoint(x: discardDropZone().midX,
+                                             y: discardDropZone().midY),
+                                 duration: 0.20)
+        move.timingMode = .easeIn
+        let animation = SKAction.group([
+            move,
+            .rotate(toAngle: -0.03, duration: 0.20,
+                    shortestUnitArc: true),
+            .scale(to: 0.90, duration: 0.20),
+        ])
+        node.run(animation) { [weak self] in
+            guard let self else { return }
+            let ok = self.vm.dispatch(
+                .discard(playerId: self.vm.currentPlayer.id, card: card)
+            )
+            self.isAnimatingTurnAction = false
+            if ok {
+                self.successFeedback()
+            } else {
+                self.warningFeedback()
+                self.rebuildDynamicLayers()
+            }
+        }
     }
 
     /// The tappable/droppable rectangle around the discard pile, in scene
     /// coordinates. Slightly larger than the pile visual for easier drops.
     private func discardDropZone() -> CGRect {
         let center = SeatLayout.pileCenter(sceneSize: size)
-        let gap: CGFloat = 14
-        let basePos = CGPoint(x: center.x + CardNode.size.width / 2 + gap / 2,
+        let gap: CGFloat = 34
+        let pileScale: CGFloat = 0.90
+        let pileWidth = CardNode.size.width * pileScale
+        let pileHeight = CardNode.size.height * pileScale
+        let basePos = CGPoint(x: center.x + pileWidth / 2 + gap / 2,
                               y: center.y)
         let pad: CGFloat = 24
         return CGRect(
-            x: basePos.x - CardNode.size.width / 2 - pad,
-            y: basePos.y - CardNode.size.height / 2 - pad,
-            width: CardNode.size.width + pad * 2,
-            height: CardNode.size.height + pad * 2
+            x: basePos.x - pileWidth / 2 - pad,
+            y: basePos.y - pileHeight / 2 - pad,
+            width: pileWidth + pad * 2,
+            height: pileHeight + pad * 2
         )
     }
 
@@ -1129,16 +1293,51 @@ final class GameScene: SKScene {
         discardTargetRing = ring
     }
 
+    private func highlightStagingTarget() {
+        stagingBacking?.strokeColor = theme.turnGlow
+        stagingBacking?.lineWidth = 3
+        stagingBacking?.glowWidth = 4
+    }
+
+    private func highlightCompatibleMeldTargets(for card: Card) {
+        for meld in vm.state.melds where vm.canLayOff(card, to: meld) {
+            guard let target = meldTargetNodes[meld.id] else { continue }
+            target.strokeColor = UIColor(red: 0.38, green: 0.86, blue: 0.66, alpha: 1)
+            target.lineWidth = 3
+            target.glowWidth = 5
+        }
+    }
+
+    private func clearDragTargets() {
+        clearDiscardTarget()
+        stagingBacking?.strokeColor = stagingStatusColor.withAlphaComponent(0.8)
+        stagingBacking?.lineWidth = 1.5
+        stagingBacking?.glowWidth = 0
+        for meld in vm.state.melds {
+            guard let target = meldTargetNodes[meld.id] else { continue }
+            let acceptsLayoff = vm.canLayOffAnyHandCard(to: meld)
+            target.strokeColor = acceptsLayoff
+                ? UIColor(red: 0.38, green: 0.86, blue: 0.66, alpha: 0.48)
+                : theme.feltStroke.withAlphaComponent(0.45)
+            target.lineWidth = acceptsLayoff ? 1.5 : 1
+            target.glowWidth = 0
+        }
+    }
+
     private func clearDiscardTarget() {
         discardTargetRing?.removeFromParent()
         discardTargetRing = nil
     }
-}
 
-// Small helper to insert a child behind existing siblings (approximation via zPosition).
-private extension SKNode {
-    func insertChild(_ node: SKNode, at index: Int) {
-        addChild(node)
-        node.zPosition -= 0.001
+    private func selectionFeedback() {
+        UISelectionFeedbackGenerator().selectionChanged()
+    }
+
+    private func successFeedback() {
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+    }
+
+    private func warningFeedback() {
+        UINotificationFeedbackGenerator().notificationOccurred(.warning)
     }
 }

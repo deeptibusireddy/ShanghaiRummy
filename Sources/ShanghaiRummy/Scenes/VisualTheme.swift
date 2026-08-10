@@ -39,6 +39,47 @@ public struct VisualTheme {
     public let titleFont: String
     public let bodyFont: String
 
+    /// Default visual direction for Shanghai Rummy Nights: a warm, social
+    /// evening table rather than a literal casino felt simulation.
+    public static let gameNight = VisualTheme(
+        name: "Game Night",
+        background: UIColor(red: 0.055, green: 0.063, blue: 0.13, alpha: 1),
+        feltFill: UIColor(red: 0.105, green: 0.11, blue: 0.22, alpha: 1),
+        feltStroke: UIColor(red: 0.42, green: 0.35, blue: 0.62, alpha: 0.42),
+        feltStrokeWidth: 1,
+        feltGlow: UIColor(red: 0.49, green: 0.34, blue: 0.72, alpha: 1),
+        emblemColor: UIColor(red: 0.96, green: 0.72, blue: 0.38, alpha: 0.05),
+        cardFace: UIColor(red: 1.0, green: 0.975, blue: 0.92, alpha: 1),
+        cardStroke: UIColor(red: 0.85, green: 0.78, blue: 0.68, alpha: 0.7),
+        cardBack: UIColor(red: 0.37, green: 0.16, blue: 0.34, alpha: 1),
+        cardBackAccent: UIColor(red: 0.96, green: 0.68, blue: 0.35, alpha: 1),
+        redSuit: UIColor(red: 0.88, green: 0.22, blue: 0.30, alpha: 1),
+        blackSuit: UIColor(red: 0.10, green: 0.10, blue: 0.15, alpha: 1),
+        jokerAccent: UIColor(red: 0.92, green: 0.55, blue: 0.20, alpha: 1),
+        cardShadow: UIColor(white: 0.0, alpha: 0.42),
+        bannerText: UIColor(red: 1.0, green: 0.96, blue: 0.88, alpha: 1),
+        seatBgCurrent: UIColor(red: 0.25, green: 0.20, blue: 0.36, alpha: 0.98),
+        seatBgOther: UIColor(red: 0.09, green: 0.095, blue: 0.18, alpha: 0.90),
+        seatTitle: UIColor(red: 1.0, green: 0.96, blue: 0.88, alpha: 1),
+        seatSub: UIColor(red: 0.72, green: 0.70, blue: 0.82, alpha: 1),
+        pileLabel: UIColor(red: 0.75, green: 0.73, blue: 0.84, alpha: 1),
+        turnGlow: UIColor(red: 0.98, green: 0.66, blue: 0.31, alpha: 1),
+        contractPillBg: UIColor(red: 0.16, green: 0.14, blue: 0.28, alpha: 0.96),
+        contractPillText: UIColor(red: 1.0, green: 0.89, blue: 0.70, alpha: 1),
+        scoreChipBg: UIColor(red: 0.12, green: 0.115, blue: 0.22, alpha: 0.96),
+        scoreChipText: UIColor(red: 0.78, green: 0.75, blue: 0.88, alpha: 1),
+        avatarColors: [
+            UIColor(red: 0.93, green: 0.39, blue: 0.39, alpha: 1),
+            UIColor(red: 0.31, green: 0.58, blue: 0.94, alpha: 1),
+            UIColor(red: 0.31, green: 0.76, blue: 0.61, alpha: 1),
+            UIColor(red: 0.96, green: 0.64, blue: 0.28, alpha: 1),
+            UIColor(red: 0.68, green: 0.42, blue: 0.91, alpha: 1),
+            UIColor(red: 0.25, green: 0.72, blue: 0.82, alpha: 1),
+        ],
+        titleFont: roundedSystemFontName(weight: .semibold),
+        bodyFont: roundedSystemFontName(weight: .regular)
+    )
+
     public static let cozyWood = VisualTheme(
         name: "Cozy Wood",
         background: UIColor(red: 0.32, green: 0.22, blue: 0.14, alpha: 1),
@@ -155,4 +196,12 @@ public struct VisualTheme {
         titleFont: "AvenirNext-DemiBold",
         bodyFont: "AvenirNext-Regular"
     )
+
+    private static func roundedSystemFontName(weight: UIFont.Weight) -> String {
+        let base = UIFont.systemFont(ofSize: 16, weight: weight)
+        guard let descriptor = base.fontDescriptor.withDesign(.rounded) else {
+            return base.fontName
+        }
+        return UIFont(descriptor: descriptor, size: 16).fontName
+    }
 }

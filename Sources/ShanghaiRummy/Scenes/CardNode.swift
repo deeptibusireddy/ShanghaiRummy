@@ -9,12 +9,12 @@ import SpriteKit
 /// scene can be reskinned by swapping themes.
 final class CardNode: SKNode {
 
-    static let size = CGSize(width: 60, height: 84)
+    static let size = CGSize(width: 68, height: 96)
 
     let card: Card
     private let theme: VisualTheme
 
-    init(card: Card, faceUp: Bool = true, theme: VisualTheme = .cozyWood) {
+    init(card: Card, faceUp: Bool = true, theme: VisualTheme = .gameNight) {
         self.card = card
         self.theme = theme
         super.init()
@@ -32,9 +32,9 @@ final class CardNode: SKNode {
             origin: CGPoint(x: -Self.size.width / 2, y: -Self.size.height / 2),
             size: Self.size
         )
-        let bg = SKShapeNode(rect: rect, cornerRadius: 8)
+        let bg = SKShapeNode(rect: rect, cornerRadius: 11)
         bg.strokeColor = theme.cardStroke
-        bg.lineWidth = 1
+        bg.lineWidth = 1.4
         addChild(bg)
 
         if !faceUp {
@@ -44,74 +44,97 @@ final class CardNode: SKNode {
         }
 
         bg.fillColor = theme.cardFace
+        let inner = SKShapeNode(rect: rect.insetBy(dx: 2.5, dy: 2.5),
+                                cornerRadius: 9)
+        inner.fillColor = .clear
+        inner.strokeColor = UIColor.white.withAlphaComponent(0.42)
+        inner.lineWidth = 0.8
+        addChild(inner)
+
         let color = suitColor()
         let (rank, suit) = glyphs()
 
-        // Top-left corner pip: rank on top, tiny suit below.
+        // Large, high-contrast corner index remains readable when a big hand
+        // compresses into an overlapping fan.
         let cornerRank = SKLabelNode(text: rank)
         cornerRank.fontName = theme.titleFont
-        cornerRank.fontSize = 14
+        cornerRank.fontSize = 17
         cornerRank.fontColor = color
         cornerRank.horizontalAlignmentMode = .left
         cornerRank.verticalAlignmentMode = .top
-        cornerRank.position = CGPoint(x: rect.minX + 5, y: rect.maxY - 4)
+        cornerRank.position = CGPoint(x: rect.minX + 6, y: rect.maxY - 5)
         addChild(cornerRank)
 
         let cornerSuit = SKLabelNode(text: suit)
         cornerSuit.fontName = theme.bodyFont
-        cornerSuit.fontSize = 11
+        cornerSuit.fontSize = 13
         cornerSuit.fontColor = color
         cornerSuit.horizontalAlignmentMode = .left
         cornerSuit.verticalAlignmentMode = .top
-        cornerSuit.position = CGPoint(x: rect.minX + 5, y: rect.maxY - 20)
+        cornerSuit.position = CGPoint(x: rect.minX + 6, y: rect.maxY - 24)
         addChild(cornerSuit)
 
         // Bottom-right corner pip: rotated 180°.
         let brContainer = SKNode()
         brContainer.zRotation = .pi
-        brContainer.position = CGPoint(x: rect.maxX - 5, y: rect.minY + 4)
+        brContainer.position = CGPoint(x: rect.maxX - 6, y: rect.minY + 5)
         let brRank = SKLabelNode(text: rank)
         brRank.fontName = theme.titleFont
-        brRank.fontSize = 14
+        brRank.fontSize = 13
         brRank.fontColor = color
         brRank.horizontalAlignmentMode = .left
         brRank.verticalAlignmentMode = .top
         brContainer.addChild(brRank)
         let brSuit = SKLabelNode(text: suit)
         brSuit.fontName = theme.bodyFont
-        brSuit.fontSize = 11
+        brSuit.fontSize = 10
         brSuit.fontColor = color
         brSuit.horizontalAlignmentMode = .left
         brSuit.verticalAlignmentMode = .top
-        brSuit.position = CGPoint(x: 0, y: -16)
+        brSuit.position = CGPoint(x: 0, y: -15)
         brContainer.addChild(brSuit)
         addChild(brContainer)
 
         // Center glyph: big suit (or a star for the joker).
         let center = SKLabelNode(text: centerGlyph())
         center.fontName = theme.titleFont
-        center.fontSize = card.isPrintedJoker ? 34 : 30
+        center.fontSize = card.isPrintedJoker ? 36 : 31
         center.fontColor = card.isPrintedJoker ? theme.jokerAccent : color
         center.horizontalAlignmentMode = .center
         center.verticalAlignmentMode = .center
         center.position = CGPoint(x: 0, y: 0)
         addChild(center)
 
-        // Badges
+        // Wild cards get an unmistakable accent treatment; tiny badges alone
+        // disappear in compressed hands and are easy to miss on a phone.
         if card.rank == .two && !card.isDead2 && !card.isPrintedJoker {
-            // Live wild 2 — small "★" in the top-right corner.
-            addBadge(text: "★", color: theme.jokerAccent, at:
-                     CGPoint(x: rect.maxX - 8, y: rect.maxY - 8))
+            addAccentBand(rect: rect, color: theme.jokerAccent)
+            addBadge(text: "W", color: theme.jokerAccent, at:
+                     CGPoint(x: rect.maxX - 10, y: rect.maxY - 10))
+        } else if card.isPrintedJoker {
+            addAccentBand(rect: rect, color: theme.jokerAccent)
         } else if card.isDead2 {
-            addBadge(text: "†", color: UIColor(white: 0.4, alpha: 1), at:
-                     CGPoint(x: rect.maxX - 8, y: rect.maxY - 8))
+            addAccentBand(rect: rect, color: UIColor(white: 0.45, alpha: 1))
+            addBadge(text: "†", color: UIColor(white: 0.38, alpha: 1), at:
+                     CGPoint(x: rect.maxX - 10, y: rect.maxY - 10))
         }
+    }
+
+    private func addAccentBand(rect: CGRect, color: UIColor) {
+        let band = SKShapeNode(
+            rect: CGRect(x: rect.maxX - 5, y: rect.minY + 10,
+                         width: 3, height: rect.height - 20),
+            cornerRadius: 1.5
+        )
+        band.fillColor = color
+        band.strokeColor = .clear
+        addChild(band)
     }
 
     private func addBadge(text: String, color: UIColor, at position: CGPoint) {
         let l = SKLabelNode(text: text)
         l.fontName = theme.titleFont
-        l.fontSize = 12
+        l.fontSize = 11
         l.fontColor = color
         l.horizontalAlignmentMode = .center
         l.verticalAlignmentMode = .center
@@ -120,19 +143,26 @@ final class CardNode: SKNode {
     }
 
     private func addBackPattern(rect: CGRect) {
-        // Simple diagonal cross-hatch panel inset from the border.
-        let inset: CGFloat = 6
+        let inset: CGFloat = 7
         let panel = SKShapeNode(
             rect: rect.insetBy(dx: inset, dy: inset),
-            cornerRadius: 6
+            cornerRadius: 7
         )
-        panel.fillColor = theme.cardBackAccent.withAlphaComponent(0.15)
-        panel.strokeColor = theme.cardBackAccent.withAlphaComponent(0.6)
-        panel.lineWidth = 1
+        panel.fillColor = theme.cardBackAccent.withAlphaComponent(0.08)
+        panel.strokeColor = theme.cardBackAccent.withAlphaComponent(0.72)
+        panel.lineWidth = 1.2
         addChild(panel)
-        let mark = SKLabelNode(text: "◆")
+        let inner = SKShapeNode(
+            rect: rect.insetBy(dx: inset + 4, dy: inset + 4),
+            cornerRadius: 5
+        )
+        inner.fillColor = .clear
+        inner.strokeColor = theme.cardBackAccent.withAlphaComponent(0.28)
+        inner.lineWidth = 1
+        addChild(inner)
+        let mark = SKLabelNode(text: "✦")
         mark.fontName = theme.titleFont
-        mark.fontSize = 18
+        mark.fontSize = 24
         mark.fontColor = theme.cardBackAccent
         mark.horizontalAlignmentMode = .center
         mark.verticalAlignmentMode = .center

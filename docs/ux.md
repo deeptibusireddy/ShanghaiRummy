@@ -1,6 +1,6 @@
 # Shanghai Rummy — UX & Interaction Design
 
-> Owner: @deeptibusireddy · Locked: 2026-08-03 · Style: warm-clean (wood + minimalist)
+> Owner: @deeptibusireddy · Updated: 2026-08-10 · Style: contemporary family game night
 
 This doc is the source of truth for how the game *feels*. The SpriteKit scene
 in M2b implements what's specified here. Any UX change should update this
@@ -8,18 +8,17 @@ file first, then the scene.
 
 ## Design principles
 
-1. **Real-table metaphor.** The screen mirrors a physical card table. Piles
-   in the middle. Each player has a seat around the table. Your seat is
-   always at the bottom, facing you.
+1. **Cards first.** Cards, melds, and the current turn dominate the visual
+   hierarchy. Table texture and chrome stay quiet.
 2. **One-tap where possible, drag where it matters.** Draw / discard are
    taps. Meld staging is drag & drop so the physical act of building a
    meld matches the mental one.
 3. **Independent-contract clarity.** Each seat displays that player's
    current level and running score. You always know where you stand
    relative to the others.
-4. **Confirm before committing.** Nothing hits the public table until the
-   current player explicitly confirms. Staged melds are visible only to
-   the current player during hot-seat.
+4. **Keep the table live.** Core play never opens a blocking modal. Contract
+   cards move through an inline private tray while the public table remains
+   visible.
 5. **Landscape only.** Portrait cramped six players onto too little
    horizontal space; landscape gives every seat room.
 
@@ -72,7 +71,7 @@ percentages of the game surface so they scale to any device.
 | **Opponent meld strip** | Adjacent to each opponent's name & level     |
 | **Contract reminder** | Small chip at your seat showing your level's contract |
 | **Turn banner**   | Full-width strip at the very top: "Alice's turn — Level 4"|
-| **Action toolbar**| Bottom right: Go Down, Buy, Undo Stage, Confirm, End Turn |
+| **Context action**| Bottom right: one stateful prompt/action for the current phase |
 
 ## Seat layouts by player count
 
@@ -146,27 +145,23 @@ portrait mode.
 
 Two modes:
 
-1. **Add to an existing meld** — drag a card from your hand onto any
-   meld on the table. The card snaps to the meld outline and enters
-   *staged* state (semi-transparent, glowing edge). Not committed yet.
-2. **Build a new contract meld** (only if you haven't gone down) — drag
-   cards from your hand into the **staging tray** (a private area
-   above your melds). Once you have your full contract staged, tap
-   **Go Down** to attempt to commit.
+1. **Add to an existing meld** — after going down on an earlier turn, tap
+   a compatible hand card for automatic placement or drag it to a specific
+   glowing meld. A successful drop commits immediately.
+2. **Build a new contract meld** — tap cards or drag them into the persistent
+   **staging tray**. Save each valid set/run as a draft chip, then tap
+   **Go Down** when the full contract is ready.
 
 **Staging tray properties:**
 - Visible only to you (hot-seat: only the current player).
-- Two rows for readability when contracts are big (level 8, 9, 10).
-- Drag *out* of the tray to un-stage a card back to your hand.
+- Saved draft cards leave the hand fan and appear as tappable chips; tapping
+  a chip returns that meld to the hand.
+- Tap a staged card to return it to the hand.
 - Long-press a staged card → chip "used as: 5♣" for wilds so you can
   see what the engine thinks it's substituting.
 
-**Confirming a meld addition:**
-- Small **Confirm** button appears next to the meld you're adding to.
-- Rejecting an add moves cards back to hand + toast: "That doesn't
-  extend this meld."
-- Adding to a sequence: staging shows which end (front / back) the
-  card will land on based on drop position.
+Invalid layoff targets don't glow; dropping on one returns the card to hand
+with warning feedback.
 
 **Wild redemption** (post-go-down):
 - Tap any wild card in any sequence on the table → picker highlights
@@ -217,24 +212,20 @@ Two modes:
 
 ## Visual style
 
-**Wood + minimalist ("warm-clean"):**
+**Twilight family game night:**
 
 | Element              | Treatment                                              |
 |----------------------|--------------------------------------------------------|
-| Table felt / bg      | Warm walnut wood grain, subtle vignette                |
-| Cards                | Cream-white with cool black rank/suit; hearts/diamonds red-orange (not pure red); slight rounded 8 pt corners |
-| Card back            | Warm cream with a simple monogram (M4: replace with logo mark) |
-| Joker               | Purple accent; small ★ badge                           |
-| Wild 2              | Amber glow border while wild; gray when dead-2         |
-| Meld pill           | Cream card row with a soft warm-gold outline           |
-| Staging tray        | Subtle warm-white translucent panel with dashed outline|
-| Turn banner         | Charcoal type on cream strip; player name in warm-gold |
-| Buttons             | Cream with charcoal type; primary action = warm-gold fill|
-| Sensitive states    | Red-orange for errors; muted green for confirmations   |
-| Typography          | SF Pro Rounded for numbers; SF Pro Display for body    |
-
-Dark mode: swap felt to deep navy, cards to warm off-white, warm-gold to
-muted amber. Dark mode ships in M4.
+| Table / bg           | Full-bleed twilight navy/plum with soft ambient light  |
+| Cards                | Large warm-ivory faces, crisp corner indices, restrained shadow |
+| Card back            | Deep plum with amber linework and a simple star mark   |
+| Joker / wild 2       | Amber side band and unmistakable wild marker           |
+| Meld target          | Dark translucent group; mint outline when playable     |
+| Staging tray         | Indigo glass-like panel kept inline above the hand     |
+| Turn ribbon          | Compact dark pill; active amber dot and contract       |
+| Buttons              | One contextual amber primary action; quiet secondary chips |
+| Sensitive states     | Coral warning, mint confirmation, plus motion/haptics  |
+| Typography           | Rounded system typography throughout                   |
 
 ## Animation & feedback
 
