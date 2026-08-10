@@ -1033,7 +1033,7 @@ final class GameScene: SKScene {
                 return
             }
 
-            if let meldId = meldId(at: point) {
+            if let meldId = meldId(at: point, for: card) {
                 if vm.layoffHandCard(card, to: meldId) {
                     successFeedback()
                     completeDrag()
@@ -1166,10 +1166,43 @@ final class GameScene: SKScene {
         return UUID(uuidString: String(suffix))
     }
 
-    private func meldId(at point: CGPoint) -> UUID? {
-        guard let name = interactiveName(at: point),
-              name.hasPrefix("meld:") else { return nil }
-        return uuidSuffix(in: name)
+    private func meldId(at point: CGPoint, for card: Card) -> UUID? {
+        let pointInMeldLayer = meldsLayer.convert(point, from: self)
+        let targetFrames = meldTargetNodes.mapValues { $0.frame }
+        let eligibleIds = Set(vm.state.melds.compactMap {
+            vm.canLayOff(card, to: $0) ? $0.id : nil
+        })
+        return Self.meldTargetId(
+            at: pointInMeldLayer,
+            targetFrames: targetFrames,
+            eligibleIds: eligibleIds
+        )
+    }
+
+    static func meldTargetId(
+        at point: CGPoint,
+        targetFrames: [UUID: CGRect],
+        eligibleIds: Set<UUID>
+    ) -> UUID? {
+        targetFrames
+            .filter { eligibleIds.contains($0.key) && $0.value.contains(point) }
+            .min { lhs, rhs in
+                let lhsCenter = CGPoint(x: lhs.value.midX, y: lhs.value.midY)
+                let rhsCenter = CGPoint(x: rhs.value.midX, y: rhs.value.midY)
+                let lhsDistance = squaredDistance(from: point, to: lhsCenter)
+                let rhsDistance = squaredDistance(from: point, to: rhsCenter)
+                if lhsDistance == rhsDistance {
+                    return lhs.key.uuidString < rhs.key.uuidString
+                }
+                return lhsDistance < rhsDistance
+            }?
+            .key
+    }
+
+    private static func squaredDistance(from lhs: CGPoint, to rhs: CGPoint) -> CGFloat {
+        let dx = lhs.x - rhs.x
+        let dy = lhs.y - rhs.y
+        return dx * dx + dy * dy
     }
 
     // MARK: - Hand reorder helpers (M2f)

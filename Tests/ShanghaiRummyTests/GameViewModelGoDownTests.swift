@@ -15,13 +15,19 @@ final class GameViewModelGoDownTests: XCTestCase {
                     level: Int = 1,
                     melds: [Meld] = [],
                     hasGoneDown: Bool = false,
-                    laidDownThisTurn: Bool = false) -> GameViewModel {
+                    laidDownThisTurn: Bool = false,
+                    meldsOwnedByCurrentPlayer: Bool = false) -> GameViewModel {
         let me = Player(name: "You",
-                        hand: hand,
-                        hasGoneDownThisRound: hasGoneDown,
-                        laidDownThisTurn: laidDownThisTurn,
-                        currentLevel: level)
+                       hand: hand,
+                       hasGoneDownThisRound: hasGoneDown,
+                       laidDownThisTurn: laidDownThisTurn,
+                       currentLevel: level)
         let other = Player(name: "Bot", hand: [], currentLevel: level)
+        let tableMelds = meldsOwnedByCurrentPlayer
+            ? melds.map {
+                Meld(id: $0.id, kind: $0.kind, cards: $0.cards, ownerId: me.id)
+            }
+            : melds
         let stock = Array(repeating: c(.clubs, .four), count: 20)
         let s = GameState(
             players: [me, other],
@@ -30,7 +36,7 @@ final class GameViewModelGoDownTests: XCTestCase {
             dealerIndex: 1,
             stock: stock,
             discard: [c(.hearts, .three)],
-            melds: melds,
+            melds: tableMelds,
             phase: phase,
             stockReshufflesUsed: 0,
             randomSeed: 1
@@ -230,5 +236,25 @@ final class GameViewModelGoDownTests: XCTestCase {
         XCTAssertTrue(v.canLayOff(extraKing, to: kings))
         XCTAssertTrue(v.layoffHandCard(extraKing, to: kings.id))
         XCTAssertEqual(v.state.melds.first(where: { $0.id == kings.id })?.cards.count, 4)
+    }
+
+    func testLayoffCanTargetCurrentPlayersOwnMeld() {
+        let existing = Meld(
+            kind: .triplet,
+            cards: [c(.hearts, .king), c(.spades, .king), c(.diamonds, .king)],
+            ownerId: UUID()
+        )
+        let extraKing = c(.clubs, .king)
+        let v = vm(
+            hand: [extraKing],
+            melds: [existing],
+            hasGoneDown: true,
+            meldsOwnedByCurrentPlayer: true
+        )
+
+        XCTAssertEqual(v.state.melds.first?.ownerId, v.currentPlayer.id)
+        XCTAssertTrue(v.layoffHandCard(extraKing, to: existing.id))
+        XCTAssertEqual(v.state.melds.first?.cards.count, 4)
+        XCTAssertTrue(v.currentPlayer.hand.isEmpty)
     }
 }
