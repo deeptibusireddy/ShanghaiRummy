@@ -346,11 +346,77 @@ final class GameScene: SKScene {
             let melds = meldsByOwner[player.id] ?? []
             guard !melds.isEmpty else { continue }
             let seat = seats[i]
-            // Bottom seat ("You") own melds render inside the You-HUD strip
-            // rather than on the field; skip here so they don't collide with
-            // the hand + tray.
-            if seat.edge == .bottom { continue }
+            // Bottom seat (current on-device player) — render own melds in a
+            // dedicated strip above the hand fan so the player can see what
+            // they've laid down and target layoff taps. The strip sits between
+            // the You HUD avatar (left) and the Build Meld chip (right), just
+            // above the top of the fan.
+            if seat.edge == .bottom {
+                drawOwnMeldsAboveHand(melds)
+                continue
+            }
             drawMelds(melds, near: seat)
+        }
+    }
+
+    /// Renders the current on-device player's own melds in a horizontal
+    /// strip above the hand fan. Cards use the same 40% scale as opponent
+    /// melds for visual consistency, and lay out left-to-right centered on
+    /// the felt so the strip stays clear of the You HUD and Build Meld chip.
+    private func drawOwnMeldsAboveHand(_ melds: [Meld]) {
+        let scale: CGFloat = 0.40
+        let cardW = CardNode.size.width * scale
+        let cardH = CardNode.size.height * scale
+        let overlap: CGFloat = cardW * 0.42
+        let meldGap: CGFloat = 10
+
+        let widths = melds.map { CGFloat($0.cards.count - 1) * overlap + cardW }
+        let totalWidth = widths.reduce(0, +) + CGFloat(melds.count - 1) * meldGap
+
+        // Vertical: above the hand fan, aligned with the You HUD row.
+        let rowY = handRowY + CardNode.size.height / 2 + 18 + cardH / 2 - 2
+        // Horizontal: center on the felt, clamped so it stays clear of the
+        // Build Meld chip on the right and the You HUD avatar on the left.
+        let leftMargin: CGFloat = 30 + 28 + 6 + 90   // avatar + label estimate
+        let rightMargin: CGFloat = 168 + 20 + 10     // chip width + gap
+        let minCenter = leftMargin + totalWidth / 2
+        let maxCenter = size.width - rightMargin - totalWidth / 2
+        // If the strip won't fit, fall back to just centered on the felt.
+        let centerX: CGFloat = {
+            if minCenter <= maxCenter {
+                return min(max(size.width / 2, minCenter), maxCenter)
+            }
+            return size.width / 2
+        }()
+        var x = centerX - totalWidth / 2
+
+        // Faint background chip so the strip reads as its own row.
+        let padX: CGFloat = 8
+        let padY: CGFloat = 4
+        let backing = SKShapeNode(
+            rect: CGRect(x: x - padX, y: rowY - cardH / 2 - padY,
+                         width: totalWidth + padX * 2,
+                         height: cardH + padY * 2),
+            cornerRadius: 6
+        )
+        backing.fillColor = theme.contractPillBg.withAlphaComponent(0.35)
+        backing.strokeColor = theme.turnGlow.withAlphaComponent(0.25)
+        backing.lineWidth = 1
+        backing.zPosition = 2
+        meldsLayer.addChild(backing)
+
+        for meld in melds {
+            let count = meld.cards.count
+            for (idx, card) in meld.cards.enumerated() {
+                let node = CardNode(card: card, faceUp: true, theme: theme)
+                node.setScale(scale)
+                let pos = CGPoint(x: x + CGFloat(idx) * overlap + cardW / 2, y: rowY)
+                if idx == 0 { attachShadow(to: node, at: pos, scale: scale) }
+                node.position = pos
+                node.zPosition = 3 + CGFloat(idx) * 0.01
+                meldsLayer.addChild(node)
+            }
+            x += CGFloat(count - 1) * overlap + cardW + meldGap
         }
     }
 
