@@ -13,7 +13,7 @@ family play across iPhones via **Game Center**.
 | Language       | Swift 5.9+                                                    |
 | UI (menus)     | SwiftUI                                                       |
 | Gameplay       | SpriteKit (card table, animations)                            |
-| Multiplayer    | GameKit — turn-based matches via Game Center                  |
+| Multiplayer    | GameKit — live real-time matches via Game Center               |
 | Persistence    | SwiftData (local), CloudKit (optional later)                  |
 | Min iOS        | 17.0                                                          |
 | Project gen    | [XcodeGen](https://github.com/yonaskolb/XcodeGen) (`project.yml`) |
@@ -49,7 +49,7 @@ Sources/ShanghaiRummy/    # App source
   App/                    # SwiftUI App entry, root view
   Models/                 # Card, Deck, Player, Meld, GameState
   Rules/                  # Round definitions, scoring, validation
-  Multiplayer/            # GameKit matchmaking, turn exchange
+  Multiplayer/            # GameKit matchmaking, host authority, live sync
   Scenes/                 # SpriteKit card table
   Views/                  # SwiftUI menus/lobby/score
   Resources/              # Assets, sounds

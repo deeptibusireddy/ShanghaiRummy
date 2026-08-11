@@ -9,16 +9,32 @@ public enum TurnEngine {
 
     // MARK: - Actions
 
-    public enum Action: Equatable {
+    public enum Action: Codable, Equatable, Sendable {
         case draw(playerId: UUID, source: DrawSource)
         case goDown(playerId: UUID, contract: [[Card]])
         case addToMeld(playerId: UUID, meldId: UUID, cardsAtStart: [Card], cardsAtEnd: [Card])
         case redeemWild(playerId: UUID, meldId: UUID, wildCardId: UUID, replacementCard: Card)
         case discard(playerId: UUID, card: Card)
-        case buy(playerId: UUID)
+        case requestBuy(playerId: UUID)
+        case cancelBuyRequest(playerId: UUID)
+        case advanceHand(playerId: UUID)
+
+        public var actorPlayerId: UUID {
+            switch self {
+            case .draw(let playerId, _),
+                 .goDown(let playerId, _),
+                 .addToMeld(let playerId, _, _, _),
+                 .redeemWild(let playerId, _, _, _),
+                 .discard(let playerId, _),
+                 .requestBuy(let playerId),
+                 .cancelBuyRequest(let playerId),
+                 .advanceHand(let playerId):
+                return playerId
+            }
+        }
     }
 
-    public enum DrawSource: String, Codable, Equatable {
+    public enum DrawSource: String, Codable, Equatable, Sendable {
         case stock, discard
     }
 
@@ -38,6 +54,8 @@ public enum TurnEngine {
         case invalidAddition(MeldValidator.ValidationError)
         case buysExhausted
         case buyNotAllowedByTurnPlayer
+        case buyAlreadyRequested
+        case buyNotRequested
         case gameOver
         case cannotActOnGoDownTurn
         case notASequence
@@ -59,6 +77,8 @@ public enum TurnEngine {
             case .invalidAddition(let e): return "Invalid meld addition: \(e)"
             case .buysExhausted: return "Player has used all buys this round"
             case .buyNotAllowedByTurnPlayer: return "Turn player has first refusal on the discard"
+            case .buyAlreadyRequested: return "Player has already requested this discard"
+            case .buyNotRequested: return "Player has not requested this discard"
             case .gameOver: return "Game is over"
             case .cannotActOnGoDownTurn: return "Cannot add to or redeem from other melds on the turn you go down"
             case .notASequence: return "Wild redemption is only allowed on sequences"
@@ -85,8 +105,13 @@ public enum TurnEngine {
                               wildCardId: wildId, replacementCard: replacement, state: state)
         case .discard(let pid, let card):
             return discard(playerId: pid, card: card, state: state)
-        case .buy(let pid):
-            return buy(playerId: pid, state: state)
+        case .requestBuy(let pid):
+            return requestBuy(playerId: pid, state: state)
+        case .cancelBuyRequest(let pid):
+            return cancelBuyRequest(playerId: pid, state: state)
+        case .advanceHand(let pid):
+            guard state.currentPlayerId == pid else { return .failure(.notYourTurn) }
+            return advanceHand(state: state)
         }
     }
 
@@ -142,12 +167,19 @@ public enum TurnEngine {
         var s = state
         switch source {
         case .stock:
+            if s.prioritizedBuyRequesterId != nil {
+                guard s.stock.count > RulesConfig.penaltyCardsOnBuy else {
+                    return .failure(.emptyStock)
+                }
+                resolvePrioritizedBuy(state: &s)
+            }
             guard let c = s.stock.popLast() else { return .failure(.emptyStock) }
             s.players[s.currentTurnIndex].hand.append(c)
         case .discard:
             guard let c = s.discard.popLast() else { return .failure(.emptyDiscard) }
             s.players[s.currentTurnIndex].hand.append(c)
         }
+        s.buyRequestPlayerIds.removeAll()
         s.phase = .awaitingMeldOrDiscard
         return .success(s)
     }
@@ -313,7 +345,10 @@ public enum TurnEngine {
         return .success(s)
     }
 
-    private static func buy(playerId: UUID, state: GameState) -> Result<GameState, ActionError> {
+    private static func requestBuy(
+        playerId: UUID,
+        state: GameState
+    ) -> Result<GameState, ActionError> {
         guard state.phase == .awaitingDraw else { return .failure(.wrongPhase(state.phase)) }
         if state.currentPlayerId == playerId {
             return .failure(.buyNotAllowedByTurnPlayer) // turn player draws, doesn't buy
@@ -324,17 +359,40 @@ public enum TurnEngine {
         guard state.players[buyerIdx].buysUsedThisRound < RulesConfig.maxBuysPerRound else {
             return .failure(.buysExhausted)
         }
-        var s = state
-        guard let bought = s.discard.popLast() else { return .failure(.emptyDiscard) }
-        s.players[buyerIdx].hand.append(bought)
-        // Penalty card(s) from stock.
-        for _ in 0..<RulesConfig.penaltyCardsOnBuy {
-            guard let penalty = s.stock.popLast() else { break }
-            s.players[buyerIdx].hand.append(penalty)
+        guard !state.discard.isEmpty else { return .failure(.emptyDiscard) }
+        guard !state.buyRequestPlayerIds.contains(playerId) else {
+            return .failure(.buyAlreadyRequested)
         }
-        s.players[buyerIdx].buysUsedThisRound += 1
-        // Buying doesn't change whose turn it is — the turn player still needs to draw.
+        var s = state
+        s.buyRequestPlayerIds.append(playerId)
         return .success(s)
+    }
+
+    private static func cancelBuyRequest(
+        playerId: UUID,
+        state: GameState
+    ) -> Result<GameState, ActionError> {
+        guard state.phase == .awaitingDraw else { return .failure(.wrongPhase(state.phase)) }
+        guard let requestIndex = state.buyRequestPlayerIds.firstIndex(of: playerId) else {
+            return .failure(.buyNotRequested)
+        }
+        var s = state
+        s.buyRequestPlayerIds.remove(at: requestIndex)
+        return .success(s)
+    }
+
+    private static func resolvePrioritizedBuy(state: inout GameState) {
+        guard let buyerId = state.prioritizedBuyRequesterId,
+              let buyerIndex = state.players.firstIndex(where: { $0.id == buyerId }),
+              let bought = state.discard.popLast() else {
+            return
+        }
+        state.players[buyerIndex].hand.append(bought)
+        for _ in 0..<RulesConfig.penaltyCardsOnBuy {
+            guard let penalty = state.stock.popLast() else { break }
+            state.players[buyerIndex].hand.append(penalty)
+        }
+        state.players[buyerIndex].buysUsedThisRound += 1
     }
 
     // MARK: - Helpers
@@ -344,7 +402,7 @@ public enum TurnEngine {
     private static func removeFromHand(_ cards: [Card], playerIndex: Int, state: inout GameState) -> Bool {
         var hand = state.players[playerIndex].hand
         for target in cards {
-            guard let idx = hand.firstIndex(where: { $0.id == target.id }) else { return false }
+            guard let idx = hand.firstIndex(of: target) else { return false }
             hand.remove(at: idx)
         }
         state.players[playerIndex].hand = hand

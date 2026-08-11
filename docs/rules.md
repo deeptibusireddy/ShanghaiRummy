@@ -222,9 +222,10 @@ their cumulative penalty score is higher than someone else's.
 
 ## Implementation notes
 
-- **Deterministic shuffle:** Use a seeded RNG so both/all Game Center clients
-  can reproduce identical shuffles from a shared seed.
-- **Server of record:** For multiplayer, one player's device is authoritative
-  per turn; the full `GameState` diff is transmitted to the next player.
-- **Persistence:** Full `GameState` is `Codable` so a match can pause and
-  resume across app restarts and Game Center turn timeouts.
+- **Deterministic shuffle:** Use a seeded RNG so every Game Center participant
+  receives the same deck order.
+- **Host authority:** Game Center selects one device as the live table host.
+  Clients submit actions; the host validates them and broadcasts revisioned
+  `GameState` snapshots.
+- **Connectivity:** The current real-time match requires all players to remain
+  connected. Host migration and restart recovery are future work.

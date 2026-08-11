@@ -14,6 +14,7 @@ final class ScreenshotUITests: XCTestCase {
         continueAfterFailure = false
         XCUIDevice.shared.orientation = .landscapeLeft
         app = XCUIApplication()
+        app.launchArguments += ["--ui-testing"]
     }
 
     override func tearDownWithError() throws {

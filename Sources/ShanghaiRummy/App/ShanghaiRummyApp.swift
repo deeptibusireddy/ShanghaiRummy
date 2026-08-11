@@ -8,7 +8,12 @@ struct ShanghaiRummyApp: App {
         WindowGroup {
             RootView()
                 .environmentObject(gameCenter)
-                .task { await gameCenter.authenticate() }
+                .task {
+                    guard !CommandLine.arguments.contains("--ui-testing") else {
+                        return
+                    }
+                    await gameCenter.authenticate()
+                }
         }
     }
 }

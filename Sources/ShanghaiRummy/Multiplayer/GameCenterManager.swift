@@ -1,12 +1,26 @@
 import Foundation
 import GameKit
+import UIKit
+import Combine
 
-/// Wraps Game Center authentication and (later) turn-based matchmaking.
 @MainActor
 final class GameCenterManager: NSObject, ObservableObject {
     @Published private(set) var isAuthenticated = false
-    @Published private(set) var displayName: String = ""
+    @Published private(set) var displayName = ""
     @Published private(set) var lastError: String?
+    @Published private(set) var hasActiveMatch = false
+    @Published private(set) var onlineStatusMessage = ""
+    @Published private(set) var onlineGame: GameViewModel?
+    @Published var isPresentingMatchmaker = false
+    @Published var isPresentingAuthentication = false
+    @Published private(set) var authenticationViewController: UIViewController?
+
+    private var pendingInvite: GKInvite?
+    private var match: GKMatch?
+    private var isChoosingHost = false
+    private var authority: RealtimeGameAuthority?
+    private var currentSnapshot: RealtimeGameSnapshot?
+    private var pendingLocalRequestId: UUID?
 
     func authenticate() async {
         let localPlayer = GKLocalPlayer.local
@@ -16,18 +30,470 @@ final class GameCenterManager: NSObject, ObservableObject {
                 if let error {
                     self.lastError = error.localizedDescription
                     self.isAuthenticated = false
+                    self.isPresentingAuthentication = false
+                    self.authenticationViewController = nil
                     return
                 }
-                if viewController != nil {
-                    self.lastError = "Game Center sign-in required"
-                    self.isAuthenticated = false
+                if let viewController {
+                    self.authenticationViewController = viewController
+                    self.isPresentingAuthentication = true
                     return
                 }
+                self.authenticationViewController = nil
+                self.isPresentingAuthentication = false
                 self.isAuthenticated = localPlayer.isAuthenticated
                 self.displayName = localPlayer.displayName
+                self.lastError = nil
+                if localPlayer.isAuthenticated {
+                    localPlayer.unregisterAllListeners()
+                    localPlayer.register(self)
+                }
             }
         }
     }
 
-    // TODO: findMatch(), submitTurn(matchData:), GKTurnBasedEventListener.
+    func beginMatchmaking() {
+        guard isAuthenticated else {
+            lastError = "Sign in to Game Center before starting an online game"
+            return
+        }
+        lastError = nil
+        isPresentingMatchmaker = true
+    }
+
+    func makeMatchmakerViewController() -> GKMatchmakerViewController? {
+        let controller: GKMatchmakerViewController?
+        if let invite = pendingInvite {
+            pendingInvite = nil
+            controller = GKMatchmakerViewController(invite: invite)
+        } else {
+            let request = GKMatchRequest()
+            request.minPlayers = RulesConfig.minPlayers
+            request.maxPlayers = RulesConfig.maxPlayers
+            request.defaultNumberOfPlayers = min(4, RulesConfig.maxPlayers)
+            controller = GKMatchmakerViewController(matchRequest: request)
+        }
+        controller?.matchmakerDelegate = self
+        return controller
+    }
+
+    func leaveOnlineMatch() {
+        match?.disconnect()
+        resetOnlineSession()
+    }
+
+    private func accept(match: GKMatch) {
+        self.match?.disconnect()
+        self.match = match
+        match.delegate = self
+        hasActiveMatch = true
+        isChoosingHost = false
+        currentSnapshot = nil
+        authority = nil
+        pendingLocalRequestId = nil
+        onlineGame = nil
+        onlineStatusMessage = match.expectedPlayerCount > 0
+            ? "Waiting for \(match.expectedPlayerCount) more player(s)…"
+            : "Connecting everyone…"
+        tryStartMatchIfReady()
+    }
+
+    private func tryStartMatchIfReady() {
+        guard let match,
+              match.expectedPlayerCount == 0,
+              currentSnapshot == nil,
+              !isChoosingHost else {
+            return
+        }
+        let allPlayers = connectedPlayers(in: match)
+        guard allPlayers.count >= RulesConfig.minPlayers else {
+            onlineStatusMessage = "Waiting for players to connect…"
+            return
+        }
+
+        isChoosingHost = true
+        onlineStatusMessage = "Starting the shared table…"
+        match.chooseBestHostingPlayer { [weak self, weak match] selectedHost in
+            Task { @MainActor in
+                guard let self, let match, self.match === match else { return }
+                self.isChoosingHost = false
+                let players = self.connectedPlayers(in: match)
+                let hostId = selectedHost?.gamePlayerID
+                    ?? players.map(\.gamePlayerID).sorted().first
+                guard let hostId else {
+                    self.failOnlineSession("Game Center could not choose a host")
+                    return
+                }
+                if hostId == GKLocalPlayer.local.gamePlayerID {
+                    self.startHostedGame(players: players, hostGamePlayerId: hostId)
+                } else {
+                    self.onlineStatusMessage = "Waiting for the host to deal…"
+                }
+            }
+        }
+    }
+
+    private func connectedPlayers(in match: GKMatch) -> [GKPlayer] {
+        ([GKLocalPlayer.local] + match.players)
+            .reduce(into: [String: GKPlayer]()) { players, player in
+                players[player.gamePlayerID] = player
+            }
+            .values
+            .sorted { $0.gamePlayerID < $1.gamePlayerID }
+    }
+
+    private func startHostedGame(
+        players: [GKPlayer],
+        hostGamePlayerId: String
+    ) {
+        guard players.count >= RulesConfig.minPlayers,
+              players.count <= RulesConfig.maxPlayers else {
+            failOnlineSession("Online games require 2–6 connected players")
+            return
+        }
+
+        let state = GameFactory.newGame(
+            playerNames: players.map(\.displayName),
+            seed: UInt64.random(in: 0...UInt64.max)
+        )
+        let bindings = zip(players, state.players).map { gamePlayer, player in
+            RealtimeParticipantBinding(
+                gamePlayerId: gamePlayer.gamePlayerID,
+                playerId: player.id,
+                displayName: gamePlayer.displayName
+            )
+        }
+        let snapshot = RealtimeGameSnapshot(
+            revision: 0,
+            state: state,
+            participants: bindings,
+            hostGamePlayerId: hostGamePlayerId
+        )
+        authority = RealtimeGameAuthority(snapshot: snapshot)
+        install(snapshot)
+        sendToAll(.start(snapshot))
+    }
+
+    private func install(_ snapshot: RealtimeGameSnapshot) {
+        guard isValid(snapshot),
+              let localBinding = snapshot.binding(
+                forGamePlayerId: GKLocalPlayer.local.gamePlayerID
+              ) else {
+            failOnlineSession("The shared table data is invalid")
+            return
+        }
+        if let currentSnapshot,
+           snapshot.revision < currentSnapshot.revision {
+            return
+        }
+
+        currentSnapshot = snapshot
+        if let onlineGame {
+            let completesPendingAction =
+                snapshot.lastAppliedRequestId == pendingLocalRequestId
+                && pendingLocalRequestId != nil
+            if completesPendingAction {
+                pendingLocalRequestId = nil
+            }
+            onlineGame.receiveAuthoritativeState(
+                snapshot.state,
+                completesPendingAction: completesPendingAction
+            )
+        } else {
+            let viewModel = GameViewModel(
+                state: snapshot.state,
+                localPlayerId: localBinding.playerId
+            )
+            viewModel.configureOnlineActionSubmitter { [weak self] action in
+                self?.submit(action) ?? false
+            }
+            onlineGame = viewModel
+        }
+        onlineStatusMessage = "Connected"
+    }
+
+    private func isValid(_ snapshot: RealtimeGameSnapshot) -> Bool {
+        let participantIds = snapshot.participants.map(\.playerId)
+        let gamePlayerIds = snapshot.participants.map(\.gamePlayerId)
+        let stateIds = snapshot.state.players.map(\.id)
+        return snapshot.participants.count == snapshot.state.players.count
+            && Set(participantIds).count == participantIds.count
+            && Set(gamePlayerIds).count == gamePlayerIds.count
+            && Set(participantIds) == Set(stateIds)
+            && snapshot.participants.contains {
+                $0.gamePlayerId == snapshot.hostGamePlayerId
+            }
+    }
+
+    private func submit(_ action: TurnEngine.Action) -> Bool {
+        guard let match, let snapshot = currentSnapshot else {
+            lastError = "The online table is not connected"
+            return false
+        }
+        let request = RealtimeActionRequest(
+            expectedRevision: snapshot.revision,
+            action: action
+        )
+        pendingLocalRequestId = request.id
+        if snapshot.hostGamePlayerId == GKLocalPlayer.local.gamePlayerID {
+            return applyAsHost(request, senderId: GKLocalPlayer.local.gamePlayerID)
+        }
+        guard let host = match.players.first(where: {
+            $0.gamePlayerID == snapshot.hostGamePlayerId
+        }) else {
+            pendingLocalRequestId = nil
+            onlineGame?.rejectOnlineAction(
+                message: "The host is no longer connected",
+                state: snapshot.state
+            )
+            return false
+        }
+        do {
+            let data = try RealtimeMessageCodec.encode(.action(request))
+            try match.send(data, to: [host], dataMode: .reliable)
+            return true
+        } catch {
+            pendingLocalRequestId = nil
+            onlineGame?.rejectOnlineAction(
+                message: error.localizedDescription,
+                state: snapshot.state
+            )
+            return false
+        }
+    }
+
+    private func applyAsHost(
+        _ request: RealtimeActionRequest,
+        senderId: String
+    ) -> Bool {
+        guard var authority else {
+            pendingLocalRequestId = nil
+            failOnlineSession("The authoritative table is unavailable")
+            return false
+        }
+        let result = authority.apply(request, fromGamePlayerId: senderId)
+        self.authority = authority
+
+        switch result {
+        case .success(let snapshot):
+            install(snapshot)
+            sendToAll(.snapshot(snapshot))
+            return true
+        case .failure(let rejection):
+            if senderId == GKLocalPlayer.local.gamePlayerID {
+                pendingLocalRequestId = nil
+                onlineGame?.rejectOnlineAction(
+                    message: rejection.message,
+                    state: rejection.currentSnapshot.state
+                )
+            } else {
+                send(.rejection(rejection), toGamePlayerId: senderId)
+            }
+            return false
+        }
+    }
+
+    private func handle(
+        _ message: RealtimeGameMessage,
+        from sender: GKPlayer
+    ) {
+        switch message {
+        case .start(let snapshot):
+            guard sender.gamePlayerID == snapshot.hostGamePlayerId else { return }
+            install(snapshot)
+        case .action(let request):
+            guard currentSnapshot?.hostGamePlayerId
+                    == GKLocalPlayer.local.gamePlayerID else {
+                return
+            }
+            _ = applyAsHost(request, senderId: sender.gamePlayerID)
+        case .snapshot(let snapshot):
+            guard sender.gamePlayerID == snapshot.hostGamePlayerId,
+                  currentSnapshot?.hostGamePlayerId == snapshot.hostGamePlayerId
+                    || currentSnapshot == nil else {
+                return
+            }
+            install(snapshot)
+        case .rejection(let rejection):
+            guard sender.gamePlayerID
+                    == rejection.currentSnapshot.hostGamePlayerId,
+                  currentSnapshot?.hostGamePlayerId == sender.gamePlayerID,
+                  isValid(rejection.currentSnapshot),
+                  rejection.requestId == pendingLocalRequestId else {
+                return
+            }
+            pendingLocalRequestId = nil
+            let latestSnapshot: RealtimeGameSnapshot
+            if let currentSnapshot,
+               currentSnapshot.revision > rejection.currentSnapshot.revision {
+                latestSnapshot = currentSnapshot
+            } else {
+                latestSnapshot = rejection.currentSnapshot
+                currentSnapshot = rejection.currentSnapshot
+            }
+            onlineGame?.rejectOnlineAction(
+                message: rejection.message,
+                state: latestSnapshot.state
+            )
+        }
+    }
+
+    private func sendToAll(_ message: RealtimeGameMessage) {
+        guard let match else { return }
+        do {
+            let data = try RealtimeMessageCodec.encode(message)
+            try match.sendData(toAllPlayers: data, with: .reliable)
+        } catch {
+            lastError = error.localizedDescription
+        }
+    }
+
+    private func send(
+        _ message: RealtimeGameMessage,
+        toGamePlayerId playerId: String
+    ) {
+        guard let match,
+              let player = match.players.first(where: {
+                  $0.gamePlayerID == playerId
+              }) else {
+            return
+        }
+        do {
+            let data = try RealtimeMessageCodec.encode(message)
+            try match.send(data, to: [player], dataMode: .reliable)
+        } catch {
+            lastError = error.localizedDescription
+        }
+    }
+
+    private func failOnlineSession(_ message: String) {
+        pendingLocalRequestId = nil
+        lastError = message
+        onlineStatusMessage = message
+        if let onlineGame {
+            onlineGame.rejectOnlineAction(
+                message: message,
+                state: currentSnapshot?.state ?? onlineGame.state
+            )
+        }
+    }
+
+    private func resetOnlineSession() {
+        match?.delegate = nil
+        match = nil
+        authority = nil
+        currentSnapshot = nil
+        pendingLocalRequestId = nil
+        onlineGame = nil
+        hasActiveMatch = false
+        isChoosingHost = false
+        onlineStatusMessage = ""
+    }
+}
+
+extension GameCenterManager: GKMatchmakerViewControllerDelegate {
+    nonisolated func matchmakerViewControllerWasCancelled(
+        _ viewController: GKMatchmakerViewController
+    ) {
+        Task { @MainActor [weak self] in
+            self?.isPresentingMatchmaker = false
+        }
+    }
+
+    nonisolated func matchmakerViewController(
+        _ viewController: GKMatchmakerViewController,
+        didFailWithError error: Error
+    ) {
+        Task { @MainActor [weak self] in
+            self?.isPresentingMatchmaker = false
+            self?.lastError = error.localizedDescription
+        }
+    }
+
+    nonisolated func matchmakerViewController(
+        _ viewController: GKMatchmakerViewController,
+        didFind match: GKMatch
+    ) {
+        Task { @MainActor [weak self] in
+            self?.isPresentingMatchmaker = false
+            self?.accept(match: match)
+        }
+    }
+}
+
+extension GameCenterManager: GKMatchDelegate {
+    nonisolated func match(
+        _ match: GKMatch,
+        didReceive data: Data,
+        fromRemotePlayer player: GKPlayer
+    ) {
+        do {
+            let message = try RealtimeMessageCodec.decode(data)
+            Task { @MainActor [weak self] in
+                guard self?.match === match else { return }
+                self?.handle(message, from: player)
+            }
+        } catch {
+            Task { @MainActor [weak self] in
+                self?.lastError = "Could not read an online game update"
+            }
+        }
+    }
+
+    nonisolated func match(
+        _ match: GKMatch,
+        player: GKPlayer,
+        didChange state: GKPlayerConnectionState
+    ) {
+        Task { @MainActor [weak self] in
+            guard let self, self.match === match else { return }
+            switch state {
+            case .connected:
+                if let snapshot = self.currentSnapshot,
+                   snapshot.hostGamePlayerId
+                    == GKLocalPlayer.local.gamePlayerID {
+                    self.send(.snapshot(snapshot), toGamePlayerId: player.gamePlayerID)
+                } else {
+                    self.tryStartMatchIfReady()
+                }
+            case .disconnected:
+                self.onlineStatusMessage = "\(player.displayName) disconnected"
+                if self.currentSnapshot?.hostGamePlayerId == player.gamePlayerID,
+                   let onlineGame = self.onlineGame {
+                    self.pendingLocalRequestId = nil
+                    onlineGame.rejectOnlineAction(
+                        message: "The table host disconnected",
+                        state: self.currentSnapshot?.state ?? onlineGame.state
+                    )
+                } else {
+                    self.onlineGame?.reportOnlineIssue(
+                        "\(player.displayName) disconnected from the table"
+                    )
+                }
+            case .unknown:
+                break
+            @unknown default:
+                break
+            }
+        }
+    }
+
+    nonisolated func match(_ match: GKMatch, didFailWithError error: Error?) {
+        Task { @MainActor [weak self] in
+            guard let self, self.match === match else { return }
+            self.failOnlineSession(
+                error?.localizedDescription ?? "The online match disconnected"
+            )
+        }
+    }
+}
+
+extension GameCenterManager: GKLocalPlayerListener {
+    nonisolated func player(_ player: GKPlayer, didAccept invite: GKInvite) {
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            self.pendingInvite = invite
+            self.isPresentingMatchmaker = true
+        }
+    }
 }

@@ -218,8 +218,22 @@ final class GameScene: SKScene {
     }
 
     private var phaseInstruction: String {
+        if vm.isOnlineGame && !vm.isLocalPlayersTurn {
+            if vm.state.phase == .awaitingDraw {
+                if vm.hasRequestedBuy {
+                    return "Buy requested — waiting for \(vm.currentPlayerName)"
+                }
+                if vm.canRequestBuy {
+                    return "Request the discard or wait for \(vm.currentPlayerName)"
+                }
+            }
+            return "\(vm.currentPlayerName) is playing"
+        }
         switch vm.state.phase {
         case .awaitingDraw:
+            if let requester = vm.prioritizedBuyRequesterName {
+                return "\(requester) wants to buy — discard has first refusal"
+            }
             return "Choose the stock or discard pile"
         case .awaitingMeldOrDiscard:
             if vm.currentPlayer.hasGoneDownThisRound {
@@ -329,13 +343,17 @@ final class GameScene: SKScene {
         seatsLayer.removeAllChildren()
         let seats = SeatLayout.seats(
             playerCount: vm.state.players.count,
-            youIndex: vm.state.currentTurnIndex,
+            youIndex: vm.displayedPlayerIndex,
             sceneSize: size
         )
         for (i, player) in vm.state.players.enumerated() {
             let seat = seats[i]
             if seat.edge == .bottom {
-                buildCurrentPlayerHUD(player: player, colorIndex: i)
+                buildCurrentPlayerHUD(
+                    player: player,
+                    colorIndex: i,
+                    isActive: i == vm.state.currentTurnIndex
+                )
                 continue
             }
 
@@ -343,9 +361,12 @@ final class GameScene: SKScene {
             let bgHeight: CGFloat = 42
             let bg = SKShapeNode(rectOf: CGSize(width: bgWidth, height: bgHeight),
                                  cornerRadius: 21)
-            bg.fillColor = theme.seatBgOther
-            bg.strokeColor = theme.feltStroke.withAlphaComponent(0.7)
-            bg.lineWidth = 1
+            let isActive = i == vm.state.currentTurnIndex
+            bg.fillColor = isActive ? theme.seatBgCurrent : theme.seatBgOther
+            bg.strokeColor = isActive
+                ? theme.turnGlow.withAlphaComponent(0.9)
+                : theme.feltStroke.withAlphaComponent(0.7)
+            bg.lineWidth = isActive ? 2 : 1
             bg.position = seat.anchor
             bg.zPosition = 2
             seatsLayer.addChild(bg)
@@ -401,7 +422,7 @@ final class GameScene: SKScene {
         meldCardNodes.removeAll()
         let seats = SeatLayout.seats(
             playerCount: vm.state.players.count,
-            youIndex: vm.state.currentTurnIndex,
+            youIndex: vm.displayedPlayerIndex,
             sceneSize: size
         )
         var meldsByOwner: [UUID: [Meld]] = [:]
@@ -538,23 +559,31 @@ final class GameScene: SKScene {
         meldTargetNodes[meld.id] = target
     }
 
-    private func buildCurrentPlayerHUD(player: Player, colorIndex: Int) {
+    private func buildCurrentPlayerHUD(
+        player: Player,
+        colorIndex: Int,
+        isActive: Bool
+    ) {
         let panelSize = CGSize(width: 174, height: 46)
         let center = CGPoint(x: horizontalEdgeInset + panelSize.width / 2,
                              y: stagingTrayY)
         let panel = SKShapeNode(rectOf: panelSize, cornerRadius: 23)
-        panel.fillColor = theme.seatBgCurrent
-        panel.strokeColor = theme.turnGlow.withAlphaComponent(0.85)
-        panel.lineWidth = 1.5
+        panel.fillColor = isActive ? theme.seatBgCurrent : theme.seatBgOther
+        panel.strokeColor = isActive
+            ? theme.turnGlow.withAlphaComponent(0.85)
+            : theme.feltStroke.withAlphaComponent(0.7)
+        panel.lineWidth = isActive ? 1.5 : 1
         panel.position = center
         panel.zPosition = 2
         seatsLayer.addChild(panel)
 
-        let ringPulse = SKAction.sequence([
-            .fadeAlpha(to: 0.5, duration: 0.7),
-            .fadeAlpha(to: 1.0, duration: 0.7),
-        ])
-        panel.run(.repeatForever(ringPulse))
+        if isActive {
+            let ringPulse = SKAction.sequence([
+                .fadeAlpha(to: 0.5, duration: 0.7),
+                .fadeAlpha(to: 1.0, duration: 0.7),
+            ])
+            panel.run(.repeatForever(ringPulse))
+        }
 
         let avatarRadius: CGFloat = 15
         let avatarPosition = CGPoint(x: center.x - panelSize.width / 2 + 24,
@@ -702,6 +731,7 @@ final class GameScene: SKScene {
         stagingLayer.removeAllChildren()
         stagingBacking = nil
         guard !vm.isCurrentPlayerCPU,
+              vm.isLocalPlayersTurn,
               vm.state.phase == .awaitingMeldOrDiscard,
               !vm.currentPlayer.hasGoneDownThisRound else { return }
 
@@ -841,8 +871,23 @@ final class GameScene: SKScene {
                                 emphasized: Bool) {
         switch vm.state.phase {
         case .awaitingDraw:
-            return ("CHOOSE A PILE", nil, false, false)
+            if vm.isLocalPlayersTurn {
+                if let requester = vm.prioritizedBuyRequesterName {
+                    return ("\(requester.uppercased()) WANTS TO BUY", nil, false, false)
+                }
+                return ("CHOOSE A PILE", nil, false, false)
+            }
+            if vm.hasRequestedBuy {
+                return ("CANCEL BUY", "toggle-buy", true, false)
+            }
+            if vm.canRequestBuy {
+                return ("BUY DISCARD", "toggle-buy", true, true)
+            }
+            return ("WAITING FOR \(vm.currentPlayerName.uppercased())", nil, false, false)
         case .awaitingMeldOrDiscard:
+            if !vm.isLocalPlayersTurn {
+                return ("\(vm.currentPlayerName.uppercased())'S TURN", nil, false, false)
+            }
             if vm.currentPlayer.hasGoneDownThisRound {
                 if vm.currentPlayer.laidDownThisTurn {
                     return ("DISCARD TO END", nil, false, false)
@@ -1042,14 +1087,16 @@ final class GameScene: SKScene {
 
         if let id = draggingCardId,
            let card = vm.currentPlayer.hand.first(where: { $0.id == id }) {
-            if vm.state.phase == .awaitingMeldOrDiscard,
+            if vm.isLocalPlayersTurn,
+               vm.state.phase == .awaitingMeldOrDiscard,
                discardDropZone().contains(point) {
                 guard let node = draggingCard else { return }
                 animateDiscard(card, node: node)
                 return
             }
 
-            if vm.state.phase == .awaitingMeldOrDiscard,
+            if vm.isLocalPlayersTurn,
+               vm.state.phase == .awaitingMeldOrDiscard,
                !vm.currentPlayer.hasGoneDownThisRound,
                stagingTrayRect.contains(point) {
                 vm.toggleStaged(cardId: id)
@@ -1073,7 +1120,8 @@ final class GameScene: SKScene {
             let dy = point.y - dragOrigin.y
             let tapThreshold: CGFloat = 10
             if abs(dx) < tapThreshold && abs(dy) < tapThreshold {
-                guard vm.state.phase == .awaitingMeldOrDiscard else {
+                guard vm.isLocalPlayersTurn,
+                      vm.state.phase == .awaitingMeldOrDiscard else {
                     warningFeedback()
                     cancelDrag()
                     return
@@ -1129,6 +1177,13 @@ final class GameScene: SKScene {
             let previousPhase = vm.state.phase
             vm.drawFromDiscard()
             if previousPhase != vm.state.phase { selectionFeedback() }
+            return true
+        case "toggle-buy":
+            let wasRequested = vm.hasRequestedBuy
+            vm.toggleLocalBuyRequest()
+            if wasRequested != vm.hasRequestedBuy {
+                selectionFeedback()
+            }
             return true
         case "save-meld":
             if vm.saveStagedAsMeld() {
@@ -1293,7 +1348,8 @@ final class GameScene: SKScene {
         guard let value = vm.currentPlayer.hand.first(where: { $0.id == id }) else {
             return
         }
-        if vm.state.phase == .awaitingMeldOrDiscard {
+        if vm.isLocalPlayersTurn,
+           vm.state.phase == .awaitingMeldOrDiscard {
             highlightDiscardTarget()
             if vm.currentPlayer.hasGoneDownThisRound {
                 highlightCompatibleMeldTargets(for: value)

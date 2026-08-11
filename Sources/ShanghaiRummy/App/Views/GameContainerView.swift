@@ -76,9 +76,16 @@ struct GameContainerView: View {
                     .foregroundStyle(.secondary)
             }
             scoreTable
-            Button("Deal Next Hand") { vm.advanceHand() }
-                .buttonStyle(.borderedProminent)
-                .padding(.top, 4)
+            if vm.canAdvanceHand {
+                Button("Deal Next Hand") { vm.advanceHand() }
+                    .buttonStyle(.borderedProminent)
+                    .padding(.top, 4)
+            } else {
+                Text("Waiting for \(vm.currentPlayerName) to deal the next hand")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .padding(.top, 4)
+            }
         }
         .padding(20)
         .frame(maxWidth: 460)

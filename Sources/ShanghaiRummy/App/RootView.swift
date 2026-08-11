@@ -7,7 +7,13 @@ struct RootView: View {
     @State private var showingSetup = false
 
     var body: some View {
-        if let game = activeGame {
+        if let game = gameCenter.onlineGame {
+            GameContainerView(vm: game, theme: activeTheme) {
+                gameCenter.leaveOnlineMatch()
+            }
+        } else if gameCenter.hasActiveMatch {
+            onlineLobby
+        } else if let game = activeGame {
             GameContainerView(vm: game, theme: activeTheme) {
                 activeGame = nil
             }
@@ -17,6 +23,16 @@ struct RootView: View {
                     NewGameSetupView { vm in
                         showingSetup = false
                         activeGame = vm
+                    }
+                }
+                .fullScreenCover(isPresented: $gameCenter.isPresentingMatchmaker) {
+                    GameCenterMatchmakerView(manager: gameCenter)
+                        .ignoresSafeArea()
+                }
+                .sheet(isPresented: $gameCenter.isPresentingAuthentication) {
+                    if let controller = gameCenter.authenticationViewController {
+                        GameCenterAuthenticationView(viewController: controller)
+                            .ignoresSafeArea()
                     }
                 }
                 .onAppear {
@@ -102,10 +118,17 @@ struct RootView: View {
                 .buttonStyle(.borderedProminent)
 
                 Button("Play with Family (Game Center)") {
-                    // TODO(M3): present GKTurnBasedMatchmakerViewController
+                    gameCenter.beginMatchmaking()
                 }
                 .buttonStyle(.bordered)
                 .disabled(!gameCenter.isAuthenticated)
+
+                if let error = gameCenter.lastError {
+                    Text(error)
+                        .font(.footnote)
+                        .foregroundStyle(.red)
+                        .multilineTextAlignment(.center)
+                }
 
                 Button("Practice (vs. CPU)") {
                     // TODO(M2.5): local single-player mode
@@ -115,6 +138,23 @@ struct RootView: View {
             }
             .padding()
         }
+    }
+
+    private var onlineLobby: some View {
+        VStack(spacing: 20) {
+            ProgressView()
+                .controlSize(.large)
+            Text("Setting up the family table")
+                .font(.title2.bold())
+            Text(gameCenter.onlineStatusMessage)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+            Button("Leave Match", role: .destructive) {
+                gameCenter.leaveOnlineMatch()
+            }
+            .buttonStyle(.bordered)
+        }
+        .padding(32)
     }
 }
 

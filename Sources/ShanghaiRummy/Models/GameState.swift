@@ -2,7 +2,7 @@ import Foundation
 
 /// A single-source-of-truth Codable snapshot of the entire game.
 ///
-/// Serialize this to bytes for GameKit `matchData` and iCloud persistence.
+/// Serialize this to bytes for GameKit messages and local persistence.
 /// All state transitions go through `TurnEngine.apply(_:to:)`.
 public struct GameState: Codable, Sendable, Equatable {
     public var players: [Player]
@@ -24,6 +24,24 @@ public struct GameState: Codable, Sendable, Equatable {
     /// multiple when they finish level 10 in the same hand and tie on
     /// cumulative score.
     public var gameWinnerIds: [UUID]
+    /// Out-of-turn players who announced "Buy" before the turn player draws.
+    /// Resolution uses table order, not request arrival order.
+    public var buyRequestPlayerIds: [UUID]
+
+    private enum CodingKeys: String, CodingKey {
+        case players
+        case currentRound
+        case currentTurnIndex
+        case dealerIndex
+        case stock
+        case discard
+        case melds
+        case phase
+        case stockReshufflesUsed
+        case randomSeed
+        case gameWinnerIds
+        case buyRequestPlayerIds
+    }
 
     public enum Phase: String, Codable, Sendable {
         case awaitingDraw
@@ -42,6 +60,19 @@ public struct GameState: Codable, Sendable, Equatable {
         guard let p = players.first(where: { $0.id == id }) else { return nil }
         return RoundSchedule.contract(forRound: p.currentLevel)
     }
+    public var prioritizedBuyRequesterId: UUID? {
+        guard players.count > 1 else { return nil }
+        let requested = Set(buyRequestPlayerIds)
+        for offset in 1..<players.count {
+            let index = (currentTurnIndex + offset) % players.count
+            let player = players[index]
+            if requested.contains(player.id),
+               player.buysUsedThisRound < RulesConfig.maxBuysPerRound {
+                return player.id
+            }
+        }
+        return nil
+    }
 
     public init(
         players: [Player],
@@ -54,7 +85,8 @@ public struct GameState: Codable, Sendable, Equatable {
         phase: Phase,
         stockReshufflesUsed: Int,
         randomSeed: UInt64,
-        gameWinnerIds: [UUID] = []
+        gameWinnerIds: [UUID] = [],
+        buyRequestPlayerIds: [UUID] = []
     ) {
         self.players = players
         self.currentRound = currentRound
@@ -67,5 +99,31 @@ public struct GameState: Codable, Sendable, Equatable {
         self.stockReshufflesUsed = stockReshufflesUsed
         self.randomSeed = randomSeed
         self.gameWinnerIds = gameWinnerIds
+        self.buyRequestPlayerIds = buyRequestPlayerIds
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        players = try container.decode([Player].self, forKey: .players)
+        currentRound = try container.decode(Int.self, forKey: .currentRound)
+        currentTurnIndex = try container.decode(Int.self, forKey: .currentTurnIndex)
+        dealerIndex = try container.decode(Int.self, forKey: .dealerIndex)
+        stock = try container.decode([Card].self, forKey: .stock)
+        discard = try container.decode([Card].self, forKey: .discard)
+        melds = try container.decode([Meld].self, forKey: .melds)
+        phase = try container.decode(Phase.self, forKey: .phase)
+        stockReshufflesUsed = try container.decode(
+            Int.self,
+            forKey: .stockReshufflesUsed
+        )
+        randomSeed = try container.decode(UInt64.self, forKey: .randomSeed)
+        gameWinnerIds = try container.decode(
+            [UUID].self,
+            forKey: .gameWinnerIds
+        )
+        buyRequestPlayerIds = try container.decodeIfPresent(
+            [UUID].self,
+            forKey: .buyRequestPlayerIds
+        ) ?? []
     }
 }

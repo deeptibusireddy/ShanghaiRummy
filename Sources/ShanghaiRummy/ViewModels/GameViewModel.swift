@@ -5,9 +5,8 @@ import Combine
 /// `TurnEngine`. Pure rules + persistence live in the engine; this class only
 /// glues them to SwiftUI/SpriteKit.
 ///
-/// Hot-seat mode: a single instance drives all players on one device. When we
-/// wire GameKit in M3 this will grow a `sendTurn(state:)` hook, but the surface
-/// area stays the same for the UI.
+/// Hot-seat mode applies actions locally. Online mode sends actions to the
+/// authoritative Game Center host and publishes the returned snapshots.
 @MainActor
 public final class GameViewModel: ObservableObject {
 
@@ -28,14 +27,21 @@ public final class GameViewModel: ObservableObject {
     /// IDs of players controlled by the CPU practice bot (M1e). Empty in
     /// hot-seat / GameKit modes.
     @Published public var cpuPlayerIds: Set<UUID> = []
+    @Published public private(set) var isSubmittingOnlineAction = false
+
+    /// Non-nil in online mode. The local hand remains at the bottom even while
+    /// another participant owns the turn.
+    public let localPlayerId: UUID?
 
     /// Re-entrancy guard for the CPU auto-play loop (see `dispatch`).
     private var isRunningCPUTurns: Bool = false
+    private var onlineActionSubmitter: ((TurnEngine.Action) -> Bool)?
 
     // MARK: - Init
 
-    public init(state: GameState) {
+    public init(state: GameState, localPlayerId: UUID? = nil) {
         self.state = state
+        self.localPlayerId = localPlayerId
     }
 
     /// Convenience factory: build a fresh match from names.
@@ -46,16 +52,52 @@ public final class GameViewModel: ObservableObject {
 
     // MARK: - Derived helpers used by views
 
-    public var currentPlayer: Player { state.players[state.currentTurnIndex] }
-    public var currentPlayerName: String { currentPlayer.name }
+    public var turnPlayer: Player { state.players[state.currentTurnIndex] }
+    public var currentPlayer: Player {
+        guard let localPlayerId,
+              let local = state.players.first(where: { $0.id == localPlayerId }) else {
+            return turnPlayer
+        }
+        return local
+    }
+    public var currentPlayerName: String { turnPlayer.name }
+    public var displayedPlayerIndex: Int {
+        guard let localPlayerId,
+              let index = state.players.firstIndex(where: { $0.id == localPlayerId }) else {
+            return state.currentTurnIndex
+        }
+        return index
+    }
+    public var isOnlineGame: Bool { localPlayerId != nil }
+    public var isLocalPlayersTurn: Bool {
+        localPlayerId == nil || state.currentPlayerId == localPlayerId
+    }
     public var currentContractDescription: String {
-        state.currentContract?.displayName ?? "—"
+        state.contract(forPlayer: currentPlayer.id)?.displayName ?? "—"
     }
     public var canDrawFromDiscard: Bool {
-        state.phase == .awaitingDraw && !state.discard.isEmpty
+        isLocalPlayersTurn && state.phase == .awaitingDraw && !state.discard.isEmpty
     }
     public var canDrawFromStock: Bool {
-        state.phase == .awaitingDraw && !state.stock.isEmpty
+        isLocalPlayersTurn && state.phase == .awaitingDraw && !state.stock.isEmpty
+    }
+    public var hasRequestedBuy: Bool {
+        state.buyRequestPlayerIds.contains(currentPlayer.id)
+    }
+    public var canRequestBuy: Bool {
+        isOnlineGame
+            && !isLocalPlayersTurn
+            && state.phase == .awaitingDraw
+            && !state.discard.isEmpty
+            && currentPlayer.buysUsedThisRound < RulesConfig.maxBuysPerRound
+            && !hasRequestedBuy
+    }
+    public var prioritizedBuyRequesterName: String? {
+        guard let id = state.prioritizedBuyRequesterId else { return nil }
+        return state.players.first(where: { $0.id == id })?.name
+    }
+    public var canAdvanceHand: Bool {
+        state.phase == .roundEnded && isLocalPlayersTurn
     }
 
     // MARK: - Action dispatch
@@ -64,6 +106,24 @@ public final class GameViewModel: ObservableObject {
     /// the new state or the error message, and returns `true` on success.
     @discardableResult
     public func dispatch(_ action: TurnEngine.Action) -> Bool {
+        if let onlineActionSubmitter {
+            guard !isSubmittingOnlineAction else { return false }
+            if case .failure(let error) = TurnEngine.apply(action, to: state) {
+                lastError = error.description
+                return false
+            }
+            isSubmittingOnlineAction = true
+            let submitted = onlineActionSubmitter(action)
+            if !submitted {
+                isSubmittingOnlineAction = false
+            }
+            return submitted
+        }
+        return applyAuthoritative(action)
+    }
+
+    @discardableResult
+    public func applyAuthoritative(_ action: TurnEngine.Action) -> Bool {
         let outgoingId = state.currentPlayerId
         switch TurnEngine.apply(action, to: state) {
         case .success(let newState):
@@ -78,7 +138,8 @@ public final class GameViewModel: ObservableObject {
                 let incomingIsCPU = cpuPlayerIds.contains(incomingId)
                 // Only show the pass-and-play interstitial when handing off
                 // between two humans. Bot ↔ human and bot ↔ bot skip it.
-                isBetweenTurns = !(outgoingIsCPU || incomingIsCPU)
+                isBetweenTurns = !isOnlineGame
+                    && !(outgoingIsCPU || incomingIsCPU)
                 stagedCardIds.removeAll()
                 contractDraft.removeAll()
                 // Auto-pump the CPU's turn(s) so the UI never has to wait on
@@ -91,6 +152,51 @@ public final class GameViewModel: ObservableObject {
         case .failure(let err):
             lastError = err.description
             return false
+        }
+    }
+
+    public func configureOnlineActionSubmitter(
+        _ submitter: @escaping (TurnEngine.Action) -> Bool
+    ) {
+        onlineActionSubmitter = submitter
+    }
+
+    public func receiveAuthoritativeState(
+        _ newState: GameState,
+        completesPendingAction: Bool = true
+    ) {
+        state = newState
+        lastError = nil
+        if completesPendingAction {
+            isSubmittingOnlineAction = false
+        }
+        isBetweenTurns = false
+        reconcileDraftWithAuthoritativeHand()
+    }
+
+    public func rejectOnlineAction(message: String, state newState: GameState) {
+        state = newState
+        lastError = message
+        isSubmittingOnlineAction = false
+        isBetweenTurns = false
+        reconcileDraftWithAuthoritativeHand()
+    }
+
+    public func reportOnlineIssue(_ message: String) {
+        lastError = message
+    }
+
+    private func reconcileDraftWithAuthoritativeHand() {
+        guard isLocalPlayersTurn,
+              state.phase == .awaitingMeldOrDiscard else {
+            stagedCardIds.removeAll()
+            contractDraft.removeAll()
+            return
+        }
+        let handIds = Set(currentPlayer.hand.map(\.id))
+        stagedCardIds.formIntersection(handIds)
+        contractDraft.removeAll { meld in
+            !meld.allSatisfy { handIds.contains($0.id) }
         }
     }
 
@@ -109,21 +215,24 @@ public final class GameViewModel: ObservableObject {
         dispatch(.redeemWild(playerId: currentPlayer.id, meldId: meldId,
                              wildCardId: wildCardId, replacementCard: replacementCard))
     }
-    public func buy(as playerId: UUID) {
-        dispatch(.buy(playerId: playerId))
+    public func requestBuy(as playerId: UUID) {
+        dispatch(.requestBuy(playerId: playerId))
+    }
+    public func cancelBuyRequest(as playerId: UUID) {
+        dispatch(.cancelBuyRequest(playerId: playerId))
+    }
+    public func toggleLocalBuyRequest() {
+        if hasRequestedBuy {
+            cancelBuyRequest(as: currentPlayer.id)
+        } else if canRequestBuy {
+            requestBuy(as: currentPlayer.id)
+        }
     }
 
     /// Trigger end-of-hand accounting: score, advance levels, deal next hand.
     /// Fails silently (setting `lastError`) if the game isn't in `.roundEnded`.
     public func advanceHand() {
-        switch TurnEngine.advanceHand(state: state) {
-        case .success(let newState):
-            state = newState
-            lastError = nil
-            isBetweenTurns = false
-        case .failure(let err):
-            lastError = err.description
-        }
+        dispatch(.advanceHand(playerId: currentPlayer.id))
     }
 
     // MARK: - Derived helpers for hand/game lifecycle
@@ -293,7 +402,9 @@ public final class GameViewModel: ObservableObject {
     /// and are the working set for the next `.goDown` or `.addToMeld` action.
     /// Silently ignored if the card isn't in the current player's hand.
     public func toggleStaged(cardId: UUID) {
-        guard currentPlayer.hand.contains(where: { $0.id == cardId }),
+        guard isLocalPlayersTurn,
+              state.phase == .awaitingMeldOrDiscard,
+              currentPlayer.hand.contains(where: { $0.id == cardId }),
               !draftCardIds.contains(cardId) else { return }
         if stagedCardIds.contains(cardId) {
             stagedCardIds.remove(cardId)
@@ -349,7 +460,11 @@ public final class GameViewModel: ObservableObject {
     /// meld. No-op if staging is empty or invalid.
     @discardableResult
     public func saveStagedAsMeld() -> Bool {
-        guard case .success = stagedValidation else { return false }
+        guard isLocalPlayersTurn,
+              state.phase == .awaitingMeldOrDiscard,
+              case .success = stagedValidation else {
+            return false
+        }
         contractDraft.append(stagedCards)
         stagedCardIds.removeAll()
         return true
@@ -389,7 +504,11 @@ public final class GameViewModel: ObservableObject {
 
     /// True when the draft exactly satisfies the current player's contract.
     public var canConfirmGoDown: Bool {
-        guard !currentPlayer.hasGoneDownThisRound else { return false }
+        guard isLocalPlayersTurn,
+              state.phase == .awaitingMeldOrDiscard,
+              !currentPlayer.hasGoneDownThisRound else {
+            return false
+        }
         return draftShape == contractShape && !contractShape.isEmpty
     }
 
@@ -424,7 +543,7 @@ public final class GameViewModel: ObservableObject {
         guard canConfirmGoDown else { return false }
         let draft = contractDraft
         let ok = dispatch(.goDown(playerId: currentPlayer.id, contract: draft))
-        if ok {
+        if ok && !isOnlineGame {
             contractDraft.removeAll()
             stagedCardIds.removeAll()
         }
@@ -521,7 +640,8 @@ public final class GameViewModel: ObservableObject {
     }
 
     private func canPlayFromHand(_ card: Card) -> Bool {
-        state.phase == .awaitingMeldOrDiscard
+        isLocalPlayersTurn
+            && state.phase == .awaitingMeldOrDiscard
             && currentPlayer.hasGoneDownThisRound
             && !currentPlayer.laidDownThisTurn
             && currentPlayer.hand.contains(where: { $0.id == card.id })

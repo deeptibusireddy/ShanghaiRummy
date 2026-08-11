@@ -183,8 +183,11 @@ with warning feedback.
 - When someone else discards, an animation ~1 sec offers a **Buy**
   button that pops up on each non-turn seat.
 - Priority: turn player has right of first refusal (unshown to others).
-- Tap Buy → the discard + 1 penalty card go to your hand. Buys used
-  chip on your seat increments.
+- Tap Buy to announce a request; tap again to cancel before the turn player
+  draws.
+- The turn player keeps first refusal. If they draw from stock, the nearest
+  clockwise requester receives the discard + 1 penalty card, regardless of
+  request arrival order.
 - Up to 3 buys per player per hand.
 
 ### Go Down
