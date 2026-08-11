@@ -431,7 +431,55 @@ public final class GameViewModel: ObservableObject {
         return ok
     }
 
-    // MARK: - Tap-to-lay-off (M2d-c)
+    // MARK: - Table card play (M2d-c)
+
+    public func redemptionWildCardId(for card: Card, in meld: Meld) -> UUID? {
+        guard canPlayFromHand(card) else { return nil }
+        return MeldValidator.redeemableWildCardId(in: meld, using: card)
+    }
+
+    public func canPlay(_ card: Card, to meld: Meld) -> Bool {
+        redemptionWildCardId(for: card, in: meld) != nil
+            || canLayOff(card, to: meld)
+    }
+
+    public func canPlayAnyHandCard(to meld: Meld) -> Bool {
+        currentPlayer.hand.contains { canPlay($0, to: meld) }
+    }
+
+    @discardableResult
+    public func playHandCard(_ card: Card, to meldId: UUID) -> Bool {
+        guard let meld = state.melds.first(where: { $0.id == meldId }) else {
+            return false
+        }
+        if let wildCardId = redemptionWildCardId(for: card, in: meld) {
+            return dispatch(
+                .redeemWild(
+                    playerId: currentPlayer.id,
+                    meldId: meld.id,
+                    wildCardId: wildCardId,
+                    replacementCard: card
+                )
+            )
+        }
+        return layoffHandCard(card, to: meldId)
+    }
+
+    @discardableResult
+    public func playTappedHandCard(_ card: Card) -> Bool {
+        guard canPlayFromHand(card) else { return false }
+
+        // Prefer the exact-slot redemption when a tap could also extend
+        // another meld; dragging still lets the player choose a specific meld.
+        for meld in state.melds
+            where redemptionWildCardId(for: card, in: meld) != nil {
+            return playHandCard(card, to: meld.id)
+        }
+        for meld in state.melds where canLayOff(card, to: meld) {
+            return layoffHandCard(card, to: meld.id)
+        }
+        return false
+    }
 
     /// If the player has gone down and `card` extends some existing meld,
     /// dispatch the `.addToMeld`. Returns true if the layoff succeeded.
@@ -447,12 +495,7 @@ public final class GameViewModel: ObservableObject {
     }
 
     public func canLayOff(_ card: Card, to meld: Meld) -> Bool {
-        guard state.phase == .awaitingMeldOrDiscard,
-              currentPlayer.hasGoneDownThisRound,
-              !currentPlayer.laidDownThisTurn,
-              currentPlayer.hand.contains(where: { $0.id == card.id }) else {
-            return false
-        }
+        guard canPlayFromHand(card) else { return false }
         return isValid(meld.kind, cards: meld.cards + [card])
             || isValid(meld.kind, cards: [card] + meld.cards)
     }
@@ -475,6 +518,13 @@ public final class GameViewModel: ObservableObject {
                                    meldId: meld.id,
                                    cardsAtStart: [card],
                                    cardsAtEnd: []))
+    }
+
+    private func canPlayFromHand(_ card: Card) -> Bool {
+        state.phase == .awaitingMeldOrDiscard
+            && currentPlayer.hasGoneDownThisRound
+            && !currentPlayer.laidDownThisTurn
+            && currentPlayer.hand.contains(where: { $0.id == card.id })
     }
 
     private func isValid(_ kind: Meld.Kind, cards: [Card]) -> Bool {

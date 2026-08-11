@@ -9,6 +9,11 @@ public enum MeldValidator {
 
     // MARK: - Public API
 
+    public struct WildRepresentation: Equatable, Sendable {
+        public let suit: Suit
+        public let rank: Rank
+    }
+
     public enum ValidationError: Error, Equatable, CustomStringConvertible {
         case emptyMeld
         case tooFewCards(min: Int, got: Int)
@@ -90,6 +95,46 @@ public enum MeldValidator {
             return .failure(.sequenceNotConsecutive)
         }
         return .success(best.cards)
+    }
+
+    /// Return the wild slot that `replacement` can legally redeem.
+    public static func redeemableWildCardId(
+        in meld: Meld,
+        using replacement: Card
+    ) -> UUID? {
+        guard meld.kind == .sequence, !replacement.isWild else { return nil }
+
+        for (index, wild) in meld.cards.enumerated() where wild.isWild {
+            var proposed = meld.cards
+            proposed[index] = replacement
+            if case .success = validateSequence(proposed) {
+                return wild.id
+            }
+        }
+        return nil
+    }
+
+    /// Resolve the natural card represented by a positional wild in a sequence.
+    public static func representedNatural(
+        for wildCardId: UUID,
+        in meld: Meld
+    ) -> WildRepresentation? {
+        guard meld.kind == .sequence,
+              meld.cards.contains(where: { $0.id == wildCardId && $0.isWild }),
+              let suit = meld.cards.first(where: { !$0.isWild })?.suit else {
+            return nil
+        }
+
+        for rank in Rank.allCases {
+            var candidate = Card(suit: suit, rank: rank)
+            if rank == .two {
+                candidate = candidate.markedDeadIfTwo()
+            }
+            if redeemableWildCardId(in: meld, using: candidate) == wildCardId {
+                return WildRepresentation(suit: suit, rank: rank)
+            }
+        }
+        return nil
     }
 
     /// Convenience: try both meld kinds, return whichever succeeds (triplet first).

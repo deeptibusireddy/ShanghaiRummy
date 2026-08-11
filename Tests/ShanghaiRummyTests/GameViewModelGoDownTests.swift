@@ -257,4 +257,119 @@ final class GameViewModelGoDownTests: XCTestCase {
         XCTAssertEqual(v.state.melds.first?.cards.count, 4)
         XCTAssertTrue(v.currentPlayer.hand.isEmpty)
     }
+
+    // MARK: - Wild redemption
+
+    func testDroppingExactNaturalRedeemsJokerAndReturnsItToHand() {
+        let joker = Card.joker()
+        let replacement = c(.clubs, .seven)
+        let sequence = Meld(
+            kind: .sequence,
+            cards: [
+                c(.clubs, .five), c(.clubs, .six), joker, c(.clubs, .eight),
+            ],
+            ownerId: UUID()
+        )
+        let v = vm(
+            hand: [replacement],
+            melds: [sequence],
+            hasGoneDown: true
+        )
+
+        XCTAssertEqual(
+            v.redemptionWildCardId(for: replacement, in: sequence),
+            joker.id
+        )
+        XCTAssertTrue(v.canPlay(replacement, to: sequence))
+        XCTAssertTrue(v.playHandCard(replacement, to: sequence.id))
+
+        let updated = v.state.melds[0]
+        XCTAssertEqual(updated.cards[2].id, replacement.id)
+        XCTAssertTrue(v.currentPlayer.hand.contains(where: { $0.id == joker.id }))
+        XCTAssertFalse(
+            v.currentPlayer.hand.contains(where: { $0.id == replacement.id })
+        )
+    }
+
+    func testPlayHandCardPreservesNormalEndLayoff() {
+        let nine = c(.clubs, .nine)
+        let sequence = Meld(
+            kind: .sequence,
+            cards: [
+                c(.clubs, .five), c(.clubs, .six),
+                c(.clubs, .seven), c(.clubs, .eight),
+            ],
+            ownerId: UUID()
+        )
+        let v = vm(hand: [nine], melds: [sequence], hasGoneDown: true)
+
+        XCTAssertNil(v.redemptionWildCardId(for: nine, in: sequence))
+        XCTAssertTrue(v.canPlay(nine, to: sequence))
+        XCTAssertTrue(v.playHandCard(nine, to: sequence.id))
+        XCTAssertEqual(v.state.melds[0].cards.last?.id, nine.id)
+        XCTAssertTrue(v.currentPlayer.hand.isEmpty)
+    }
+
+    func testRedemptionTargetsCorrectJokerInTwoWildSequence() {
+        let tenSlot = Card.joker()
+        let jackSlot = Card.joker()
+        let jack = c(.diamonds, .jack)
+        let sequence = Meld(
+            kind: .sequence,
+            cards: [
+                c(.diamonds, .nine), tenSlot, jackSlot, c(.diamonds, .queen),
+            ],
+            ownerId: UUID()
+        )
+        let v = vm(hand: [jack], melds: [sequence], hasGoneDown: true)
+
+        XCTAssertEqual(
+            v.redemptionWildCardId(for: jack, in: sequence),
+            jackSlot.id
+        )
+        XCTAssertTrue(v.playHandCard(jack, to: sequence.id))
+        XCTAssertEqual(v.state.melds[0].cards[1].id, tenSlot.id)
+        XCTAssertEqual(v.state.melds[0].cards[2].id, jack.id)
+        XCTAssertTrue(
+            v.currentPlayer.hand.contains(where: { $0.id == jackSlot.id })
+        )
+    }
+
+    func testWrongNaturalDoesNotMakeMeldDroppable() {
+        let joker = Card.joker()
+        let wrongSuit = c(.hearts, .seven)
+        let sequence = Meld(
+            kind: .sequence,
+            cards: [
+                c(.clubs, .five), c(.clubs, .six), joker, c(.clubs, .eight),
+            ],
+            ownerId: UUID()
+        )
+        let v = vm(hand: [wrongSuit], melds: [sequence], hasGoneDown: true)
+
+        XCTAssertNil(v.redemptionWildCardId(for: wrongSuit, in: sequence))
+        XCTAssertFalse(v.canPlay(wrongSuit, to: sequence))
+        XCTAssertFalse(v.playHandCard(wrongSuit, to: sequence.id))
+    }
+
+    func testRedemptionIsUnavailableOnGoDownTurn() {
+        let joker = Card.joker()
+        let replacement = c(.clubs, .seven)
+        let sequence = Meld(
+            kind: .sequence,
+            cards: [
+                c(.clubs, .five), c(.clubs, .six), joker, c(.clubs, .eight),
+            ],
+            ownerId: UUID()
+        )
+        let v = vm(
+            hand: [replacement],
+            melds: [sequence],
+            hasGoneDown: true,
+            laidDownThisTurn: true
+        )
+
+        XCTAssertNil(v.redemptionWildCardId(for: replacement, in: sequence))
+        XCTAssertFalse(v.canPlay(replacement, to: sequence))
+    }
 }

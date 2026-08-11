@@ -13,6 +13,7 @@ final class CardNode: SKNode {
 
     let card: Card
     private let theme: VisualTheme
+    private var faceBorder: SKShapeNode?
 
     init(card: Card, faceUp: Bool = true, theme: VisualTheme = .gameNight) {
         self.card = card
@@ -36,6 +37,7 @@ final class CardNode: SKNode {
         bg.strokeColor = theme.cardStroke
         bg.lineWidth = 1.4
         addChild(bg)
+        faceBorder = bg
 
         if !faceUp {
             bg.fillColor = theme.cardBack
@@ -210,24 +212,62 @@ final class CardNode: SKNode {
         }
     }
 
+    func showWildRepresentation(_ representation: MeldValidator.WildRepresentation) {
+        guard card.isWild else { return }
+
+        let pill = SKShapeNode(rectOf: CGSize(width: 48, height: 20), cornerRadius: 8)
+        pill.fillColor = theme.cardFace.withAlphaComponent(0.96)
+        pill.strokeColor = theme.jokerAccent
+        pill.lineWidth = 1.5
+        pill.position = CGPoint(x: 0, y: -22)
+        pill.zPosition = 5
+        addChild(pill)
+
+        let label = SKLabelNode(
+            text: Self.shortName(rank: representation.rank, suit: representation.suit)
+        )
+        label.fontName = theme.titleFont
+        label.fontSize = 13
+        label.fontColor = representation.suit == .hearts
+            || representation.suit == .diamonds
+            ? theme.redSuit
+            : theme.blackSuit
+        label.horizontalAlignmentMode = .center
+        label.verticalAlignmentMode = .center
+        label.position = CGPoint(x: 0, y: -0.5)
+        pill.addChild(label)
+    }
+
+    func setDropTargetHighlighted(_ highlighted: Bool) {
+        faceBorder?.strokeColor = highlighted ? theme.turnGlow : theme.cardStroke
+        faceBorder?.lineWidth = highlighted ? 4 : 1.4
+        faceBorder?.glowWidth = highlighted ? 5 : 0
+    }
+
     // MARK: - Static shims kept for existing call sites (unused after refactor)
     static func shortName(_ card: Card) -> String {
         if card.isPrintedJoker { return "★" }
-        let s: String = {
-            switch card.suit {
-            case .clubs: return "♣"; case .diamonds: return "♦"
-            case .hearts: return "♥"; case .spades: return "♠"
-            case .none: return "?"
-            }
-        }()
-        let r: String = {
-            switch card.rank {
-            case .ace: return "A"; case .jack: return "J"
-            case .queen: return "Q"; case .king: return "K"
-            case .some(let x): return "\(x.rawValue)"
-            case .none: return "?"
-            }
-        }()
-        return "\(r)\(s)"
+        guard let rank = card.rank, let suit = card.suit else { return "?" }
+        return shortName(rank: rank, suit: suit)
+    }
+
+    static func shortName(rank: Rank, suit: Suit) -> String {
+        let rankText: String
+        switch rank {
+        case .ace: rankText = "A"
+        case .jack: rankText = "J"
+        case .queen: rankText = "Q"
+        case .king: rankText = "K"
+        default: rankText = "\(rank.rawValue)"
+        }
+
+        let suitText: String
+        switch suit {
+        case .clubs: suitText = "♣"
+        case .diamonds: suitText = "♦"
+        case .hearts: suitText = "♥"
+        case .spades: suitText = "♠"
+        }
+        return "\(rankText)\(suitText)"
     }
 }

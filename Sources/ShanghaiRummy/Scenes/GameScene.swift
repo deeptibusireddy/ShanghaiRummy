@@ -41,6 +41,7 @@ final class GameScene: SKScene {
     private var discardTargetRing: SKShapeNode?
     private var stagingBacking: SKShapeNode?
     private var meldTargetNodes: [UUID: SKShapeNode] = [:]
+    private var meldCardNodes: [UUID: CardNode] = [:]
     private var lastRenderedHandOwnerId: UUID?
     private var lastRenderedHandIds: Set<UUID> = []
     private var isAnimatingTurnAction = false
@@ -397,6 +398,7 @@ final class GameScene: SKScene {
     private func buildMelds() {
         meldsLayer.removeAllChildren()
         meldTargetNodes.removeAll()
+        meldCardNodes.removeAll()
         let seats = SeatLayout.seats(
             playerCount: vm.state.players.count,
             youIndex: vm.state.currentTurnIndex,
@@ -449,6 +451,7 @@ final class GameScene: SKScene {
                 node.position = pos
                 node.zPosition = 3 + CGFloat(idx) * 0.01
                 node.name = "meld:\(meld.id.uuidString)"
+                prepareMeldCardNode(node, card: card, in: meld)
                 meldsLayer.addChild(node)
             }
             x += width + meldGap
@@ -504,20 +507,31 @@ final class GameScene: SKScene {
                 node.position = pos
                 node.zPosition = 3 + CGFloat(idx) * 0.01
                 node.name = "meld:\(meld.id.uuidString)"
+                prepareMeldCardNode(node, card: card, in: meld)
                 meldsLayer.addChild(node)
             }
             x += width + meldGap
         }
     }
 
+    private func prepareMeldCardNode(_ node: CardNode, card: Card, in meld: Meld) {
+        meldCardNodes[card.id] = node
+        if let representation = MeldValidator.representedNatural(
+            for: card.id,
+            in: meld
+        ) {
+            node.showWildRepresentation(representation)
+        }
+    }
+
     private func addMeldTarget(for meld: Meld, rect: CGRect) {
-        let acceptsLayoff = vm.canLayOffAnyHandCard(to: meld)
+        let acceptsCard = vm.canPlayAnyHandCard(to: meld)
         let target = SKShapeNode(rect: rect, cornerRadius: 8)
         target.fillColor = theme.contractPillBg.withAlphaComponent(0.28)
-        target.strokeColor = acceptsLayoff
+        target.strokeColor = acceptsCard
             ? UIColor(red: 0.38, green: 0.86, blue: 0.66, alpha: 0.48)
             : theme.feltStroke.withAlphaComponent(0.45)
-        target.lineWidth = acceptsLayoff ? 1.5 : 1
+        target.lineWidth = acceptsCard ? 1.5 : 1
         target.zPosition = 2
         target.name = "meld:\(meld.id.uuidString)"
         meldsLayer.addChild(target)
@@ -1045,7 +1059,7 @@ final class GameScene: SKScene {
             }
 
             if let meldId = meldId(at: point, for: card) {
-                if vm.layoffHandCard(card, to: meldId) {
+                if vm.playHandCard(card, to: meldId) {
                     successFeedback()
                     completeDrag()
                 } else {
@@ -1065,7 +1079,7 @@ final class GameScene: SKScene {
                     return
                 }
                 if vm.currentPlayer.hasGoneDownThisRound {
-                    if vm.layoffTappedHandCard(card) {
+                    if vm.playTappedHandCard(card) {
                         successFeedback()
                         completeDrag()
                     } else {
@@ -1181,7 +1195,7 @@ final class GameScene: SKScene {
         let pointInMeldLayer = meldsLayer.convert(point, from: self)
         let targetFrames = meldTargetNodes.mapValues { $0.frame }
         let eligibleIds = Set(vm.state.melds.compactMap {
-            vm.canLayOff(card, to: $0) ? $0.id : nil
+            vm.canPlay(card, to: $0) ? $0.id : nil
         })
         return Self.meldTargetId(
             at: pointInMeldLayer,
@@ -1390,11 +1404,14 @@ final class GameScene: SKScene {
     }
 
     private func highlightCompatibleMeldTargets(for card: Card) {
-        for meld in vm.state.melds where vm.canLayOff(card, to: meld) {
+        for meld in vm.state.melds where vm.canPlay(card, to: meld) {
             guard let target = meldTargetNodes[meld.id] else { continue }
             target.strokeColor = UIColor(red: 0.38, green: 0.86, blue: 0.66, alpha: 1)
             target.lineWidth = 3
             target.glowWidth = 5
+            if let wildCardId = vm.redemptionWildCardId(for: card, in: meld) {
+                meldCardNodes[wildCardId]?.setDropTargetHighlighted(true)
+            }
         }
     }
 
@@ -1403,13 +1420,16 @@ final class GameScene: SKScene {
         stagingBacking?.strokeColor = stagingStatusColor.withAlphaComponent(0.8)
         stagingBacking?.lineWidth = 1.5
         stagingBacking?.glowWidth = 0
+        for node in meldCardNodes.values {
+            node.setDropTargetHighlighted(false)
+        }
         for meld in vm.state.melds {
             guard let target = meldTargetNodes[meld.id] else { continue }
-            let acceptsLayoff = vm.canLayOffAnyHandCard(to: meld)
-            target.strokeColor = acceptsLayoff
+            let acceptsCard = vm.canPlayAnyHandCard(to: meld)
+            target.strokeColor = acceptsCard
                 ? UIColor(red: 0.38, green: 0.86, blue: 0.66, alpha: 0.48)
                 : theme.feltStroke.withAlphaComponent(0.45)
-            target.lineWidth = acceptsLayoff ? 1.5 : 1
+            target.lineWidth = acceptsCard ? 1.5 : 1
             target.glowWidth = 0
         }
     }

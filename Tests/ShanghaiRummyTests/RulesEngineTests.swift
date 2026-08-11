@@ -72,6 +72,43 @@ final class MeldValidatorSequenceTests: XCTestCase {
         XCTAssertNoThrow(try MeldValidator.validateSequence(cards).get())
     }
 
+    func testReportsRepresentedNaturalForEachJokerSlot() {
+        let firstJoker = j()
+        let secondJoker = j()
+        let meld = Meld(
+            kind: .sequence,
+            cards: [
+                c(.diamonds, .nine), firstJoker, secondJoker, c(.diamonds, .queen),
+            ],
+            ownerId: UUID()
+        )
+
+        XCTAssertEqual(
+            MeldValidator.representedNatural(for: firstJoker.id, in: meld),
+            .init(suit: .diamonds, rank: .ten)
+        )
+        XCTAssertEqual(
+            MeldValidator.representedNatural(for: secondJoker.id, in: meld),
+            .init(suit: .diamonds, rank: .jack)
+        )
+    }
+
+    func testReportsTrailingJokerAsHighAce() {
+        let joker = j()
+        let meld = Meld(
+            kind: .sequence,
+            cards: [
+                c(.spades, .jack), c(.spades, .queen), c(.spades, .king), joker,
+            ],
+            ownerId: UUID()
+        )
+
+        XCTAssertEqual(
+            MeldValidator.representedNatural(for: joker.id, in: meld),
+            .init(suit: .spades, rank: .ace)
+        )
+    }
+
     func testArrangesNineQueenAndTwoJokersIntoValidSequence() throws {
         let nine = c(.diamonds, .nine)
         let queen = c(.diamonds, .queen)
