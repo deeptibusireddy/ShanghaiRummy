@@ -26,8 +26,22 @@ struct RootView: View {
                     }
                 }
                 .fullScreenCover(isPresented: $gameCenter.isPresentingMatchmaker) {
-                    GameCenterMatchmakerView(manager: gameCenter)
-                        .ignoresSafeArea()
+                    ZStack(alignment: .bottom) {
+                        GameCenterMatchmakerView(manager: gameCenter)
+                        if let notice = gameCenter.matchmakerNotice {
+                            Text(notice)
+                                .font(.footnote.weight(.semibold))
+                                .multilineTextAlignment(.center)
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 10)
+                                .background(.black.opacity(0.82), in: Capsule())
+                                .padding(.horizontal, 24)
+                                .padding(.bottom, 20)
+                                .allowsHitTesting(false)
+                        }
+                    }
+                    .ignoresSafeArea()
                 }
                 .sheet(isPresented: $gameCenter.isPresentingAuthentication) {
                     if let controller = gameCenter.authenticationViewController {
@@ -117,10 +131,22 @@ struct RootView: View {
                 }
                 .buttonStyle(.borderedProminent)
 
-                Button("Play with Family (Game Center)") {
-                    gameCenter.beginMatchmaking()
+                VStack(spacing: 8) {
+                    Button("Invite Family (Game Center)") {
+                        gameCenter.beginMatchmaking()
+                    }
+                    .buttonStyle(.bordered)
+
+                    Button("Quick Pair (2-Player Beta Test)") {
+                        gameCenter.beginQuickPair()
+                    }
+                    .buttonStyle(.bordered)
+
+                    Text("For Quick Pair, tap it on both phones at the same time.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
                 }
-                .buttonStyle(.bordered)
                 .disabled(!gameCenter.isAuthenticated)
 
                 if let error = gameCenter.lastError {

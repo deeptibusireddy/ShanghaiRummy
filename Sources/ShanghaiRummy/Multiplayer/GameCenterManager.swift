@@ -11,11 +11,13 @@ final class GameCenterManager: NSObject, ObservableObject {
     @Published private(set) var hasActiveMatch = false
     @Published private(set) var onlineStatusMessage = ""
     @Published private(set) var onlineGame: GameViewModel?
+    @Published private(set) var matchmakerNotice: String?
     @Published var isPresentingMatchmaker = false
     @Published var isPresentingAuthentication = false
     @Published private(set) var authenticationViewController: UIViewController?
 
     private var pendingInvite: GKInvite?
+    private var quickPairSearchId: UUID?
     private var match: GKMatch?
     private var isChoosingHost = false
     private var authority: RealtimeGameAuthority?
@@ -58,7 +60,48 @@ final class GameCenterManager: NSObject, ObservableObject {
             return
         }
         lastError = nil
+        matchmakerNotice = nil
         isPresentingMatchmaker = true
+    }
+
+    func beginQuickPair() {
+        guard isAuthenticated else {
+            lastError = "Sign in to Game Center before starting an online game"
+            return
+        }
+        let searchId = UUID()
+        quickPairSearchId = searchId
+        lastError = nil
+        matchmakerNotice = nil
+        hasActiveMatch = true
+        onlineStatusMessage = "Looking for one other Quick Pair player…"
+
+        let request = GKMatchRequest()
+        request.minPlayers = RulesConfig.minPlayers
+        request.maxPlayers = RulesConfig.minPlayers
+        request.defaultNumberOfPlayers = RulesConfig.minPlayers
+
+        Task { [weak self] in
+            do {
+                let match = try await GKMatchmaker.shared().findMatch(
+                    for: request
+                )
+                guard let self, self.quickPairSearchId == searchId else {
+                    match.disconnect()
+                    return
+                }
+                self.quickPairSearchId = nil
+                GKMatchmaker.shared().finishMatchmaking(for: match)
+                self.accept(match: match)
+            } catch {
+                guard let self, self.quickPairSearchId == searchId else {
+                    return
+                }
+                self.quickPairSearchId = nil
+                self.resetOnlineSession()
+                self.lastError = "Quick Pair failed: \(error.localizedDescription)"
+            }
+        }
     }
 
     func makeMatchmakerViewController() -> GKMatchmakerViewController? {
@@ -70,14 +113,62 @@ final class GameCenterManager: NSObject, ObservableObject {
             let request = GKMatchRequest()
             request.minPlayers = RulesConfig.minPlayers
             request.maxPlayers = RulesConfig.maxPlayers
-            request.defaultNumberOfPlayers = min(4, RulesConfig.maxPlayers)
+            request.defaultNumberOfPlayers = RulesConfig.minPlayers
+            request.inviteMessage = "Join my Shanghai Rummy table"
+            request.recipientResponseHandler = { [weak self] player, response in
+                Task { @MainActor in
+                    self?.handleInvitationResponse(
+                        response,
+                        from: player.displayName
+                    )
+                }
+            }
             controller = GKMatchmakerViewController(matchRequest: request)
         }
         controller?.matchmakerDelegate = self
         return controller
     }
 
+    private func handleInvitationResponse(
+        _ response: GKInviteRecipientResponse,
+        from playerName: String
+    ) {
+        let message: String
+        let isFailure: Bool
+        switch response {
+        case .accepted:
+            message = "\(playerName) accepted the invitation"
+            isFailure = false
+        case .declined:
+            message = "\(playerName) declined the invitation"
+            isFailure = true
+        case .failed:
+            message = "Game Center could not deliver the invitation to \(playerName). Try Quick Pair on both phones."
+            isFailure = true
+        case .incompatible:
+            message = "\(playerName) is not running a compatible build"
+            isFailure = true
+        case .unableToConnect:
+            message = "Game Center could not contact \(playerName)"
+            isFailure = true
+        case .noAnswer:
+            message = "\(playerName) did not answer the invitation"
+            isFailure = true
+        @unknown default:
+            message = "Game Center returned an unknown invitation response"
+            isFailure = true
+        }
+        matchmakerNotice = message
+        if isFailure {
+            lastError = message
+        }
+    }
+
     func leaveOnlineMatch() {
+        if quickPairSearchId != nil {
+            GKMatchmaker.shared().cancel()
+            quickPairSearchId = nil
+        }
         match?.disconnect()
         resetOnlineSession()
     }
@@ -384,9 +475,11 @@ final class GameCenterManager: NSObject, ObservableObject {
         authority = nil
         currentSnapshot = nil
         pendingLocalRequestId = nil
+        quickPairSearchId = nil
         onlineGame = nil
         hasActiveMatch = false
         isChoosingHost = false
+        matchmakerNotice = nil
         onlineStatusMessage = ""
     }
 }
@@ -397,6 +490,7 @@ extension GameCenterManager: GKMatchmakerViewControllerDelegate {
     ) {
         Task { @MainActor [weak self] in
             self?.isPresentingMatchmaker = false
+            self?.matchmakerNotice = nil
         }
     }
 
@@ -406,6 +500,7 @@ extension GameCenterManager: GKMatchmakerViewControllerDelegate {
     ) {
         Task { @MainActor [weak self] in
             self?.isPresentingMatchmaker = false
+            self?.matchmakerNotice = nil
             self?.lastError = error.localizedDescription
         }
     }
@@ -416,6 +511,7 @@ extension GameCenterManager: GKMatchmakerViewControllerDelegate {
     ) {
         Task { @MainActor [weak self] in
             self?.isPresentingMatchmaker = false
+            self?.matchmakerNotice = nil
             self?.accept(match: match)
         }
     }

@@ -3,6 +3,9 @@
 An iOS multiplayer card game (Shanghai Rummy / Contract Rummy variant) built for
 family play across iPhones via **Game Center**.
 
+During TestFlight beta testing, two players can use **Quick Pair** at the same
+time if Game Center cannot deliver a direct invitation.
+
 > **Status:** Early scaffold. See [`docs/rules.md`](docs/rules.md) for the rule
 > set being implemented and the session plan for milestones.
 
