@@ -403,7 +403,6 @@ public final class GameViewModel: ObservableObject {
     /// Silently ignored if the card isn't in the current player's hand.
     public func toggleStaged(cardId: UUID) {
         guard isLocalPlayersTurn,
-              state.phase == .awaitingMeldOrDiscard,
               currentPlayer.hand.contains(where: { $0.id == cardId }),
               !draftCardIds.contains(cardId) else { return }
         if stagedCardIds.contains(cardId) {
