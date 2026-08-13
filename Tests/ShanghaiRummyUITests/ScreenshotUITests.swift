@@ -42,6 +42,7 @@ final class ScreenshotUITests: XCTestCase {
         app.buttons["Start"].tap()
 
         XCTAssertTrue(app.buttons["quit-game"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Your Draw"].waitForExistence(timeout: 5))
         // Small pause so the scene finishes its first frame.
         Thread.sleep(forTimeInterval: 0.5)
         snapshot(named: "03-hand-1-scaffold")

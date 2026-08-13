@@ -117,6 +117,27 @@ public final class GameViewModel: ObservableObject {
     public var buyDecisionPlayerName: String? {
         state.buyDecisionPlayer?.name
     }
+    public var buyDecisionTitle: String? {
+        guard isBuyDecisionActive else { return nil }
+        if isLocalBuyDecision {
+            return isTurnPlayersFirstRefusal
+                ? "Your Draw"
+                : "Buy Opportunity"
+        }
+        return "Waiting for \(buyDecisionPlayerName ?? "another player")"
+    }
+    public var buyDecisionInstruction: String? {
+        guard isBuyDecisionActive else { return nil }
+        if isLocalBuyDecision {
+            return isTurnPlayersFirstRefusal
+                ? "Choose the discard or offer it clockwise"
+                : "Buy the discard or pass"
+        }
+        let name = buyDecisionPlayerName ?? "Another player"
+        return isTurnPlayersFirstRefusal
+            ? "\(name) is choosing the discard or offering it clockwise"
+            : "\(name) is deciding whether to buy the discard"
+    }
     public var canAcceptBuyOffer: Bool {
         guard isLocalBuyDecision, !state.discard.isEmpty else { return false }
         return isTurnPlayersFirstRefusal

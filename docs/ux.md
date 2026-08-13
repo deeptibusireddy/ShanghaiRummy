@@ -148,8 +148,11 @@ target wins and an exact tie favors the meld.
 
 ### Drawing (start of your turn)
 
-- A blocking **Purchase Round** overlay pauses table interaction.
-- The turn player explicitly chooses **Take Discard** or **Pass Clockwise**.
+- A blocking, role-specific purchase overlay pauses table interaction.
+- The turn player sees **Your Draw** and explicitly chooses **Take [card]** or
+  **Offer Clockwise**.
+- A non-turn player whose offer is active sees **Buy Opportunity**. Everyone
+  else sees **Waiting for [name]** with an explanation of that player's choice.
 - Taking the discard moves it to the turn player's hand. Passing starts the
   sequential buyer offers; when those end, the stock draw is automatic.
 - Phase transitions to "meld or discard" automatically after resolution.
@@ -197,7 +200,8 @@ with warning feedback.
 
 - After the turn player passes, the blocking overlay moves clockwise to one
   eligible player at a time.
-- The offered player chooses **Buy + Draw 1** or **Pass**. Their offer
+- The offered player sees **Buy Opportunity** and chooses **Buy [card] + 1**
+  or **Pass**. Their offer
   automatically passes after 20 seconds.
 - Players who have gone down and players who have used all 3 buys are skipped.
 - A buyer receives the discard and current top stock card. The turn player

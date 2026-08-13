@@ -141,7 +141,7 @@ struct GameContainerView: View {
                 .contentShape(Rectangle())
 
             VStack(spacing: 14) {
-                Text("Purchase Round")
+                Text(vm.buyDecisionTitle ?? "Choose How to Draw")
                     .font(.system(.title2, design: .rounded, weight: .bold))
 
                 if vm.isLocalBuyDecision {
@@ -149,12 +149,15 @@ struct GameContainerView: View {
                 } else {
                     ProgressView()
                         .controlSize(.large)
-                    Text("Waiting for \(vm.buyDecisionPlayerName ?? "another player")")
-                        .font(.system(.headline, design: .rounded))
+                    Text(
+                        vm.buyDecisionInstruction
+                            ?? "Another player is deciding"
+                    )
+                    .font(.system(.headline, design: .rounded))
                     Text(
                         vm.isTurnPlayersFirstRefusal
-                            ? "The current player is deciding whether to take the discard."
-                            : "The discard is moving clockwise. This offer automatically passes after \(RulesConfig.buyOfferTimeoutSeconds) seconds."
+                            ? "You will get a Buy Opportunity only if they offer the discard clockwise and it reaches you."
+                            : "If they pass or do not respond within \(RulesConfig.buyOfferTimeoutSeconds) seconds, the offer moves clockwise."
                     )
                     .font(.system(.footnote, design: .rounded))
                     .foregroundStyle(.secondary)
@@ -173,31 +176,37 @@ struct GameContainerView: View {
     @ViewBuilder
     private var localBuyDecision: some View {
         let discardName = vm.state.discard.last.map(CardNode.shortName) ?? "discard"
+        let acceptTitle = vm.isTurnPlayersFirstRefusal
+            ? "Take \(discardName)"
+            : "Buy \(discardName) + 1"
+        let passTitle = vm.isTurnPlayersFirstRefusal
+            ? "Offer Clockwise"
+            : "Pass"
         if vm.isTurnPlayersFirstRefusal {
-            Text("Do you want \(discardName)?")
+            Text("Take \(discardName) as your draw?")
                 .font(.system(.headline, design: .rounded))
-            Text("Take it for your turn, or pass it clockwise. If nobody buys it, you automatically draw from the stock.")
+            Text("This starts your turn. Take the discard, or offer it clockwise. If everyone passes, you automatically draw from the stock.")
                 .font(.system(.footnote, design: .rounded))
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
         } else {
-            Text("Buy \(discardName)?")
+            Text("Buy \(discardName) out of turn?")
                 .font(.system(.headline, design: .rounded))
-            Text("You receive the discard and the top stock card. \(vm.currentPlayerName) then draws the next stock card. Auto-pass occurs after \(RulesConfig.buyOfferTimeoutSeconds) seconds.")
+            Text("Spend 1 buy to receive the discard plus one stock penalty card. \(vm.currentPlayerName) still receives the next stock card.")
                 .font(.system(.footnote, design: .rounded))
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
         }
 
         HStack(spacing: 12) {
-            Button(vm.isTurnPlayersFirstRefusal ? "Take Discard" : "Buy + Draw 1") {
+            Button(acceptTitle) {
                 vm.acceptBuyOffer()
             }
             .buttonStyle(.borderedProminent)
             .disabled(!vm.canAcceptBuyOffer || vm.isSubmittingOnlineAction)
             .accessibilityIdentifier("accept-buy-offer")
 
-            Button(vm.isTurnPlayersFirstRefusal ? "Pass Clockwise" : "Pass") {
+            Button(passTitle) {
                 vm.passBuyOffer()
             }
             .buttonStyle(.bordered)

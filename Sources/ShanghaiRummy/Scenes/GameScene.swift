@@ -230,19 +230,14 @@ final class GameScene: SKScene {
 
     private var phaseInstruction: String {
         if vm.isBuyDecisionActive {
-            if vm.isLocalBuyDecision {
-                return vm.isTurnPlayersFirstRefusal
-                    ? "Choose the discard or pass it clockwise"
-                    : "Buy the discard or pass"
-            }
-            return "Purchase round — waiting for \(vm.buyDecisionPlayerName ?? "another player")"
+            return vm.buyDecisionInstruction ?? "Choose how to draw"
         }
         if vm.isOnlineGame && !vm.isLocalPlayersTurn {
             return "\(vm.currentPlayerName) is playing"
         }
         switch vm.state.phase {
         case .awaitingDraw:
-            return "Purchase round"
+            return "Choose how to draw"
         case .awaitingMeldOrDiscard:
             if vm.currentPlayer.hasGoneDownThisRound {
                 if vm.currentPlayer.laidDownThisTurn {

@@ -3,6 +3,10 @@ import XCTest
 
 @MainActor
 final class GameViewModelOnlineTests: XCTestCase {
+    private func c(_ suit: Suit, _ rank: Rank) -> Card {
+        Card(suit: suit, rank: rank)
+    }
+
     func testOnlineViewModelKeepsLocalHandWhenAnotherPlayerHasTurn() {
         let state = GameFactory.newGame(
             playerNames: ["Local", "Remote"],
@@ -24,6 +28,31 @@ final class GameViewModelOnlineTests: XCTestCase {
         XCTAssertFalse(viewModel.isLocalBuyDecision)
         XCTAssertFalse(viewModel.canAcceptBuyOffer)
         XCTAssertFalse(viewModel.canPassBuyOffer)
+        XCTAssertEqual(viewModel.buyDecisionTitle, "Waiting for Remote")
+        XCTAssertEqual(
+            viewModel.buyDecisionInstruction,
+            "Remote is choosing the discard or offering it clockwise"
+        )
+    }
+
+    func testOnlineTurnPlayerSeesYourDrawInsteadOfPurchaseRound() {
+        let state = GameFactory.newGame(
+            playerNames: ["Remote", "Local"],
+            seed: 111
+        )
+        let localId = state.currentPlayerId
+        let viewModel = GameViewModel(
+            state: state,
+            localPlayerId: localId
+        )
+
+        XCTAssertTrue(viewModel.isLocalBuyDecision)
+        XCTAssertTrue(viewModel.isTurnPlayersFirstRefusal)
+        XCTAssertEqual(viewModel.buyDecisionTitle, "Your Draw")
+        XCTAssertEqual(
+            viewModel.buyDecisionInstruction,
+            "Choose the discard or offer it clockwise"
+        )
     }
 
     func testOnlineBuyerCanRespondOnlyAfterOfferReachesThem() {
@@ -47,6 +76,11 @@ final class GameViewModelOnlineTests: XCTestCase {
         XCTAssertTrue(viewModel.isLocalBuyDecision)
         XCTAssertTrue(viewModel.canAcceptBuyOffer)
         XCTAssertTrue(viewModel.canPassBuyOffer)
+        XCTAssertEqual(viewModel.buyDecisionTitle, "Buy Opportunity")
+        XCTAssertEqual(
+            viewModel.buyDecisionInstruction,
+            "Buy the discard or pass"
+        )
 
         viewModel.acceptBuyOffer()
         XCTAssertEqual(
@@ -54,6 +88,101 @@ final class GameViewModelOnlineTests: XCTestCase {
             .acceptBuyOffer(playerId: localId)
         )
         XCTAssertTrue(viewModel.isSubmittingOnlineAction)
+    }
+
+    func testOnlineObserverSeesWhoHasTheBuyOpportunity() {
+        var state = GameFactory.newGame(
+            playerNames: ["Observer", "Turn Player", "Buyer"],
+            seed: 112
+        )
+        let observerId = state.players[0].id
+        let turnPlayerId = state.currentPlayerId
+        state = try! TurnEngine.apply(
+            .passBuyOffer(playerId: turnPlayerId),
+            to: state
+        ).get()
+        let viewModel = GameViewModel(
+            state: state,
+            localPlayerId: observerId
+        )
+
+        XCTAssertEqual(state.buyDecisionPlayer?.name, "Buyer")
+        XCTAssertEqual(viewModel.buyDecisionTitle, "Waiting for Buyer")
+        XCTAssertEqual(
+            viewModel.buyDecisionInstruction,
+            "Buyer is deciding whether to buy the discard"
+        )
+    }
+
+    func testOnlineGoDownSnapshotCanRenderOnOpponentsTable() {
+        let firstTriplet = [
+            c(.hearts, .king),
+            c(.spades, .king),
+            c(.diamonds, .king),
+        ]
+        let secondTriplet = [
+            c(.hearts, .seven),
+            c(.spades, .seven),
+            c(.clubs, .seven),
+        ]
+        let actor = Player(
+            name: "Actor",
+            hand: firstTriplet + secondTriplet + [c(.clubs, .three)],
+            currentLevel: 1
+        )
+        let observer = Player(
+            name: "Observer",
+            hand: [c(.hearts, .four)],
+            currentLevel: 1
+        )
+        let state = GameState(
+            players: [actor, observer],
+            currentRound: 1,
+            currentTurnIndex: 0,
+            dealerIndex: 1,
+            stock: [c(.clubs, .four), c(.diamonds, .five)],
+            discard: [c(.hearts, .three)],
+            melds: [],
+            phase: .awaitingMeldOrDiscard,
+            stockReshufflesUsed: 0,
+            randomSeed: 113
+        )
+        let actorViewModel = GameViewModel(
+            state: state,
+            localPlayerId: actor.id
+        )
+        var submittedAction: TurnEngine.Action?
+        actorViewModel.configureOnlineActionSubmitter {
+            submittedAction = $0
+            return true
+        }
+
+        actorViewModel.goDown(contract: [firstTriplet, secondTriplet])
+
+        guard let submittedAction else {
+            return XCTFail("Going down should submit an online action")
+        }
+        let authoritative = try! TurnEngine.apply(
+            submittedAction,
+            to: state
+        ).get()
+        let observerViewModel = GameViewModel(
+            state: state,
+            localPlayerId: observer.id
+        )
+        observerViewModel.receiveAuthoritativeState(authoritative)
+
+        XCTAssertEqual(observerViewModel.state.melds.count, 2)
+        XCTAssertTrue(
+            observerViewModel.state.players[0].hasGoneDownThisRound
+        )
+
+        let scene = GameScene(
+            size: CGSize(width: 1, height: 1),
+            viewModel: observerViewModel
+        )
+        scene.size = CGSize(width: 874, height: 402)
+        XCTAssertEqual(scene.size, CGSize(width: 874, height: 402))
     }
 
     func testOnlineTurnAdvanceDoesNotShowPassDeviceSheet() {
