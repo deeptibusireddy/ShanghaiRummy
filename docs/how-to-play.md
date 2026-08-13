@@ -107,8 +107,8 @@ You can slip wilds into any meld:
 Wilds do not consume a suit in an initial triplet, but its natural cards must
 still use different suits. For example, `♥K ♥K 🃏` is illegal when going down.
 
-But there's a **limit**: at most **half** the meld (rounded down) can be
-wilds. So:
+When you first go down, at most **half** each meld (rounded down) can be
+wilds:
 | Meld size | Max wilds |
 |-----------|----------:|
 | 3         | 1         |
@@ -117,6 +117,11 @@ wilds. So:
 | 6         | 3         |
 | 7         | 3         |
 | 10        | 5         |
+
+If an initial sequence has more than one legal position for its wilds, the
+game asks you to choose the sequence you mean before saving it.
+
+Once a meld is on the table, the half-wild limit no longer applies.
 
 Once a wild is on the table, it stays there — **with one exception**: after
 you've gone down, you can **redeem a wild card** (joker or live wild 2)
@@ -250,7 +255,7 @@ onto any meld that's already on the table — including your opponents'.
 - Extend a triplet with a matching-rank card of any suit, including one already
   in that triplet.
 - Extend a sequence at either end with the next card of the same suit.
-- Extend with wilds (subject to the wild limit).
+- Extend with wilds — after a meld is down, there is no wild-count limit.
 - If a joker or live wild 2 can legally extend **either** end of a sequence,
   choose its low-end or high-end position. If only one end works, the game
   places it there automatically.
@@ -272,7 +277,7 @@ wild**:
   back into your hand.
 - The wild is fully wild again — because you're already in the Meld phase,
   you can hold it, or play it right back onto a different meld this same
-  turn (subject to wild limits).
+  turn.
 
 **Example.** The table shows `♣5 ♣6 🃏 ♣8`. On your turn, you draw ♣7. You
 lay ♣7 into the slot the joker was covering, take the joker into your

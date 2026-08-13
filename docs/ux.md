@@ -152,7 +152,9 @@ target wins and an exact tie favors the meld.
 - The turn player sees **Your Draw** and explicitly chooses **Take [card]** or
   **Offer Clockwise**.
 - A non-turn player whose offer is active sees **Buy Opportunity**. Everyone
-  else sees **Waiting for [name]** with an explanation of that player's choice.
+  else sees **Waiting for [name]**.
+- These choices appear in a compact top panel without dimming or covering the
+  local player's melds. The table remains visible while input stays blocked.
 - Taking the discard moves it to the turn player's hand. Passing starts the
   sequential buyer offers; when those end, the stock draw is automatic.
 - Phase transitions to "meld or discard" automatically after resolution.
@@ -168,15 +170,17 @@ Two modes:
    If only one sequence end is legal, placement remains automatic.
 2. **Build a new contract meld** — tap cards or drag them into the persistent
    **staging tray**. Save each valid set/run as a draft chip, then tap
-   **Go Down** when the full contract is ready.
+   **Go Down** when the full contract is ready. If a sequence has multiple
+   legal wild placements, saving opens a picker showing what each wild
+   represents.
 
 **Staging tray properties:**
 - Visible only to you (hot-seat: only the current player).
 - Saved draft cards leave the hand fan and appear as tappable chips; tapping
   a chip returns that meld to the hand.
 - Tap a staged card to return it to the hand.
-- Long-press a staged card → chip "used as: 5♣" for wilds so you can
-  see what the engine thinks it's substituting.
+- The wild-placement picker labels each wild with the natural card it
+  represents before the sequence is added to the draft.
 
 Invalid layoff targets don't glow; dropping on one returns the card to hand
 with warning feedback.
@@ -185,7 +189,7 @@ with warning feedback.
 - Tap any wild card in any sequence on the table → picker highlights
   which of *your* hand cards satisfy the exact-positional-replacement.
 - Tap one to swap. Redeemed wild returns to your hand and can be
-  restaged this same turn (subject to wild limits).
+  restaged this same turn; table melds have no wild-count limit.
 
 ### Discarding
 
@@ -260,8 +264,8 @@ with warning feedback.
 - Meld commit: 350 ms with mild spring (staged cards slide into row).
 - Wild redemption: cross-fade + subtle scale bump.
 - Illegal action: horizontal shake 6 px, 3 cycles, 250 ms total; error toast.
-- Purchase overlay: fades between decision owners while table input remains
-  blocked.
+- Purchase panel: stays compact at the top and fades between decision owners
+  while table input remains blocked.
 - Active turn: the current player's seat uses a bright pulsing amber halo,
   amber avatar/name treatment, and an explicit playing/your-turn label.
 
@@ -295,8 +299,8 @@ Haptics (M4):
 
 - **Sort hand automatically?** Yes by default; user can override to
   freeform manual order via long-press.
-- **Show total wilds allowed in a meld?** Yes, on the staging tray:
-  "Wilds: 1 / 2 allowed."
+- **Show total wilds allowed in a meld?** Only while building the initial
+  contract; table extensions are unrestricted.
 - **Hint mode for kids?** Not v1. Consider in M4.
 - **Show a 'possible contract' hint?** Not v1 — probably a paid feature.
 

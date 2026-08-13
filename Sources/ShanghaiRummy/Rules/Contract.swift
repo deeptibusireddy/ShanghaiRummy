@@ -86,7 +86,7 @@ public enum RulesConfig {
     /// Highest contract level. A player who completes level 10 wins the game.
     public static let maxLevel = 10
 
-    /// Maximum wild cards allowed in a meld of the given size (floor(size/2)).
+    /// Maximum wild cards allowed when first laying down a contract meld.
     public static func maxWilds(inMeldOfSize size: Int) -> Int {
         size / 2
     }

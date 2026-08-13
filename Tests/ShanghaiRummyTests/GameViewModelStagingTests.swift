@@ -142,4 +142,29 @@ final class GameViewModelStagingTests: XCTestCase {
             try MeldValidator.validateSequence(vm.contractDraft[0]).get()
         )
     }
+
+    func testSavingAmbiguousSequenceRequestsWildPlacement() throws {
+        let nine = Card(suit: .diamonds, rank: .nine)
+        let ten = Card(suit: .diamonds, rank: .ten)
+        let jack = Card(suit: .diamonds, rank: .jack)
+        let joker = Card.joker()
+        let vm = makeVM(hand: [nine, ten, jack, joker])
+        for card in vm.currentPlayer.hand {
+            vm.toggleStaged(cardId: card.id)
+        }
+
+        XCTAssertTrue(vm.saveStagedAsMeld())
+        XCTAssertTrue(vm.contractDraft.isEmpty)
+        let options = try XCTUnwrap(vm.pendingInitialSequenceChoice?.options)
+        XCTAssertEqual(options.count, 2)
+        let lowOption = try XCTUnwrap(options.firstIndex {
+            $0.first?.id == joker.id
+        })
+
+        XCTAssertTrue(vm.chooseInitialSequenceArrangement(at: lowOption))
+        XCTAssertNil(vm.pendingInitialSequenceChoice)
+        XCTAssertEqual(vm.contractDraft.count, 1)
+        XCTAssertEqual(vm.contractDraft[0].first?.id, joker.id)
+        XCTAssertTrue(vm.stagedCardIds.isEmpty)
+    }
 }

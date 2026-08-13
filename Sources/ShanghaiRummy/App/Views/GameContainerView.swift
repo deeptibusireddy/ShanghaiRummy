@@ -55,7 +55,9 @@ struct GameContainerView: View {
             .interactiveDismissDisabled(true)
         }
         .overlay {
-            if let choice = vm.pendingSequenceEndChoice {
+            if let choice = vm.pendingInitialSequenceChoice {
+                initialSequenceChoiceOverlay(choice)
+            } else if let choice = vm.pendingSequenceEndChoice {
                 sequenceEndChoiceOverlay(choice)
             } else if vm.isBuyDecisionActive {
                 buyDecisionOverlay
@@ -120,6 +122,88 @@ struct GameContainerView: View {
         .accessibilityAddTraits(.isModal)
     }
 
+    private func initialSequenceChoiceOverlay(
+        _ choice: GameViewModel.PendingInitialSequenceChoice
+    ) -> some View {
+        ZStack {
+            Color.black.opacity(0.48)
+                .ignoresSafeArea()
+                .contentShape(Rectangle())
+
+            VStack(spacing: 12) {
+                Text("Place Wild Cards")
+                    .font(.system(.title2, design: .rounded, weight: .bold))
+                Text("Choose the sequence each wild should represent.")
+                    .font(.system(.footnote, design: .rounded))
+                    .foregroundStyle(.secondary)
+
+                ScrollView {
+                    LazyVGrid(
+                        columns: [GridItem(.adaptive(minimum: 240), spacing: 10)],
+                        spacing: 10
+                    ) {
+                        ForEach(choice.options.indices, id: \.self) { index in
+                            Button {
+                                vm.chooseInitialSequenceArrangement(at: index)
+                            } label: {
+                                Text(sequenceArrangementLabel(
+                                    choice.options[index]
+                                ))
+                                .font(.system(
+                                    .subheadline,
+                                    design: .rounded,
+                                    weight: .semibold
+                                ))
+                                .lineLimit(2)
+                                .minimumScaleFactor(0.72)
+                                .frame(maxWidth: .infinity)
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .accessibilityIdentifier(
+                                "initial-sequence-option-\(index)"
+                            )
+                        }
+                    }
+                }
+                .frame(maxHeight: 210)
+
+                Button("Cancel") {
+                    vm.cancelInitialSequenceChoice()
+                }
+                .buttonStyle(.bordered)
+                .accessibilityIdentifier("cancel-initial-sequence-choice")
+            }
+            .padding(20)
+            .frame(maxWidth: 650)
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 22))
+            .padding(24)
+        }
+        .accessibilityIdentifier("initial-sequence-choice-overlay")
+        .accessibilityAddTraits(.isModal)
+    }
+
+    private func sequenceArrangementLabel(_ cards: [Card]) -> String {
+        let meld = Meld(
+            kind: .sequence,
+            cards: cards,
+            ownerId: vm.currentPlayer.id
+        )
+        return cards.map { card in
+            guard card.isWild,
+                  let represented = MeldValidator.representedNatural(
+                    for: card.id,
+                    in: meld
+                  ) else {
+                return CardNode.shortName(card)
+            }
+            let naturalName = CardNode.shortName(
+                rank: represented.rank,
+                suit: represented.suit
+            )
+            return "\(CardNode.shortName(card)) → \(naturalName)"
+        }.joined(separator: "  •  ")
+    }
+
     private func sequenceEndLabel(
         title: String,
         representation: MeldValidator.WildRepresentation?
@@ -135,39 +219,33 @@ struct GameContainerView: View {
     // MARK: - Hand / game over overlays
 
     private var buyDecisionOverlay: some View {
-        ZStack {
-            Color.black.opacity(0.48)
+        ZStack(alignment: .top) {
+            Color.black.opacity(0.001)
                 .ignoresSafeArea()
                 .contentShape(Rectangle())
 
-            VStack(spacing: 14) {
+            HStack(spacing: 12) {
+                if !vm.isLocalBuyDecision {
+                    ProgressView()
+                        .controlSize(.small)
+                }
+
                 Text(vm.buyDecisionTitle ?? "Choose How to Draw")
-                    .font(.system(.title2, design: .rounded, weight: .bold))
+                    .font(.system(.headline, design: .rounded, weight: .bold))
+                    .lineLimit(1)
 
                 if vm.isLocalBuyDecision {
+                    Spacer(minLength: 12)
                     localBuyDecision
-                } else {
-                    ProgressView()
-                        .controlSize(.large)
-                    Text(
-                        vm.buyDecisionInstruction
-                            ?? "Another player is deciding"
-                    )
-                    .font(.system(.headline, design: .rounded))
-                    Text(
-                        vm.isTurnPlayersFirstRefusal
-                            ? "You will get a Buy Opportunity only if they offer the discard clockwise and it reaches you."
-                            : "If they pass or do not respond within \(RulesConfig.buyOfferTimeoutSeconds) seconds, the offer moves clockwise."
-                    )
-                    .font(.system(.footnote, design: .rounded))
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
                 }
             }
-            .padding(22)
-            .frame(maxWidth: 460)
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 22))
-            .padding(28)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            .frame(maxWidth: 640)
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18))
+            .shadow(color: .black.opacity(0.22), radius: 12, y: 5)
+            .padding(.top, 8)
+            .padding(.horizontal, 72)
         }
         .accessibilityIdentifier("buy-decision-overlay")
         .accessibilityAddTraits(.isModal)
@@ -182,22 +260,6 @@ struct GameContainerView: View {
         let passTitle = vm.isTurnPlayersFirstRefusal
             ? "Offer Clockwise"
             : "Pass"
-        if vm.isTurnPlayersFirstRefusal {
-            Text("Take \(discardName) as your draw?")
-                .font(.system(.headline, design: .rounded))
-            Text("This starts your turn. Take the discard, or offer it clockwise. If everyone passes, you automatically draw from the stock.")
-                .font(.system(.footnote, design: .rounded))
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-        } else {
-            Text("Buy \(discardName) out of turn?")
-                .font(.system(.headline, design: .rounded))
-            Text("Spend 1 buy to receive the discard plus one stock penalty card. \(vm.currentPlayerName) still receives the next stock card.")
-                .font(.system(.footnote, design: .rounded))
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-        }
-
         HStack(spacing: 12) {
             Button(acceptTitle) {
                 vm.acceptBuyOffer()

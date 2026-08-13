@@ -216,6 +216,35 @@ final class GameViewModelGoDownTests: XCTestCase {
         XCTAssertFalse(v.currentPlayer.hand.contains(where: { $0.id == wild.id }))
     }
 
+    func testWildLayoffCanExceedInitialWildLimit() {
+        let firstWild = Card.joker()
+        let secondWild = Card.joker()
+        let newWild = Card.joker()
+        let existing = Meld(
+            kind: .sequence,
+            cards: [
+                c(.clubs, .five),
+                c(.clubs, .six),
+                firstWild,
+                secondWild,
+            ],
+            ownerId: UUID()
+        )
+        let v = vm(
+            hand: [newWild],
+            melds: [existing],
+            hasGoneDown: true,
+            laidDownThisTurn: false
+        )
+
+        XCTAssertTrue(v.canLayOff(newWild, to: existing))
+        XCTAssertTrue(v.canPlayAnyHandCard(to: existing))
+        XCTAssertTrue(v.layoffHandCard(newWild, to: existing.id))
+        XCTAssertNotNil(v.pendingSequenceEndChoice)
+        XCTAssertTrue(v.chooseSequenceEnd(.end))
+        XCTAssertEqual(v.state.melds.first?.wildCount, 3)
+    }
+
     func testWildLayoffUsesOnlyValidSequenceEndWithoutPrompting() {
         let existingWild = Card.joker()
         let newWild = Card.joker()

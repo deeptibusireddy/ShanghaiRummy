@@ -21,6 +21,10 @@ public final class GameViewModel: ObservableObject {
         let endRepresentation: MeldValidator.WildRepresentation?
     }
 
+    public struct PendingInitialSequenceChoice: Equatable {
+        let options: [[Card]]
+    }
+
     // MARK: - Published state
 
     @Published public private(set) var state: GameState
@@ -41,6 +45,8 @@ public final class GameViewModel: ObservableObject {
     @Published public private(set) var isSubmittingOnlineAction = false
     @Published public private(set) var pendingSequenceEndChoice:
         PendingSequenceEndChoice? = nil
+    @Published public private(set) var pendingInitialSequenceChoice:
+        PendingInitialSequenceChoice? = nil
 
     /// Non-nil in online mode. The local hand remains at the bottom even while
     /// another participant owns the turn.
@@ -190,6 +196,7 @@ public final class GameViewModel: ObservableObject {
                 let outgoingIsCPU = cpuPlayerIds.contains(outgoingId)
                 stagedCardIds.removeAll()
                 contractDraft.removeAll()
+                pendingInitialSequenceChoice = nil
                 if outgoingIsCPU {
                     isBetweenTurns = false
                 }
@@ -227,6 +234,7 @@ public final class GameViewModel: ObservableObject {
         state = newState
         lastError = nil
         pendingSequenceEndChoice = nil
+        pendingInitialSequenceChoice = nil
         if completesPendingAction {
             isSubmittingOnlineAction = false
         }
@@ -239,6 +247,7 @@ public final class GameViewModel: ObservableObject {
         state = newState
         lastError = message
         pendingSequenceEndChoice = nil
+        pendingInitialSequenceChoice = nil
         isSubmittingOnlineAction = false
         isBetweenTurns = false
         scheduleLocalBuyOfferTimeout()
@@ -254,6 +263,7 @@ public final class GameViewModel: ObservableObject {
               state.phase == .awaitingMeldOrDiscard else {
             stagedCardIds.removeAll()
             contractDraft.removeAll()
+            pendingInitialSequenceChoice = nil
             return
         }
         let handIds = Set(currentPlayer.hand.map(\.id))
@@ -505,6 +515,7 @@ public final class GameViewModel: ObservableObject {
         guard isLocalPlayersTurn,
               currentPlayer.hand.contains(where: { $0.id == cardId }),
               !draftCardIds.contains(cardId) else { return }
+        pendingInitialSequenceChoice = nil
         if stagedCardIds.contains(cardId) {
             stagedCardIds.remove(cardId)
         } else {
@@ -515,7 +526,7 @@ public final class GameViewModel: ObservableObject {
     /// Cards currently staged. Valid sequences are returned in canonical table
     /// order even when their cards were scattered throughout the hand.
     public var stagedCards: [Card] {
-        let selected = orderedHand.filter { stagedCardIds.contains($0.id) }
+        let selected = selectedStagedCards
         if case .success = MeldValidator.validateTriplet(selected) {
             return selected
         }
@@ -523,6 +534,10 @@ public final class GameViewModel: ObservableObject {
             return arranged
         }
         return selected
+    }
+
+    private var selectedStagedCards: [Card] {
+        orderedHand.filter { stagedCardIds.contains($0.id) }
     }
 
     /// Cards remaining in-hand after staging (rendered in the hand fan).
@@ -542,7 +557,10 @@ public final class GameViewModel: ObservableObject {
     }
 
     /// Clear staging. Called after a turn ends or the player cancels.
-    public func clearStaging() { stagedCardIds.removeAll() }
+    public func clearStaging() {
+        stagedCardIds.removeAll()
+        pendingInitialSequenceChoice = nil
+    }
 
     // MARK: - Go-down draft (M2d-c)
 
@@ -560,13 +578,52 @@ public final class GameViewModel: ObservableObject {
     @discardableResult
     public func saveStagedAsMeld() -> Bool {
         guard isLocalPlayersTurn,
-              state.phase == .awaitingMeldOrDiscard,
-              case .success = stagedValidation else {
+              state.phase == .awaitingMeldOrDiscard else {
             return false
         }
-        contractDraft.append(stagedCards)
-        stagedCardIds.removeAll()
+        let selected = selectedStagedCards
+        if case .success = MeldValidator.validateTriplet(selected) {
+            commitStagedMeld(selected)
+            return true
+        }
+        let sequenceOptions = MeldValidator.sequenceArrangements(selected)
+        guard case .success(let options) = sequenceOptions else {
+            return false
+        }
+        if options.count == 1, let onlyOption = options.first {
+            commitStagedMeld(onlyOption)
+        } else {
+            pendingInitialSequenceChoice = PendingInitialSequenceChoice(
+                options: options
+            )
+        }
         return true
+    }
+
+    @discardableResult
+    public func chooseInitialSequenceArrangement(at index: Int) -> Bool {
+        guard let choice = pendingInitialSequenceChoice,
+              choice.options.indices.contains(index) else {
+            return false
+        }
+        let cards = choice.options[index]
+        guard Set(cards.map(\.id)) == stagedCardIds,
+              case .success = MeldValidator.validateSequence(cards) else {
+            pendingInitialSequenceChoice = nil
+            return false
+        }
+        commitStagedMeld(cards)
+        return true
+    }
+
+    public func cancelInitialSequenceChoice() {
+        pendingInitialSequenceChoice = nil
+    }
+
+    private func commitStagedMeld(_ cards: [Card]) {
+        contractDraft.append(cards)
+        stagedCardIds.removeAll()
+        pendingInitialSequenceChoice = nil
     }
 
     /// Undo one saved draft meld: cards return to the hand's un-staged pool.

@@ -96,6 +96,8 @@ final round in this variant.
 ### Sequence (4+ cards, same suit, consecutive)
 - **Contract size:** the exact size specified by the round's contract (e.g.,
   a "sequence of 7" must be exactly 7 cards long when laid down).
+- If the selected cards allow more than one legal position for one or more
+  wilds, the player chooses their intended positions before saving the meld.
 - **After laid down:** can be extended at either end.
 - When a wild can legally extend both ends, the player chooses the low or high
   end. If only one end is legal, placement is automatic.
@@ -106,13 +108,17 @@ final round in this variant.
 ### Wild card rules
 - Jokers and 2s are wild — they can substitute for any card. When initially
   laying down a triplet, natural cards must still have different suits.
-- **Maximum wilds per meld = floor(meld size / 2).**
+- **When initially going down, maximum wilds per meld =
+  floor(meld size / 2).**
   - Triplet (3 cards) → max **1** wild
   - Triplet/sequence of 4 → max **2** wilds
   - Triplet/sequence of 5 → max **2** wilds
   - Sequence of 6 → max **3** wilds
   - Sequence of 7 → max **3** wilds
   - Sequence of 10 → max **5** wilds
+- **After a meld is on the table, there is no wild-count limit.** Players who
+  have gone down may add further wilds on later turns as long as the triplet
+  rank or sequence position remains legal.
 - **Wild cards cannot be swapped out — with one exception:** see "Redeeming
   a wild card from a sequence" below.
 
@@ -138,7 +144,7 @@ natural card the wild is standing in for.
   or a wild 2 — its position, not its face, dictates the replacement.
 - The redeemed wild goes into your hand and is a normal wild again. Because
   you're in the Meld phase, you may immediately play it back onto a
-  different meld this same turn (subject to wild limits).
+  different meld this same turn.
 - Multiple redemptions per turn are allowed as long as each is legal.
 
 ### Discarded 2s are dead

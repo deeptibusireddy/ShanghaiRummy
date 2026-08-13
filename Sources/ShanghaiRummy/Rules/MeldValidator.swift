@@ -29,7 +29,7 @@ public enum MeldValidator {
             switch self {
             case .emptyMeld: return "Meld has no cards"
             case .tooFewCards(let min, let got): return "Meld needs \(min) cards, got \(got)"
-            case .tooManyWilds(let max, let got): return "Meld allows at most \(max) wild cards, got \(got)"
+            case .tooManyWilds(let max, let got): return "Initial meld allows at most \(max) wild cards, got \(got)"
             case .tripletMixedRanks: return "Triplet cards must all be the same rank"
             case .tripletDuplicateSuits: return "Natural cards in a triplet must have different suits"
             case .sequenceMixedSuits: return "Sequence cards must all be the same suit"
@@ -42,20 +42,29 @@ public enum MeldValidator {
 
     /// Validate a proposed triplet — natural cards must share a rank and use unique suits.
     public static func validateTriplet(_ cards: [Card]) -> Result<Void, ValidationError> {
-        validateTriplet(cards, requiresDistinctNaturalSuits: true)
+        validateTriplet(
+            cards,
+            requiresDistinctNaturalSuits: true,
+            enforcesWildLimit: true
+        )
     }
 
     private static func validateTriplet(
         _ cards: [Card],
-        requiresDistinctNaturalSuits: Bool
+        requiresDistinctNaturalSuits: Bool,
+        enforcesWildLimit: Bool
     ) -> Result<Void, ValidationError> {
         guard !cards.isEmpty else { return .failure(.emptyMeld) }
         guard cards.count >= RulesConfig.minTripletSize else {
             return .failure(.tooFewCards(min: RulesConfig.minTripletSize, got: cards.count))
         }
-        let maxWilds = RulesConfig.maxWilds(inMeldOfSize: cards.count)
-        let wilds = cards.filter(\.isWild).count
-        if wilds > maxWilds { return .failure(.tooManyWilds(max: maxWilds, got: wilds)) }
+        if enforcesWildLimit {
+            let maxWilds = RulesConfig.maxWilds(inMeldOfSize: cards.count)
+            let wilds = cards.filter(\.isWild).count
+            if wilds > maxWilds {
+                return .failure(.tooManyWilds(max: maxWilds, got: wilds))
+            }
+        }
 
         let naturalRanks = cards.compactMap { $0.isWild ? nil : $0.rank }
         guard let first = naturalRanks.first else {
@@ -77,7 +86,19 @@ public enum MeldValidator {
     /// Cards must be presented in display order (lowest natural rank → highest).
     /// Wild cards are inferred to fill their positional slot.
     public static func validateSequence(_ cards: [Card]) -> Result<Void, ValidationError> {
-        if let error = sequencePrecheck(cards) { return .failure(error) }
+        validateSequence(cards, enforcesWildLimit: true)
+    }
+
+    private static func validateSequence(
+        _ cards: [Card],
+        enforcesWildLimit: Bool
+    ) -> Result<Void, ValidationError> {
+        if let error = sequencePrecheck(
+            cards,
+            enforcesWildLimit: enforcesWildLimit
+        ) {
+            return .failure(error)
+        }
 
         // Try both Ace interpretations. Ace-high must also be checked when a
         // trailing wild represents the Ace, for example J-Q-K-joker.
@@ -112,6 +133,29 @@ public enum MeldValidator {
         return .success(best.cards)
     }
 
+    /// Return every legal positional interpretation for an initial sequence.
+    /// Each result represents a different set of ranks occupied by wild cards.
+    public static func sequenceArrangements(
+        _ cards: [Card]
+    ) -> Result<[[Card]], ValidationError> {
+        if let error = sequencePrecheck(cards, enforcesWildLimit: true) {
+            return .failure(error)
+        }
+
+        let candidates =
+            sequenceCandidates(from: cards, aceHigh: false)
+            + sequenceCandidates(from: cards, aceHigh: true)
+        var seenOrders = Set<String>()
+        let arrangements = candidates.compactMap { candidate -> [Card]? in
+            let key = candidate.cards.map(\.id.uuidString).joined(separator: "|")
+            return seenOrders.insert(key).inserted ? candidate.cards : nil
+        }
+        guard !arrangements.isEmpty else {
+            return .failure(.sequenceNotConsecutive)
+        }
+        return .success(arrangements)
+    }
+
     /// Return the wild slot that `replacement` can legally redeem.
     public static func redeemableWildCardId(
         in meld: Meld,
@@ -122,7 +166,10 @@ public enum MeldValidator {
         for (index, wild) in meld.cards.enumerated() where wild.isWild {
             var proposed = meld.cards
             proposed[index] = replacement
-            if case .success = validateSequence(proposed) {
+            if case .success = validateSequence(
+                proposed,
+                enforcesWildLimit: false
+            ) {
                 return wild.id
             }
         }
@@ -172,10 +219,10 @@ public enum MeldValidator {
 
     /// Validate adding `cards` to an already-laid `meld`.
     /// For triplets: added natural cards must match the rank, but may repeat a
-    /// suit already present; wild count must remain within the new size's
-    /// floor(size/2) limit.
+    /// suit already present.
     /// For sequences: cards can be added to either or both ends, keeping the run
-    /// contiguous in the same suit, with the wild limit respected.
+    /// contiguous in the same suit. The initial-contract wild limit does not
+    /// apply to either kind after it is on the table.
     ///
     /// Returns the proposed new full meld cards on success.
     public static func validateAddition(
@@ -190,14 +237,18 @@ public enum MeldValidator {
         let proposed: [Card] = atStart + meld.cards + atEnd
         switch meld.kind {
         case .triplet:
-            // Distinct natural suits are required only for the original contract.
+            // Initial-contract suit and wild limits do not apply to table play.
             let allAdded = meld.cards + addingCards
             return validateTriplet(
                 allAdded,
-                requiresDistinctNaturalSuits: false
+                requiresDistinctNaturalSuits: false,
+                enforcesWildLimit: false
             ).map { allAdded }
         case .sequence:
-            return validateSequence(proposed).map { proposed }
+            return validateSequence(
+                proposed,
+                enforcesWildLimit: false
+            ).map { proposed }
         }
     }
 
@@ -210,15 +261,20 @@ public enum MeldValidator {
         let startRank: Int
     }
 
-    private static func sequencePrecheck(_ cards: [Card]) -> ValidationError? {
+    private static func sequencePrecheck(
+        _ cards: [Card],
+        enforcesWildLimit: Bool = true
+    ) -> ValidationError? {
         guard !cards.isEmpty else { return .emptyMeld }
         guard cards.count >= RulesConfig.minSequenceSize else {
             return .tooFewCards(min: RulesConfig.minSequenceSize, got: cards.count)
         }
-        let maxWilds = RulesConfig.maxWilds(inMeldOfSize: cards.count)
-        let wildCount = cards.filter(\.isWild).count
-        if wildCount > maxWilds {
-            return .tooManyWilds(max: maxWilds, got: wildCount)
+        if enforcesWildLimit {
+            let maxWilds = RulesConfig.maxWilds(inMeldOfSize: cards.count)
+            let wildCount = cards.filter(\.isWild).count
+            if wildCount > maxWilds {
+                return .tooManyWilds(max: maxWilds, got: wildCount)
+            }
         }
 
         let naturalSuits = cards.compactMap { $0.isWild ? nil : $0.suit }

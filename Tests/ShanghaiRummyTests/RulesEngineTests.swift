@@ -99,7 +99,7 @@ final class MeldValidatorTripletTests: XCTestCase {
         XCTAssertEqual(updated.last?.id, repeatedSuit.id)
     }
 
-    func testTripletExtensionStillEnforcesWildLimit() {
+    func testTripletExtensionAllowsWildsAboveInitialLimit() {
         let existing = Meld(
             kind: .triplet,
             cards: [c(.spades, .four), c(.hearts, .four), j(), j()],
@@ -107,18 +107,15 @@ final class MeldValidatorTripletTests: XCTestCase {
         )
         let extraWild = j()
 
-        let result = MeldValidator.validateAddition(
+        let updated = try! MeldValidator.validateAddition(
             addingCards: [extraWild],
             atStart: [],
             atEnd: [extraWild],
             to: existing
-        )
+        ).get()
 
-        if case .failure(let error) = result {
-            XCTAssertEqual(error, .tooManyWilds(max: 2, got: 3))
-        } else {
-            XCTFail("expected tooManyWilds")
-        }
+        XCTAssertEqual(updated.count, 5)
+        XCTAssertEqual(updated.filter(\.isWild).count, 3)
     }
 }
 
@@ -189,6 +186,35 @@ final class MeldValidatorSequenceTests: XCTestCase {
         XCTAssertNoThrow(try MeldValidator.validateSequence(arranged).get())
     }
 
+    func testOffersEveryInitialJokerPositionWhenSequenceIsAmbiguous() throws {
+        let joker = j()
+        let cards = [
+            c(.diamonds, .nine),
+            c(.diamonds, .ten),
+            c(.diamonds, .jack),
+            joker,
+        ]
+
+        let arrangements = try MeldValidator.sequenceArrangements(cards).get()
+        let jokerIndexes = Set(arrangements.compactMap {
+            $0.firstIndex(where: { $0.id == joker.id })
+        })
+        let representedRanks = Set(arrangements.compactMap { arrangement in
+            MeldValidator.representedNatural(
+                for: joker.id,
+                in: Meld(
+                    kind: .sequence,
+                    cards: arrangement,
+                    ownerId: UUID()
+                )
+            )?.rank
+        })
+
+        XCTAssertEqual(arrangements.count, 2)
+        XCTAssertEqual(jokerIndexes, Set([0, 3]))
+        XCTAssertEqual(representedRanks, Set([.eight, .queen]))
+    }
+
     func testTrailingJokerCanRepresentHighAce() {
         let cards = [
             c(.diamonds, .jack),
@@ -248,6 +274,25 @@ final class MeldValidatorSequenceTests: XCTestCase {
         if case .failure(let e) = MeldValidator.validateSequence(cards) {
             XCTAssertEqual(e, .tooManyWilds(max: 2, got: 3))
         } else { XCTFail("expected tooManyWilds") }
+    }
+
+    func testSequenceExtensionAllowsWildsAboveInitialLimit() throws {
+        let existing = Meld(
+            kind: .sequence,
+            cards: [c(.clubs, .five), c(.clubs, .six), j(), j()],
+            ownerId: UUID()
+        )
+        let extraWild = j()
+
+        let updated = try MeldValidator.validateAddition(
+            addingCards: [extraWild],
+            atStart: [],
+            atEnd: [extraWild],
+            to: existing
+        ).get()
+
+        XCTAssertEqual(updated.count, 5)
+        XCTAssertEqual(updated.filter(\.isWild).count, 3)
     }
 
     func testSequenceOfSevenWithMultipleWilds() {
