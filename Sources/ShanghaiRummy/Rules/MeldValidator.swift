@@ -42,6 +42,13 @@ public enum MeldValidator {
 
     /// Validate a proposed triplet — natural cards must share a rank and use unique suits.
     public static func validateTriplet(_ cards: [Card]) -> Result<Void, ValidationError> {
+        validateTriplet(cards, requiresDistinctNaturalSuits: true)
+    }
+
+    private static func validateTriplet(
+        _ cards: [Card],
+        requiresDistinctNaturalSuits: Bool
+    ) -> Result<Void, ValidationError> {
         guard !cards.isEmpty else { return .failure(.emptyMeld) }
         guard cards.count >= RulesConfig.minTripletSize else {
             return .failure(.tooFewCards(min: RulesConfig.minTripletSize, got: cards.count))
@@ -57,9 +64,11 @@ public enum MeldValidator {
         guard naturalRanks.allSatisfy({ $0 == first }) else {
             return .failure(.tripletMixedRanks)
         }
-        let naturalSuits = cards.compactMap { $0.isWild ? nil : $0.suit }
-        guard Set(naturalSuits).count == naturalSuits.count else {
-            return .failure(.tripletDuplicateSuits)
+        if requiresDistinctNaturalSuits {
+            let naturalSuits = cards.compactMap { $0.isWild ? nil : $0.suit }
+            guard Set(naturalSuits).count == naturalSuits.count else {
+                return .failure(.tripletDuplicateSuits)
+            }
         }
         return .success(())
     }
@@ -162,8 +171,9 @@ public enum MeldValidator {
     // MARK: - Extensions to existing melds
 
     /// Validate adding `cards` to an already-laid `meld`.
-    /// For triplets: added natural cards must match the rank and use an unused
-    /// suit; wild count must remain within the new size's floor(size/2) limit.
+    /// For triplets: added natural cards must match the rank, but may repeat a
+    /// suit already present; wild count must remain within the new size's
+    /// floor(size/2) limit.
     /// For sequences: cards can be added to either or both ends, keeping the run
     /// contiguous in the same suit, with the wild limit respected.
     ///
@@ -180,9 +190,12 @@ public enum MeldValidator {
         let proposed: [Card] = atStart + meld.cards + atEnd
         switch meld.kind {
         case .triplet:
-            // For triplets, position doesn't matter — just re-validate as a triplet.
+            // Distinct natural suits are required only for the original contract.
             let allAdded = meld.cards + addingCards
-            return validateTriplet(allAdded).map { allAdded }
+            return validateTriplet(
+                allAdded,
+                requiresDistinctNaturalSuits: false
+            ).map { allAdded }
         case .sequence:
             return validateSequence(proposed).map { proposed }
         }

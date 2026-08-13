@@ -156,7 +156,7 @@ final class GameViewModelGoDownTests: XCTestCase {
         XCTAssertEqual(updated?.cards.count, 4)
     }
 
-    func testLayoffRejectsNaturalSuitAlreadyInTriplet() {
+    func testLayoffAllowsNaturalSuitAlreadyInTriplet() {
         let existing = Meld(
             kind: .triplet,
             cards: [
@@ -174,8 +174,11 @@ final class GameViewModelGoDownTests: XCTestCase {
             laidDownThisTurn: false
         )
 
-        XCTAssertFalse(v.canLayOff(duplicateSuit, to: existing))
-        XCTAssertFalse(v.layoffHandCard(duplicateSuit, to: existing.id))
+        XCTAssertTrue(v.canLayOff(duplicateSuit, to: existing))
+        XCTAssertTrue(v.canPlayAnyHandCard(to: existing))
+        XCTAssertTrue(v.layoffHandCard(duplicateSuit, to: existing.id))
+        XCTAssertFalse(v.currentPlayer.hand.contains { $0.id == duplicateSuit.id })
+        XCTAssertEqual(v.state.melds.first?.cards.count, 4)
     }
 
     func testWildLayoffPromptsWhenBothSequenceEndsAreValid() {

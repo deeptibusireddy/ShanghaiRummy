@@ -248,14 +248,15 @@ final class CPUPlayerTests: XCTestCase {
     }
 
     func testLaysOffAfterGoingDown() {
-        // Already-down player holds a matching card for an existing triplet.
+        // A matching rank can extend a laid triplet even when its suit repeats.
         let ownerId = UUID()
         let existing = Meld(
             kind: .triplet,
             cards: [c(.hearts, .king), c(.spades, .king), c(.diamonds, .king)],
             ownerId: ownerId
         )
-        let hand = [c(.clubs, .king), c(.hearts, .three)]
+        let repeatedSuit = c(.hearts, .king)
+        let hand = [repeatedSuit, c(.hearts, .three)]
         let (s, me) = state(hand: hand,
                             phase: .awaitingMeldOrDiscard,
                             melds: [existing],
@@ -268,7 +269,7 @@ final class CPUPlayerTests: XCTestCase {
         XCTAssertEqual(meldId, existing.id)
         let added = atStart + atEnd
         XCTAssertEqual(added.count, 1)
-        XCTAssertEqual(added.first?.rank, .king)
+        XCTAssertEqual(added.first?.id, repeatedSuit.id)
     }
 
     func testDiscardsWhenGoneDownAndNoLayoff() {

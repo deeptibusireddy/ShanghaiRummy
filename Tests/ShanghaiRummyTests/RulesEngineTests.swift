@@ -79,6 +79,47 @@ final class MeldValidatorTripletTests: XCTestCase {
         ]
         XCTAssertNoThrow(try MeldValidator.validateTriplet(cards).get())
     }
+
+    func testLaidTripletCanExtendWithRepeatedNaturalSuit() {
+        let existing = Meld(
+            kind: .triplet,
+            cards: [c(.spades, .four), c(.hearts, .four), c(.diamonds, .four)],
+            ownerId: UUID()
+        )
+        let repeatedSuit = c(.spades, .four)
+
+        let updated = try! MeldValidator.validateAddition(
+            addingCards: [repeatedSuit],
+            atStart: [],
+            atEnd: [repeatedSuit],
+            to: existing
+        ).get()
+
+        XCTAssertEqual(updated.count, 4)
+        XCTAssertEqual(updated.last?.id, repeatedSuit.id)
+    }
+
+    func testTripletExtensionStillEnforcesWildLimit() {
+        let existing = Meld(
+            kind: .triplet,
+            cards: [c(.spades, .four), c(.hearts, .four), j(), j()],
+            ownerId: UUID()
+        )
+        let extraWild = j()
+
+        let result = MeldValidator.validateAddition(
+            addingCards: [extraWild],
+            atStart: [],
+            atEnd: [extraWild],
+            to: existing
+        )
+
+        if case .failure(let error) = result {
+            XCTAssertEqual(error, .tooManyWilds(max: 2, got: 3))
+        } else {
+            XCTFail("expected tooManyWilds")
+        }
+    }
 }
 
 // MARK: - MeldValidator: Sequences
@@ -1059,6 +1100,42 @@ final class WildRedemptionTests: XCTestCase {
         if case .failure(let e) = result {
             XCTAssertEqual(e, .cannotActOnGoDownTurn)
         } else { XCTFail("expected cannotActOnGoDownTurn") }
+    }
+
+    func testAddToTripletAllowsRepeatedNaturalSuitOnLaterTurn() {
+        let repeatedSuit = c(.spades, .four)
+        let p1 = Player(
+            name: "A",
+            hand: [repeatedSuit],
+            hasGoneDownThisRound: true,
+            laidDownThisTurn: false
+        )
+        let p2 = Player(name: "B", hand: [])
+        let meld = Meld(
+            kind: .triplet,
+            cards: [c(.spades, .four), c(.hearts, .four), c(.diamonds, .four)],
+            ownerId: p2.id
+        )
+        let state = GameState(
+            players: [p1, p2], currentRound: 1, currentTurnIndex: 0, dealerIndex: 1,
+            stock: [c(.clubs, .nine)], discard: [c(.clubs, .ten)],
+            melds: [meld], phase: .awaitingMeldOrDiscard,
+            stockReshufflesUsed: 0, randomSeed: 0
+        )
+
+        let updated = try! TurnEngine.apply(
+            .addToMeld(
+                playerId: p1.id,
+                meldId: meld.id,
+                cardsAtStart: [],
+                cardsAtEnd: [repeatedSuit]
+            ),
+            to: state
+        ).get()
+
+        XCTAssertFalse(updated.players[0].hand.contains { $0.id == repeatedSuit.id })
+        XCTAssertEqual(updated.melds[0].cards.count, 4)
+        XCTAssertEqual(updated.melds[0].cards.last?.id, repeatedSuit.id)
     }
 }
 

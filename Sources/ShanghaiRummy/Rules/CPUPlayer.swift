@@ -116,12 +116,12 @@ public enum CPUPlayer {
         for meld in melds {
             for card in hand {
                 // Try appending first.
-                if isValid(meld.kind, cards: meld.cards + [card]) {
+                if canAdd(card, to: meld, atStart: false) {
                     return .addToMeld(playerId: playerId, meldId: meld.id,
                                       cardsAtStart: [], cardsAtEnd: [card])
                 }
                 // Then prepending.
-                if isValid(meld.kind, cards: [card] + meld.cards) {
+                if canAdd(card, to: meld, atStart: true) {
                     return .addToMeld(playerId: playerId, meldId: meld.id,
                                       cardsAtStart: [card], cardsAtEnd: [])
                 }
@@ -133,18 +133,22 @@ public enum CPUPlayer {
     /// True if the given card would extend some existing meld.
     static func canLayOff(card: Card, on melds: [Meld]) -> Bool {
         for meld in melds {
-            if isValid(meld.kind, cards: meld.cards + [card]) { return true }
-            if isValid(meld.kind, cards: [card] + meld.cards) { return true }
+            if canAdd(card, to: meld, atStart: false) { return true }
+            if canAdd(card, to: meld, atStart: true) { return true }
         }
         return false
     }
 
-    private static func isValid(_ kind: Meld.Kind, cards: [Card]) -> Bool {
-        switch kind {
-        case .triplet:
-            if case .success = MeldValidator.validateTriplet(cards) { return true }
-        case .sequence:
-            if case .success = MeldValidator.validateSequence(cards) { return true }
+    private static func canAdd(_ card: Card, to meld: Meld, atStart: Bool) -> Bool {
+        let cardsAtStart = atStart ? [card] : []
+        let cardsAtEnd = atStart ? [] : [card]
+        if case .success = MeldValidator.validateAddition(
+            addingCards: [card],
+            atStart: cardsAtStart,
+            atEnd: cardsAtEnd,
+            to: meld
+        ) {
+            return true
         }
         return false
     }

@@ -8,10 +8,10 @@
 
 ## Terminology
 
-- **Triplet** — 3 or more cards of the same rank with no repeated natural
-  suits. The minimum size to satisfy a contract is 3; once a triplet is on the
-  table, it can be extended by any player (once they've gone down) with a
-  same-rank card whose natural suit is not already present, or with a wild.
+- **Triplet** — 3 or more cards of the same rank. The original three natural
+  cards must use different suits. Once a triplet is on the table, any player
+  who has gone down may extend it with any same-rank card, including a suit
+  already present, or with a wild.
 - **Sequence** — 4 or more consecutive cards of the same suit. The minimum
   size to satisfy a contract is 4; once on the table, it can be extended at
   either end.
@@ -85,10 +85,13 @@ final round in this variant.
 
 ### Triplet (3+ cards, same rank)
 - **Contract size:** exactly 3 at the moment you go down.
-- **After laid down:** can be extended with an unused natural suit or a wild.
-- Natural cards must all have different suits, even when a wild completes the
-  triplet. A wild card's printed suit does not consume a suit.
-- Example: ♠7 ♥7 ♦7 (legal) • ♠7 ♠7 ♥7 (illegal).
+- **After laid down:** can be extended with any same-rank natural card,
+  regardless of suit, or with a wild.
+- The natural cards in the original three-card contract must have different
+  suits, even when a wild completes it. A wild card's printed suit does not
+  consume a suit.
+- Initial contract: ♠7 ♥7 ♦7 (legal) • ♠7 ♠7 ♥7 (illegal).
+- Later extension: ♠7 ♥7 ♦7 + ♠7 (legal).
 
 ### Sequence (4+ cards, same suit, consecutive)
 - **Contract size:** the exact size specified by the round's contract (e.g.,
@@ -101,8 +104,8 @@ final round in this variant.
 - Example: ♣5 ♣6 ♣7 ♣8 (legal) • ♥Q ♥K ♥A (illegal, only 3 cards; a sequence needs 4).
 
 ### Wild card rules
-- Jokers and 2s are wild — they can substitute for any card. In a triplet,
-  natural cards must still have different suits.
+- Jokers and 2s are wild — they can substitute for any card. When initially
+  laying down a triplet, natural cards must still have different suits.
 - **Maximum wilds per meld = floor(meld size / 2).**
   - Triplet (3 cards) → max **1** wild
   - Triplet/sequence of 4 → max **2** wilds

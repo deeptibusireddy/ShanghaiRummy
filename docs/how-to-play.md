@@ -72,14 +72,16 @@ Everything you lay down is one of these two shapes:
 
 ### 🃏 Triplet — "three of a kind"
 
-Three or more cards of the **same rank**. Every natural card must have a
-**different suit**.
+Three or more cards of the **same rank**. In the original triplet you lay down,
+every natural card must have a **different suit**.
 ```
 ♠7  ♥7  ♦7           ← triplet
-♠K  ♥K  ♦K  ♣K       ← extended triplet (card added after being laid down)
+♠K  ♥K  ♦K  ♠K       ← legal extension after the triplet is down
 ```
-Cards from duplicate decks cannot repeat a natural suit inside one triplet
-(`♠7 ♠7 ♥7` is illegal).
+Cards from duplicate decks cannot repeat a natural suit in the original
+three-card contract (`♠7 ♠7 ♥7` is illegal when going down). Once the triplet
+is on the table, any matching-rank natural card may extend it, even if that
+suit is already present.
 
 ### 🎴 Sequence — "run"
 
@@ -102,8 +104,8 @@ You can slip wilds into any meld:
 ♠K  🃏  ♦K           ← the joker stands in for any King
 ```
 
-Wilds do not consume a suit in a triplet, but the natural cards must still use
-different suits. For example, `♥K ♥K 🃏` is illegal.
+Wilds do not consume a suit in an initial triplet, but its natural cards must
+still use different suits. For example, `♥K ♥K 🃏` is illegal when going down.
 
 But there's a **limit**: at most **half** the meld (rounded down) can be
 wilds. So:
@@ -245,7 +247,8 @@ it's not your turn. **You can buy it when the offer reaches you.**
 Once you've gone down, on your **later** turns you can lay individual cards
 onto any meld that's already on the table — including your opponents'.
 
-- Extend a triplet with a matching-rank card.
+- Extend a triplet with a matching-rank card of any suit, including one already
+  in that triplet.
 - Extend a sequence at either end with the next card of the same suit.
 - Extend with wilds (subject to the wild limit).
 - If a joker or live wild 2 can legally extend **either** end of a sequence,

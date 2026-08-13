@@ -717,8 +717,8 @@ public final class GameViewModel: ObservableObject {
 
     public func canLayOff(_ card: Card, to meld: Meld) -> Bool {
         guard canPlayFromHand(card) else { return false }
-        return isValid(meld.kind, cards: meld.cards + [card])
-            || isValid(meld.kind, cards: [card] + meld.cards)
+        return canAdd(card, to: meld, atStart: false)
+            || canAdd(card, to: meld, atStart: true)
     }
 
     public func canLayOffAnyHandCard(to meld: Meld) -> Bool {
@@ -729,8 +729,8 @@ public final class GameViewModel: ObservableObject {
     public func layoffHandCard(_ card: Card, to meldId: UUID) -> Bool {
         guard let meld = state.melds.first(where: { $0.id == meldId }),
               canLayOff(card, to: meld) else { return false }
-        let canAddAtEnd = isValid(meld.kind, cards: meld.cards + [card])
-        let canAddAtStart = isValid(meld.kind, cards: [card] + meld.cards)
+        let canAddAtEnd = canAdd(card, to: meld, atStart: false)
+        let canAddAtStart = canAdd(card, to: meld, atStart: true)
         if meld.kind == .sequence,
            card.isWild,
            canAddAtStart,
@@ -816,12 +816,16 @@ public final class GameViewModel: ObservableObject {
             && currentPlayer.hand.contains(where: { $0.id == card.id })
     }
 
-    private func isValid(_ kind: Meld.Kind, cards: [Card]) -> Bool {
-        switch kind {
-        case .triplet:
-            if case .success = MeldValidator.validateTriplet(cards) { return true }
-        case .sequence:
-            if case .success = MeldValidator.validateSequence(cards) { return true }
+    private func canAdd(_ card: Card, to meld: Meld, atStart: Bool) -> Bool {
+        let cardsAtStart = atStart ? [card] : []
+        let cardsAtEnd = atStart ? [] : [card]
+        if case .success = MeldValidator.validateAddition(
+            addingCards: [card],
+            atStart: cardsAtStart,
+            atEnd: cardsAtEnd,
+            to: meld
+        ) {
+            return true
         }
         return false
     }
