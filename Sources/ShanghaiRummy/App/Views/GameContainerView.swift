@@ -219,7 +219,7 @@ struct GameContainerView: View {
     // MARK: - Hand / game over overlays
 
     private var buyDecisionOverlay: some View {
-        ZStack(alignment: .top) {
+        ZStack {
             Color.black.opacity(0.001)
                 .ignoresSafeArea()
                 .contentShape(Rectangle())
@@ -244,7 +244,6 @@ struct GameContainerView: View {
             .frame(maxWidth: 640)
             .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18))
             .shadow(color: .black.opacity(0.22), radius: 12, y: 5)
-            .padding(.top, 8)
             .padding(.horizontal, 72)
         }
         .accessibilityIdentifier("buy-decision-overlay")

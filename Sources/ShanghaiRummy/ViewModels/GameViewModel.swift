@@ -97,7 +97,13 @@ public final class GameViewModel: ObservableObject {
         localPlayerId == nil || state.currentPlayerId == localPlayerId
     }
     public var currentContractDescription: String {
-        state.contract(forPlayer: currentPlayer.id)?.displayName ?? "—"
+        contractDescription(for: currentPlayer.id)
+    }
+    public var turnPlayerContractDescription: String {
+        contractDescription(for: turnPlayer.id)
+    }
+    public func contractDescription(for playerId: UUID) -> String {
+        state.contract(forPlayer: playerId)?.displayName ?? "—"
     }
     public var canDrawFromDiscard: Bool {
         isLocalBuyDecision

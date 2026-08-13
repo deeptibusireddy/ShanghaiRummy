@@ -164,6 +164,7 @@ final class GameScene: SKScene {
     private func buildHeader() {
         headerLayer.removeAllChildren()
 
+        let activePlayer = vm.turnPlayer
         let width = min(size.width - 300, 520)
         let height: CGFloat = 48
         let center = CGPoint(x: size.width / 2, y: size.height - 31)
@@ -192,7 +193,7 @@ final class GameScene: SKScene {
         activeDot.run(.repeatForever(pulse))
 
         let turn = SKLabelNode(
-            text: "\(vm.currentPlayerName)'s turn".uppercased()
+            text: "\(activePlayer.name)'s turn".uppercased()
         )
         turn.fontName = theme.titleFont
         turn.fontSize = size.width < 720 ? 14 : 17
@@ -214,16 +215,29 @@ final class GameScene: SKScene {
         phase.zPosition = 31
         headerLayer.addChild(phase)
 
+        let handCount = SKLabelNode(
+            text: "\(activePlayer.hand.count) cards".uppercased()
+        )
+        handCount.fontName = theme.titleFont
+        handCount.fontSize = size.width < 720 ? 11 : 13
+        handCount.fontColor = theme.turnGlow
+        handCount.horizontalAlignmentMode = .right
+        handCount.verticalAlignmentMode = .center
+        handCount.position = CGPoint(x: center.x + width / 2 - 18,
+                                     y: center.y + 9)
+        handCount.zPosition = 31
+        headerLayer.addChild(handCount)
+
         let contract = SKLabelNode(
-            text: "HAND \(vm.state.currentRound)  •  LV \(vm.currentPlayer.currentLevel)  •  \(vm.currentContractDescription)"
+            text: "LV \(activePlayer.currentLevel)  •  \(vm.turnPlayerContractDescription)"
         )
         contract.fontName = theme.titleFont
-        contract.fontSize = 11
+        contract.fontSize = size.width < 720 ? 9 : 10
         contract.fontColor = theme.contractPillText
         contract.horizontalAlignmentMode = .right
         contract.verticalAlignmentMode = .center
         contract.position = CGPoint(x: center.x + width / 2 - 18,
-                                    y: center.y)
+                                    y: center.y - 10)
         contract.zPosition = 31
         headerLayer.addChild(contract)
     }
@@ -1039,7 +1053,7 @@ final class GameScene: SKScene {
         colorIndex: Int,
         isActive: Bool
     ) {
-        let panelSize = CGSize(width: 174, height: 46)
+        let panelSize = CGSize(width: currentPlayerHUDWidth, height: 46)
         let center = CGPoint(x: horizontalEdgeInset + panelSize.width / 2,
                              y: stagingTrayY)
         let panel = SKShapeNode(rectOf: panelSize, cornerRadius: 23)
@@ -1089,13 +1103,25 @@ final class GameScene: SKScene {
         name.zPosition = 3
         seatsLayer.addChild(name)
 
-        let ownMeldCount = vm.state.melds.filter { $0.ownerId == player.id }.count
-        let status = ownMeldCount == 0
-            ? "Lv \(player.currentLevel)  •  \(player.totalScore) pts"
-            : "\(ownMeldCount) down  •  \(player.totalScore) pts"
-        let detail = SKLabelNode(text: isActive ? "YOUR TURN" : status)
+        let score = SKLabelNode(text: "\(player.totalScore) pts")
+        score.fontName = theme.bodyFont
+        score.fontSize = 8
+        score.fontColor = theme.seatSub
+        score.horizontalAlignmentMode = .right
+        score.verticalAlignmentMode = .center
+        score.position = CGPoint(
+            x: center.x + panelSize.width / 2 - 12,
+            y: center.y + 8
+        )
+        score.zPosition = 3
+        seatsLayer.addChild(score)
+
+        let contract = vm.contractDescription(for: player.id)
+        let detail = SKLabelNode(
+            text: "LV \(player.currentLevel)  •  \(contract)"
+        )
         detail.fontName = theme.bodyFont
-        detail.fontSize = 9
+        detail.fontSize = size.width < 720 ? 7.5 : 8.5
         detail.fontColor = isActive ? theme.turnGlow : theme.seatSub
         detail.horizontalAlignmentMode = .left
         detail.verticalAlignmentMode = .center
@@ -1242,12 +1268,16 @@ final class GameScene: SKScene {
         size.width >= 780 ? 54 : 24
     }
 
+    private var currentPlayerHUDWidth: CGFloat {
+        size.width < 720 ? 190 : 224
+    }
+
     private var stagingTrayY: CGFloat {
         handRowY + scaledHandCardSize.height / 2 + 36
     }
 
     private var stagingTrayRect: CGRect {
-        let left = horizontalEdgeInset + 186
+        let left = horizontalEdgeInset + currentPlayerHUDWidth + 12
         let right = size.width - horizontalEdgeInset - 176
         let width = max(210, right - left)
         return CGRect(x: left, y: stagingTrayY - 28,

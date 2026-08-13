@@ -35,6 +35,33 @@ final class GameViewModelOnlineTests: XCTestCase {
         )
     }
 
+    func testOnlineStatusKeepsLocalAndTurnPlayerContractsDistinct() {
+        var state = GameFactory.newGame(
+            playerNames: ["Local", "Remote"],
+            seed: 113
+        )
+        state.players[0].currentLevel = 5
+        state.players[1].currentLevel = 2
+        let local = state.players[0]
+        let remote = state.players[1]
+        XCTAssertEqual(state.currentPlayerId, remote.id)
+
+        let viewModel = GameViewModel(
+            state: state,
+            localPlayerId: local.id
+        )
+
+        XCTAssertEqual(
+            viewModel.currentContractDescription,
+            "1 triplet + 1 sequence of 7"
+        )
+        XCTAssertEqual(
+            viewModel.turnPlayerContractDescription,
+            "1 triplet + 1 sequence of 4"
+        )
+        XCTAssertEqual(viewModel.turnPlayer.hand.count, remote.hand.count)
+    }
+
     func testOnlineTurnPlayerSeesYourDrawInsteadOfPurchaseRound() {
         let state = GameFactory.newGame(
             playerNames: ["Remote", "Local"],

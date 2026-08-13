@@ -70,7 +70,7 @@ percentages of the game surface so they scale to any device.
 | **Opponent seats**| Left / right / top edges — one seat per opponent     |
 | **Opponent meld strip** | Adjacent to each opponent's name & level     |
 | **Contract reminder** | Small chip at your seat showing your level's contract |
-| **Turn banner**   | Full-width strip at the very top: "Alice's turn — Level 4"|
+| **Turn banner**   | Top strip with active player's name, cards in hand, level, and contract |
 | **Context action**| Bottom right: one stateful prompt/action for the current phase |
 
 ## Seat layouts by player count
@@ -153,8 +153,9 @@ target wins and an exact tie favors the meld.
   **Offer Clockwise**.
 - A non-turn player whose offer is active sees **Buy Opportunity**. Everyone
   else sees **Waiting for [name]**.
-- These choices appear in a compact top panel without dimming or covering the
-  local player's melds. The table remains visible while input stays blocked.
+- These choices appear in a compact center panel across the stock and discard
+  piles without dimming or covering the local player's melds. The table remains
+  visible while input stays blocked.
 - Taking the discard moves it to the turn player's hand. Passing starts the
   sequential buyer offers; when those end, the stock draw is automatic.
 - Phase transitions to "meld or discard" automatically after resolution.
@@ -249,7 +250,7 @@ with warning feedback.
 | Joker / wild 2       | Amber side band and unmistakable wild marker           |
 | Meld target          | Dark translucent group; mint outline when playable     |
 | Staging tray         | Indigo glass-like panel kept inline above the hand     |
-| Turn ribbon          | Bright amber outline, pulsing dot, active player, and contract |
+| Turn ribbon          | Bright amber outline, active player's hand count, level, and contract |
 | Buttons              | One contextual amber primary action; quiet secondary chips |
 | Sensitive states     | Coral warning, mint confirmation, plus motion/haptics  |
 | Typography           | Rounded system typography throughout                   |
@@ -264,10 +265,11 @@ with warning feedback.
 - Meld commit: 350 ms with mild spring (staged cards slide into row).
 - Wild redemption: cross-fade + subtle scale bump.
 - Illegal action: horizontal shake 6 px, 3 cycles, 250 ms total; error toast.
-- Purchase panel: stays compact at the top and fades between decision owners
-  while table input remains blocked.
+- Purchase panel: stays compact over the center piles and fades between
+  decision owners while table input remains blocked.
 - Active turn: the current player's seat uses a bright pulsing amber halo,
-  amber avatar/name treatment, and an explicit playing/your-turn label.
+  amber avatar/name treatment. The local seat always retains its own level and
+  contract description, including while another player has the turn.
 
 Haptics (M4):
 - Draw: `.light`
