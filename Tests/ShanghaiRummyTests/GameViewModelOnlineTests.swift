@@ -21,26 +21,39 @@ final class GameViewModelOnlineTests: XCTestCase {
         XCTAssertEqual(viewModel.displayedPlayerIndex, 0)
         XCTAssertFalse(viewModel.isLocalPlayersTurn)
         XCTAssertFalse(viewModel.canDrawFromStock)
-        XCTAssertTrue(viewModel.canRequestBuy)
+        XCTAssertFalse(viewModel.isLocalBuyDecision)
+        XCTAssertFalse(viewModel.canAcceptBuyOffer)
+        XCTAssertFalse(viewModel.canPassBuyOffer)
     }
 
-    func testOnlineBuyButtonTogglesRequestAndCancellation() {
-        let state = GameFactory.newGame(
+    func testOnlineBuyerCanRespondOnlyAfterOfferReachesThem() {
+        var state = GameFactory.newGame(
             playerNames: ["Local", "Remote"],
             seed: 12
         )
         let localId = state.players[0].id
+        let remoteId = state.players[1].id
+        state = try! TurnEngine.apply(
+            .passBuyOffer(playerId: remoteId),
+            to: state
+        ).get()
         let viewModel = GameViewModel(state: state, localPlayerId: localId)
+        var submittedAction: TurnEngine.Action?
+        viewModel.configureOnlineActionSubmitter {
+            submittedAction = $0
+            return true
+        }
 
-        viewModel.toggleLocalBuyRequest()
+        XCTAssertTrue(viewModel.isLocalBuyDecision)
+        XCTAssertTrue(viewModel.canAcceptBuyOffer)
+        XCTAssertTrue(viewModel.canPassBuyOffer)
 
-        XCTAssertTrue(viewModel.hasRequestedBuy)
-        XCTAssertFalse(viewModel.canRequestBuy)
-
-        viewModel.toggleLocalBuyRequest()
-
-        XCTAssertFalse(viewModel.hasRequestedBuy)
-        XCTAssertTrue(viewModel.canRequestBuy)
+        viewModel.acceptBuyOffer()
+        XCTAssertEqual(
+            submittedAction,
+            .acceptBuyOffer(playerId: localId)
+        )
+        XCTAssertTrue(viewModel.isSubmittingOnlineAction)
     }
 
     func testOnlineTurnAdvanceDoesNotShowPassDeviceSheet() {
@@ -50,6 +63,8 @@ final class GameViewModelOnlineTests: XCTestCase {
         )
         state.currentTurnIndex = 0
         let localId = state.players[0].id
+        state.buyDecisionPlayerId = localId
+        state.players[1].hasGoneDownThisRound = true
         let viewModel = GameViewModel(state: state, localPlayerId: localId)
 
         viewModel.drawFromStock()
@@ -68,6 +83,8 @@ final class GameViewModelOnlineTests: XCTestCase {
         )
         state.currentTurnIndex = 0
         let localId = state.players[0].id
+        state.buyDecisionPlayerId = localId
+        state.players[1].hasGoneDownThisRound = true
         let viewModel = GameViewModel(state: state, localPlayerId: localId)
         var submittedAction: TurnEngine.Action?
         viewModel.configureOnlineActionSubmitter {
@@ -75,11 +92,11 @@ final class GameViewModelOnlineTests: XCTestCase {
             return true
         }
 
-        viewModel.drawFromStock()
+        viewModel.passBuyOffer()
 
         XCTAssertEqual(
             submittedAction,
-            .draw(playerId: localId, source: .stock)
+            .passBuyOffer(playerId: localId)
         )
         XCTAssertTrue(viewModel.isSubmittingOnlineAction)
         XCTAssertEqual(viewModel.state.phase, .awaitingDraw)
@@ -101,9 +118,10 @@ final class GameViewModelOnlineTests: XCTestCase {
         )
         state.currentTurnIndex = 0
         let localId = state.players[0].id
+        state.buyDecisionPlayerId = localId
         let viewModel = GameViewModel(state: state, localPlayerId: localId)
         viewModel.configureOnlineActionSubmitter { _ in true }
-        viewModel.drawFromStock()
+        viewModel.passBuyOffer()
 
         viewModel.receiveAuthoritativeState(
             state,
@@ -128,5 +146,66 @@ final class GameViewModelOnlineTests: XCTestCase {
         viewModel.toggleStaged(cardId: local.hand[0].id)
 
         XCTAssertTrue(viewModel.stagedCardIds.isEmpty)
+    }
+
+    func testHotSeatPurchaseOfferRequiresDeviceHandoff() {
+        let state = GameFactory.newGame(
+            playerNames: ["Buyer", "Turn Player"],
+            seed: 16
+        )
+        let turnPlayerId = state.currentPlayerId
+        let buyerId = state.players[0].id
+        let viewModel = GameViewModel(state: state)
+
+        viewModel.passBuyOffer()
+
+        XCTAssertEqual(viewModel.state.buyDecisionPlayerId, buyerId)
+        XCTAssertEqual(viewModel.currentPlayer.id, buyerId)
+        XCTAssertTrue(viewModel.isBetweenTurns)
+
+        viewModel.acknowledgeTurnPassed()
+        viewModel.acceptBuyOffer()
+
+        XCTAssertEqual(viewModel.state.currentPlayerId, turnPlayerId)
+        XCTAssertEqual(viewModel.state.phase, .awaitingMeldOrDiscard)
+        XCTAssertEqual(viewModel.currentPlayer.id, turnPlayerId)
+        XCTAssertTrue(viewModel.isBetweenTurns)
+    }
+
+    func testHotSeatTimeoutPassesNonTurnBuyerOffer() {
+        let state = GameFactory.newGame(
+            playerNames: ["Buyer", "Turn Player"],
+            seed: 17
+        )
+        let turnPlayerId = state.currentPlayerId
+        let buyerId = state.players[0].id
+        let turnHandBefore = state.players[1].hand.count
+        let viewModel = GameViewModel(state: state)
+        viewModel.passBuyOffer()
+        viewModel.acknowledgeTurnPassed()
+
+        XCTAssertTrue(
+            viewModel.passTimedOutLocalBuyOffer(
+                expectedPlayerId: buyerId
+            )
+        )
+        XCTAssertEqual(viewModel.state.currentPlayerId, turnPlayerId)
+        XCTAssertEqual(viewModel.state.phase, .awaitingMeldOrDiscard)
+        XCTAssertEqual(viewModel.state.players[1].hand.count, turnHandBefore + 1)
+    }
+
+    func testHotSeatTimeoutNeverPassesCurrentPlayersFirstRefusal() {
+        let state = GameFactory.newGame(
+            playerNames: ["Buyer", "Turn Player"],
+            seed: 18
+        )
+        let viewModel = GameViewModel(state: state)
+
+        XCTAssertFalse(
+            viewModel.passTimedOutLocalBuyOffer(
+                expectedPlayerId: state.currentPlayerId
+            )
+        )
+        XCTAssertEqual(viewModel.state, state)
     }
 }

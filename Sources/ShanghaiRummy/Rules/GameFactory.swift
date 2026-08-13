@@ -178,7 +178,8 @@ public enum GameFactory {
 
         // A modest stock + discard, top of discard is a K♥ that just got tossed.
         var stock = Array(repeating: c(.clubs, .four), count: 42)
-        stock.append(c(.spades, .ace)) // top of stock (last element)
+        stock.append(c(.spades, .ace))
+        players[0].hand.append(stock.removeLast())
         let discard: [Card] = [
             c(.diamonds, .three), c(.spades, .eight), c(.hearts, .king),
         ]
@@ -186,12 +187,12 @@ public enum GameFactory {
         return GameState(
             players: players,
             currentRound: 4,
-            currentTurnIndex: 0, // Your turn — you draw next
+            currentTurnIndex: 0, // Your turn, after drawing the top stock card
             dealerIndex: 3,
             stock: stock,
             discard: discard,
             melds: melds,
-            phase: .awaitingDraw,
+            phase: .awaitingMeldOrDiscard,
             stockReshufflesUsed: 0,
             randomSeed: 42
         )

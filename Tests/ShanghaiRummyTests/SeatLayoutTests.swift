@@ -38,6 +38,35 @@ final class SeatLayoutTests: XCTestCase {
         XCTAssertEqual(edges, [.bottom, .left, .topLeft, .top, .topRight, .right])
     }
 
+    func testSixPlayerTopSeatsLeaveMeldWingsBesideCenterSeat() {
+        let targetSize = CGSize(width: 852, height: 393)
+        let seats = SeatLayout.seats(
+            playerCount: 6,
+            youIndex: 0,
+            sceneSize: targetSize
+        )
+        let topLeft = seats.first { $0.edge == .topLeft }!
+        let top = seats.first { $0.edge == .top }!
+        let topRight = seats.first { $0.edge == .topRight }!
+        let seatHalfWidth: CGFloat = 138 / 2
+
+        XCTAssertEqual(
+            topLeft.anchor.x,
+            targetSize.width * SeatLayout.topCornerXFraction,
+            accuracy: 0.001
+        )
+        XCTAssertGreaterThanOrEqual(
+            top.anchor.x - seatHalfWidth
+                - (topLeft.anchor.x + seatHalfWidth),
+            172
+        )
+        XCTAssertGreaterThanOrEqual(
+            topRight.anchor.x - seatHalfWidth
+                - (top.anchor.x + seatHalfWidth),
+            172
+        )
+    }
+
     func testPileCenterIsAboveMidline() {
         let center = SeatLayout.pileCenter(sceneSize: sceneSize)
         XCTAssertEqual(center.x, sceneSize.width / 2)

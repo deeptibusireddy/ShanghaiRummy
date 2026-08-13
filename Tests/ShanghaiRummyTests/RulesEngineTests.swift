@@ -53,8 +53,30 @@ final class MeldValidatorTripletTests: XCTestCase {
         XCTAssertNoThrow(try MeldValidator.validateTriplet(cards).get())
     }
 
-    func testTripletAllowsRepeatedSuitFromMultipleDecks() {
+    func testTripletRejectsRepeatedSuitFromMultipleDecks() {
         let cards = [c(.spades, .four), c(.spades, .four), c(.diamonds, .four)]
+        if case .failure(let e) = MeldValidator.validateTriplet(cards) {
+            XCTAssertEqual(e, .tripletDuplicateSuits)
+        } else { XCTFail("expected tripletDuplicateSuits") }
+        if case .failure(let e) = MeldValidator.validate(cards) {
+            XCTAssertEqual(e, .tripletDuplicateSuits)
+        } else { XCTFail("generic validation should preserve tripletDuplicateSuits") }
+    }
+
+    func testTripletWithJokerStillRequiresDistinctNaturalSuits() {
+        let cards = [c(.hearts, .four), c(.hearts, .four), j()]
+        if case .failure(let e) = MeldValidator.validateTriplet(cards) {
+            XCTAssertEqual(e, .tripletDuplicateSuits)
+        } else { XCTFail("expected tripletDuplicateSuits") }
+    }
+
+    func testTripletCanExtendThroughFourthDistinctSuit() {
+        let cards = [
+            c(.spades, .four),
+            c(.hearts, .four),
+            c(.diamonds, .four),
+            c(.clubs, .four),
+        ]
         XCTAssertNoThrow(try MeldValidator.validateTriplet(cards).get())
     }
 }
@@ -275,6 +297,18 @@ final class TurnEngineTests: XCTestCase {
         GameFactory.newGame(playerNames: ["Alice", "Bob", "Carol"], seed: 42)
     }
 
+    private func passPurchaseRound(in state: GameState) -> GameState {
+        var next = state
+        while next.phase == .awaitingDraw {
+            let decisionPlayerId = next.buyDecisionPlayerId!
+            next = try! TurnEngine.apply(
+                .passBuyOffer(playerId: decisionPlayerId),
+                to: next
+            ).get()
+        }
+        return next
+    }
+
     func testInitialGameShape() {
         let g = makeGame()
         XCTAssertEqual(g.players.count, 3)
@@ -288,18 +322,44 @@ final class TurnEngineTests: XCTestCase {
         XCTAssertEqual(g.discard.count, 1)
     }
 
-    func testDrawFromStock() {
-        var g = makeGame()
+    func testEveryonePassingDrawsStockForTurnPlayer() {
+        let original = makeGame()
+        let turnPlayerId = original.currentPlayerId
+        let before = original.players[original.currentTurnIndex].hand.count
+        let stockBefore = original.stock.count
+
+        let g = passPurchaseRound(in: original)
+
+        let turnPlayer = g.players.first(where: { $0.id == turnPlayerId })!
+        XCTAssertEqual(turnPlayer.hand.count, before + 1)
+        XCTAssertEqual(g.stock.count, stockBefore - 1)
+        XCTAssertEqual(g.phase, .awaitingMeldOrDiscard)
+        XCTAssertNil(g.buyDecisionPlayerId)
+    }
+
+    func testCurrentPlayerStartsWithFirstRefusal() {
+        let g = makeGame()
+
+        XCTAssertEqual(g.phase, .awaitingDraw)
+        XCTAssertEqual(g.buyDecisionPlayerId, g.currentPlayerId)
+        XCTAssertEqual(g.activePlayerId, g.currentPlayerId)
+    }
+
+    func testLegacyStockDrawPassesCurrentPlayersOffer() {
+        let g = makeGame()
         let before = g.players[g.currentTurnIndex].hand.count
-        let stockBefore = g.stock.count
         let result = TurnEngine.apply(
             .draw(playerId: g.currentPlayerId, source: .stock),
             to: g
         )
-        g = try! result.get()
-        XCTAssertEqual(g.players[g.currentTurnIndex].hand.count, before + 1)
-        XCTAssertEqual(g.stock.count, stockBefore - 1)
-        XCTAssertEqual(g.phase, .awaitingMeldOrDiscard)
+        let next = try! result.get()
+
+        XCTAssertEqual(next.players[next.currentTurnIndex].hand.count, before)
+        XCTAssertEqual(
+            next.buyDecisionPlayerId,
+            next.players[(next.currentTurnIndex + 1) % next.players.count].id
+        )
+        XCTAssertEqual(next.phase, .awaitingDraw)
     }
 
     func testDrawByWrongPlayerFails() {
@@ -314,7 +374,7 @@ final class TurnEngineTests: XCTestCase {
     func testDiscardAdvancesTurn() {
         var g = makeGame()
         let pid = g.currentPlayerId
-        g = try! TurnEngine.apply(.draw(playerId: pid, source: .stock), to: g).get()
+        g = passPurchaseRound(in: g)
         let toDiscard = g.players[g.currentTurnIndex].hand.first!
         let before = g.currentTurnIndex
         g = try! TurnEngine.apply(.discard(playerId: pid, card: toDiscard), to: g).get()
@@ -326,10 +386,7 @@ final class TurnEngineTests: XCTestCase {
     func testDiscardRejectsCardPayloadThatDoesNotMatchAuthoritativeHand() {
         var g = makeGame()
         let playerId = g.currentPlayerId
-        g = try! TurnEngine.apply(
-            .draw(playerId: playerId, source: .stock),
-            to: g
-        ).get()
+        g = passPurchaseRound(in: g)
         var forged = g.players[g.currentTurnIndex].hand[0]
         forged.isDead2.toggle()
 
@@ -344,132 +401,245 @@ final class TurnEngineTests: XCTestCase {
         XCTAssertEqual(error, .cardNotInHand)
     }
 
-    func testBuyByTurnPlayerFails() {
-        let g = makeGame()
-        let result = TurnEngine.apply(
-            .requestBuy(playerId: g.currentPlayerId),
-            to: g
-        )
-        if case .failure(let e) = result {
-            XCTAssertEqual(e, .buyNotAllowedByTurnPlayer)
-        } else { XCTFail("expected buyNotAllowedByTurnPlayer") }
-    }
-
-    func testBuyRequestResolvesWhenTurnPlayerDrawsStock() {
+    func testCurrentPlayerAcceptsDiscard() {
         var g = makeGame()
-        let buyerIdx = (g.currentTurnIndex + 1) % g.players.count
-        let buyerId = g.players[buyerIdx].id
         let turnPlayerId = g.currentPlayerId
-        let handBefore = g.players[buyerIdx].hand.count
         let turnHandBefore = g.players[g.currentTurnIndex].hand.count
         let discardBefore = g.discard.count
         let stockBefore = g.stock.count
-
-        g = try! TurnEngine.apply(.requestBuy(playerId: buyerId), to: g).get()
-        XCTAssertEqual(g.buyRequestPlayerIds, [buyerId])
-        XCTAssertEqual(g.players[buyerIdx].hand.count, handBefore)
-
-        g = try! TurnEngine.apply(
-            .draw(playerId: turnPlayerId, source: .stock),
-            to: g
-        ).get()
-        XCTAssertEqual(g.players[buyerIdx].hand.count, handBefore + 1 + RulesConfig.penaltyCardsOnBuy)
-        XCTAssertEqual(g.players[g.currentTurnIndex].hand.count, turnHandBefore + 1)
-        XCTAssertEqual(g.discard.count, discardBefore - 1)
-        XCTAssertEqual(g.stock.count, stockBefore - RulesConfig.penaltyCardsOnBuy - 1)
-        XCTAssertEqual(g.players[buyerIdx].buysUsedThisRound, 1)
-        XCTAssertTrue(g.buyRequestPlayerIds.isEmpty)
-    }
-
-    func testTurnPlayerTakingDiscardExercisesFirstRefusal() {
-        var g = makeGame()
-        let buyerIndex = (g.currentTurnIndex + 1) % g.players.count
-        let buyerId = g.players[buyerIndex].id
-        let buyerHandBefore = g.players[buyerIndex].hand.count
         let discardId = g.discard.last!.id
 
-        g = try! TurnEngine.apply(.requestBuy(playerId: buyerId), to: g).get()
         g = try! TurnEngine.apply(
-            .draw(playerId: g.currentPlayerId, source: .discard),
+            .acceptBuyOffer(playerId: turnPlayerId),
             to: g
         ).get()
 
-        XCTAssertEqual(g.players[buyerIndex].hand.count, buyerHandBefore)
+        XCTAssertEqual(g.players[g.currentTurnIndex].hand.count, turnHandBefore + 1)
         XCTAssertEqual(g.players[g.currentTurnIndex].hand.last?.id, discardId)
-        XCTAssertEqual(g.players[buyerIndex].buysUsedThisRound, 0)
-        XCTAssertTrue(g.buyRequestPlayerIds.isEmpty)
+        XCTAssertEqual(g.discard.count, discardBefore - 1)
+        XCTAssertEqual(g.stock.count, stockBefore)
+        XCTAssertEqual(g.phase, .awaitingMeldOrDiscard)
+        XCTAssertNil(g.buyDecisionPlayerId)
+        XCTAssertEqual(
+            g.highlightedCardIds(for: turnPlayerId),
+            Set([discardId])
+        )
     }
 
-    func testMultipleBuyRequestsResolveByClockwisePriorityNotArrival() {
+    func testCurrentPlayerPassOffersNearestEligiblePlayerClockwise() {
+        var g = makeGame()
+        let nearestIndex = (g.currentTurnIndex + 1) % g.players.count
+        let nearestId = g.players[nearestIndex].id
+
+        g = try! TurnEngine.apply(
+            .passBuyOffer(playerId: g.currentPlayerId),
+            to: g
+        ).get()
+
+        XCTAssertEqual(g.buyDecisionPlayerId, nearestId)
+        XCTAssertEqual(g.activePlayerId, nearestId)
+        XCTAssertEqual(g.phase, .awaitingDraw)
+    }
+
+    func testPassingAdvancesOneEligibleSeatAtATime() {
         var g = makeGame()
         let nearestIndex = (g.currentTurnIndex + 1) % g.players.count
         let fartherIndex = (g.currentTurnIndex + 2) % g.players.count
         let nearestId = g.players[nearestIndex].id
         let fartherId = g.players[fartherIndex].id
-        let nearestHandBefore = g.players[nearestIndex].hand.count
-        let fartherHandBefore = g.players[fartherIndex].hand.count
-
-        g = try! TurnEngine.apply(.requestBuy(playerId: fartherId), to: g).get()
-        g = try! TurnEngine.apply(.requestBuy(playerId: nearestId), to: g).get()
-        XCTAssertEqual(g.prioritizedBuyRequesterId, nearestId)
 
         g = try! TurnEngine.apply(
-            .draw(playerId: g.currentPlayerId, source: .stock),
+            .passBuyOffer(playerId: g.currentPlayerId),
+            to: g
+        ).get()
+        XCTAssertEqual(g.buyDecisionPlayerId, nearestId)
+
+        g = try! TurnEngine.apply(
+            .passBuyOffer(playerId: nearestId),
+            to: g
+        ).get()
+        XCTAssertEqual(g.buyDecisionPlayerId, fartherId)
+    }
+
+    func testBuyerAcceptanceDealsDiscardAndStockInOrder() {
+        var g = makeGame()
+        let turnIndex = g.currentTurnIndex
+        let buyerIndex = (turnIndex + 1) % g.players.count
+        let buyerId = g.players[buyerIndex].id
+        let discardId = g.discard.last!.id
+        let buyerPenaltyId = g.stock.last!.id
+        let turnDrawId = g.stock[g.stock.count - 2].id
+        let buyerHandBefore = g.players[buyerIndex].hand.count
+        let turnHandBefore = g.players[turnIndex].hand.count
+        let stockBefore = g.stock.count
+
+        g = try! TurnEngine.apply(
+            .passBuyOffer(playerId: g.currentPlayerId),
+            to: g
+        ).get()
+        g = try! TurnEngine.apply(
+            .acceptBuyOffer(playerId: buyerId),
             to: g
         ).get()
 
         XCTAssertEqual(
-            g.players[nearestIndex].hand.count,
-            nearestHandBefore + 1 + RulesConfig.penaltyCardsOnBuy
+            g.players[buyerIndex].hand.suffix(2).map(\.id),
+            [discardId, buyerPenaltyId]
         )
-        XCTAssertEqual(g.players[fartherIndex].hand.count, fartherHandBefore)
+        XCTAssertEqual(g.players[buyerIndex].hand.count, buyerHandBefore + 2)
+        XCTAssertEqual(g.players[buyerIndex].buysUsedThisRound, 1)
+        XCTAssertEqual(g.players[turnIndex].hand.count, turnHandBefore + 1)
+        XCTAssertEqual(g.players[turnIndex].hand.last?.id, turnDrawId)
+        XCTAssertEqual(g.stock.count, stockBefore - 2)
+        XCTAssertEqual(g.phase, .awaitingMeldOrDiscard)
+        XCTAssertNil(g.buyDecisionPlayerId)
+        XCTAssertEqual(
+            g.highlightedCardIds(for: buyerId),
+            Set([discardId, buyerPenaltyId])
+        )
+        XCTAssertEqual(
+            g.highlightedCardIds(for: g.players[turnIndex].id),
+            Set([turnDrawId])
+        )
     }
 
-    func testBuyRequestCanBeCancelledBeforeDraw() {
+    func testPurchasedHighlightsAreReplacedByBuyersNextTurnDraw() {
         var g = makeGame()
-        let buyerId = g.players[(g.currentTurnIndex + 1) % g.players.count].id
+        let turnIndex = g.currentTurnIndex
+        let buyerIndex = (turnIndex + 1) % g.players.count
+        let buyerId = g.players[buyerIndex].id
+        let purchasedIds = Set([g.discard.last!.id, g.stock.last!.id])
 
-        g = try! TurnEngine.apply(.requestBuy(playerId: buyerId), to: g).get()
         g = try! TurnEngine.apply(
-            .cancelBuyRequest(playerId: buyerId),
+            .passBuyOffer(playerId: g.currentPlayerId),
+            to: g
+        ).get()
+        g = try! TurnEngine.apply(
+            .acceptBuyOffer(playerId: buyerId),
+            to: g
+        ).get()
+        XCTAssertEqual(g.highlightedCardIds(for: buyerId), purchasedIds)
+
+        let turnDiscard = g.players[turnIndex].hand[0]
+        g = try! TurnEngine.apply(
+            .discard(playerId: g.players[turnIndex].id, card: turnDiscard),
+            to: g
+        ).get()
+        let nextDrawId = g.discard.last!.id
+        g = try! TurnEngine.apply(
+            .acceptBuyOffer(playerId: buyerId),
             to: g
         ).get()
 
-        XCTAssertTrue(g.buyRequestPlayerIds.isEmpty)
+        XCTAssertEqual(
+            g.highlightedCardIds(for: buyerId),
+            Set([nextDrawId])
+        )
     }
 
-    func testDuplicateBuyRequestIsRejected() {
+    func testOnlyDecisionOwnerCanRespond() {
         var g = makeGame()
         let buyerId = g.players[(g.currentTurnIndex + 1) % g.players.count].id
-        g = try! TurnEngine.apply(.requestBuy(playerId: buyerId), to: g).get()
-
-        let result = TurnEngine.apply(.requestBuy(playerId: buyerId), to: g)
-
-        guard case .failure(let error) = result else {
-            return XCTFail("Expected a duplicate buy request to fail")
-        }
-        XCTAssertEqual(error, .buyAlreadyRequested)
-    }
-
-    func testPlayerWithThreeBuysCannotRequestAnother() {
-        var g = makeGame()
-        let buyerIndex = (g.currentTurnIndex + 1) % g.players.count
-        g.players[buyerIndex].buysUsedThisRound = RulesConfig.maxBuysPerRound
 
         let result = TurnEngine.apply(
-            .requestBuy(playerId: g.players[buyerIndex].id),
+            .acceptBuyOffer(playerId: buyerId),
             to: g
         )
 
         guard case .failure(let error) = result else {
-            return XCTFail("Expected an exhausted buyer to be rejected")
+            return XCTFail("Expected a non-decision owner to fail")
+        }
+        XCTAssertEqual(error, .buyDecisionNotOffered)
+    }
+
+    func testGoneDownAndExhaustedPlayersAreSkipped() {
+        var g = makeGame()
+        let goneDownIndex = (g.currentTurnIndex + 1) % g.players.count
+        let exhaustedIndex = (g.currentTurnIndex + 2) % g.players.count
+        g.players[goneDownIndex].hasGoneDownThisRound = true
+        g.players[exhaustedIndex].buysUsedThisRound = RulesConfig.maxBuysPerRound
+        let turnHandBefore = g.players[g.currentTurnIndex].hand.count
+        let stockBefore = g.stock.count
+
+        g = try! TurnEngine.apply(
+            .passBuyOffer(playerId: g.currentPlayerId),
+            to: g
+        ).get()
+
+        XCTAssertEqual(g.players[g.currentTurnIndex].hand.count, turnHandBefore + 1)
+        XCTAssertEqual(g.stock.count, stockBefore - 1)
+        XCTAssertEqual(g.phase, .awaitingMeldOrDiscard)
+        XCTAssertNil(g.buyDecisionPlayerId)
+    }
+
+    func testGoneDownNearestPlayerIsSkippedForFartherBuyer() {
+        var g = makeGame()
+        let nearestIndex = (g.currentTurnIndex + 1) % g.players.count
+        let fartherIndex = (g.currentTurnIndex + 2) % g.players.count
+        g.players[nearestIndex].hasGoneDownThisRound = true
+
+        g = try! TurnEngine.apply(
+            .passBuyOffer(playerId: g.currentPlayerId),
+            to: g
+        ).get()
+
+        XCTAssertEqual(g.buyDecisionPlayerId, g.players[fartherIndex].id)
+    }
+
+    func testGoneDownPlayerCannotAcceptAnOffer() {
+        var g = makeGame()
+        let buyerIndex = (g.currentTurnIndex + 1) % g.players.count
+        let buyerId = g.players[buyerIndex].id
+        g.players[buyerIndex].hasGoneDownThisRound = true
+        g.buyDecisionPlayerId = buyerId
+
+        let result = TurnEngine.apply(
+            .acceptBuyOffer(playerId: buyerId),
+            to: g
+        )
+
+        guard case .failure(let error) = result else {
+            return XCTFail("Expected a gone-down buyer to fail")
+        }
+        XCTAssertEqual(error, .buyNotAllowedAfterGoingDown)
+    }
+
+    func testExhaustedPlayerCannotAcceptAnOffer() {
+        var g = makeGame()
+        let buyerIndex = (g.currentTurnIndex + 1) % g.players.count
+        let buyerId = g.players[buyerIndex].id
+        g.players[buyerIndex].buysUsedThisRound = RulesConfig.maxBuysPerRound
+        g.buyDecisionPlayerId = buyerId
+
+        let result = TurnEngine.apply(
+            .acceptBuyOffer(playerId: buyerId),
+            to: g
+        )
+
+        guard case .failure(let error) = result else {
+            return XCTFail("Expected an exhausted buyer to fail")
         }
         XCTAssertEqual(error, .buysExhausted)
     }
 
+    func testBuyersAreSkippedWhenOnlyOneStockCardRemains() {
+        var g = makeGame()
+        let turnHandBefore = g.players[g.currentTurnIndex].hand.count
+        g.stock = [c(.clubs, .ace)]
+
+        g = try! TurnEngine.apply(
+            .passBuyOffer(playerId: g.currentPlayerId),
+            to: g
+        ).get()
+
+        XCTAssertEqual(g.players[g.currentTurnIndex].hand.count, turnHandBefore + 1)
+        XCTAssertTrue(g.stock.isEmpty)
+        XCTAssertEqual(g.phase, .awaitingMeldOrDiscard)
+    }
+
     func testGoingDownRound1Succeeds() {
         // Manufacture a state where player has a valid contract for round 1
-        // (two triplets of 3). Bind cards to variables so the contract
+        // (two triplets). Bind cards to variables so the contract
         // references the SAME Card instances (same UUIDs) as the hand.
         let s7 = c(.spades, .seven); let h7 = c(.hearts, .seven); let d7 = c(.diamonds, .seven)
         let sK = c(.spades, .king);  let hK = c(.hearts, .king);  let dK = c(.diamonds, .king)
@@ -500,6 +670,48 @@ final class TurnEngineTests: XCTestCase {
         XCTAssertTrue(newState.players[0].hasGoneDownThisRound)
         XCTAssertEqual(newState.melds.count, 2)
         XCTAssertEqual(newState.players[0].hand.count, 11 - 6)
+    }
+
+    func testGoingDownRejectsTripletWithRepeatedNaturalSuit() {
+        let h7a = c(.hearts, .seven)
+        let h7b = c(.hearts, .seven)
+        let d7 = c(.diamonds, .seven)
+        let sK = c(.spades, .king)
+        let hK = c(.hearts, .king)
+        let dK = c(.diamonds, .king)
+        let p1 = Player(
+            name: "A",
+            hand: [h7a, h7b, d7, sK, hK, dK]
+        )
+        let p2 = Player(name: "B", hand: [])
+        let state = GameState(
+            players: [p1, p2],
+            currentRound: 1,
+            currentTurnIndex: 0,
+            dealerIndex: 1,
+            stock: [c(.clubs, .nine)],
+            discard: [c(.clubs, .ten)],
+            melds: [],
+            phase: .awaitingMeldOrDiscard,
+            stockReshufflesUsed: 0,
+            randomSeed: 0
+        )
+
+        let result = TurnEngine.apply(
+            .goDown(
+                playerId: p1.id,
+                contract: [[h7a, h7b, d7], [sK, hK, dK]]
+            ),
+            to: state
+        )
+
+        guard case .failure(let error) = result else {
+            return XCTFail("Expected repeated triplet suit to fail")
+        }
+        XCTAssertEqual(
+            error,
+            .invalidMeldValidation(.tripletDuplicateSuits)
+        )
     }
 
     func testGoingDownWithWrongShapeFails() {
@@ -597,9 +809,12 @@ final class Dead2Tests: XCTestCase {
             discard: [dead2], melds: [],
             phase: .awaitingDraw, stockReshufflesUsed: 0, randomSeed: 0
         )
-        g = try! TurnEngine.apply(.requestBuy(playerId: p2.id), to: g).get()
         g = try! TurnEngine.apply(
-            .draw(playerId: p1.id, source: .stock),
+            .passBuyOffer(playerId: p1.id),
+            to: g
+        ).get()
+        g = try! TurnEngine.apply(
+            .acceptBuyOffer(playerId: p2.id),
             to: g
         ).get()
         // Buyer received the dead 2 plus penalty; the dead 2 should still be dead.
@@ -934,6 +1149,7 @@ final class IndependentContractTests: XCTestCase {
         XCTAssertEqual(next.phase, .awaitingDraw, "new hand starts with draw")
         XCTAssertEqual(next.dealerIndex, 0, "dealer rotates from 1 → 0 (2-player)")
         XCTAssertEqual(next.currentTurnIndex, 1, "player after new dealer acts first")
+        XCTAssertEqual(next.buyDecisionPlayerId, next.currentPlayerId)
         XCTAssertEqual(next.melds.count, 0, "table clears")
         XCTAssertEqual(next.players[0].hand.count, 11, "fresh 11-card deal")
         XCTAssertEqual(next.players[1].hand.count, 11)

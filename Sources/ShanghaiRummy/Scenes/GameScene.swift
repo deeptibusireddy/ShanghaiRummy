@@ -16,6 +16,11 @@ import UIKit
 /// emblem) are built once in didMove(to:) and didChangeSize(_:).
 final class GameScene: SKScene {
 
+    enum CardDropTarget: Equatable {
+        case discard
+        case meld(UUID)
+    }
+
     private let vm: GameViewModel
     private let theme: VisualTheme
     private var cancellables: Set<AnyCancellable> = []
@@ -37,6 +42,7 @@ final class GameScene: SKScene {
     private var dragOrigin: CGPoint = .zero
     private var dragOriginRotation: CGFloat = 0
     private var dragOriginZ: CGFloat = 0
+    private var dragOriginScale: CGFloat = 1
     private var draggingCardId: UUID?
     private var discardTargetRing: SKShapeNode?
     private var stagingBacking: SKShapeNode?
@@ -163,15 +169,17 @@ final class GameScene: SKScene {
         let panel = SKShapeNode(rectOf: CGSize(width: width, height: height),
                                 cornerRadius: 24)
         panel.fillColor = theme.contractPillBg.withAlphaComponent(0.92)
-        panel.strokeColor = theme.feltStroke
-        panel.lineWidth = 1
+        panel.strokeColor = theme.turnGlow.withAlphaComponent(0.9)
+        panel.lineWidth = 2.5
+        panel.glowWidth = 2
         panel.position = center
         panel.zPosition = 30
         headerLayer.addChild(panel)
 
-        let activeDot = SKShapeNode(circleOfRadius: 4)
+        let activeDot = SKShapeNode(circleOfRadius: 6)
         activeDot.fillColor = theme.turnGlow
         activeDot.strokeColor = .clear
+        activeDot.glowWidth = 4
         activeDot.position = CGPoint(x: center.x - width / 2 + 18,
                                      y: center.y + 9)
         activeDot.zPosition = 31
@@ -182,10 +190,12 @@ final class GameScene: SKScene {
         ])
         activeDot.run(.repeatForever(pulse))
 
-        let turn = SKLabelNode(text: "\(vm.currentPlayerName)'s turn")
+        let turn = SKLabelNode(
+            text: "\(vm.currentPlayerName)'s turn".uppercased()
+        )
         turn.fontName = theme.titleFont
-        turn.fontSize = 15
-        turn.fontColor = theme.bannerText
+        turn.fontSize = size.width < 720 ? 14 : 17
+        turn.fontColor = theme.turnGlow
         turn.horizontalAlignmentMode = .left
         turn.verticalAlignmentMode = .center
         turn.position = CGPoint(x: activeDot.position.x + 10,
@@ -218,23 +228,20 @@ final class GameScene: SKScene {
     }
 
     private var phaseInstruction: String {
-        if vm.isOnlineGame && !vm.isLocalPlayersTurn {
-            if vm.state.phase == .awaitingDraw {
-                if vm.hasRequestedBuy {
-                    return "Buy requested — waiting for \(vm.currentPlayerName)"
-                }
-                if vm.canRequestBuy {
-                    return "Request the discard or wait for \(vm.currentPlayerName)"
-                }
+        if vm.isBuyDecisionActive {
+            if vm.isLocalBuyDecision {
+                return vm.isTurnPlayersFirstRefusal
+                    ? "Choose the discard or pass it clockwise"
+                    : "Buy the discard or pass"
             }
+            return "Purchase round — waiting for \(vm.buyDecisionPlayerName ?? "another player")"
+        }
+        if vm.isOnlineGame && !vm.isLocalPlayersTurn {
             return "\(vm.currentPlayerName) is playing"
         }
         switch vm.state.phase {
         case .awaitingDraw:
-            if let requester = vm.prioritizedBuyRequesterName {
-                return "\(requester) wants to buy — discard has first refusal"
-            }
-            return "Choose the stock or discard pile"
+            return "Purchase round"
         case .awaitingMeldOrDiscard:
             if vm.currentPlayer.hasGoneDownThisRound {
                 if vm.currentPlayer.laidDownThisTurn {
@@ -253,11 +260,11 @@ final class GameScene: SKScene {
     private func buildPiles() {
         pilesLayer.removeAllChildren()
         let center = SeatLayout.pileCenter(sceneSize: size)
-        let gap: CGFloat = 34
-        let pileScale: CGFloat = 0.90
+        let gap = Self.pileGap
+        let pileScale = Self.pileScale
         let pileWidth = CardNode.size.width * pileScale
         let pileHeight = CardNode.size.height * pileScale
-        let zoneSize = CGSize(width: pileWidth + 24, height: pileHeight + 34)
+        let zoneSize = Self.pileZoneSize
 
         if let top = vm.state.stock.last {
             let stockPos = CGPoint(x: center.x - pileWidth / 2 - gap / 2,
@@ -357,27 +364,38 @@ final class GameScene: SKScene {
                 continue
             }
 
-            let bgWidth: CGFloat = 138
+            let bgWidth = opponentSeatWidth
             let bgHeight: CGFloat = 42
             let bg = SKShapeNode(rectOf: CGSize(width: bgWidth, height: bgHeight),
                                  cornerRadius: 21)
             let isActive = i == vm.state.currentTurnIndex
+            if isActive {
+                addActiveTurnHalo(
+                    at: seat.anchor,
+                    size: CGSize(width: bgWidth, height: bgHeight),
+                    to: seatsLayer
+                )
+            }
             bg.fillColor = isActive ? theme.seatBgCurrent : theme.seatBgOther
             bg.strokeColor = isActive
                 ? theme.turnGlow.withAlphaComponent(0.9)
                 : theme.feltStroke.withAlphaComponent(0.7)
-            bg.lineWidth = isActive ? 2 : 1
+            bg.lineWidth = isActive ? 3 : 1
             bg.position = seat.anchor
             bg.zPosition = 2
             seatsLayer.addChild(bg)
 
             let avatarColor = theme.avatarColors[i % theme.avatarColors.count]
-            let avatarRadius: CGFloat = 14
-            let avatarX = seat.anchor.x - bgWidth / 2 + avatarRadius + 7
+            let usesCompactSeat = bgWidth < 100
+            let avatarRadius: CGFloat = usesCompactSeat ? 11 : 14
+            let avatarInset: CGFloat = usesCompactSeat ? 5 : 7
+            let avatarX = seat.anchor.x - bgWidth / 2 + avatarRadius + avatarInset
             let avatar = SKShapeNode(circleOfRadius: avatarRadius)
             avatar.fillColor = avatarColor
-            avatar.strokeColor = UIColor.white.withAlphaComponent(0.75)
-            avatar.lineWidth = 1
+            avatar.strokeColor = isActive
+                ? theme.turnGlow
+                : UIColor.white.withAlphaComponent(0.75)
+            avatar.lineWidth = isActive ? 2.5 : 1
             avatar.position = CGPoint(x: avatarX, y: seat.anchor.y)
             avatar.zPosition = 3
             seatsLayer.addChild(avatar)
@@ -391,11 +409,14 @@ final class GameScene: SKScene {
             initial.zPosition = 4
             seatsLayer.addChild(initial)
 
-            let nameX = avatarX + avatarRadius + 7
-            let title = SKLabelNode(text: player.name)
+            let nameX = avatarX + avatarRadius + (usesCompactSeat ? 5 : 7)
+            let displayedName = usesCompactSeat
+                ? String(player.name.prefix(4))
+                : player.name
+            let title = SKLabelNode(text: displayedName)
             title.fontName = theme.titleFont
-            title.fontSize = 12
-            title.fontColor = theme.seatTitle
+            title.fontSize = usesCompactSeat ? 10 : 12
+            title.fontColor = isActive ? theme.turnGlow : theme.seatTitle
             title.horizontalAlignmentMode = .left
             title.verticalAlignmentMode = .center
             title.position = CGPoint(x: nameX, y: seat.anchor.y + 7)
@@ -403,17 +424,52 @@ final class GameScene: SKScene {
             seatsLayer.addChild(title)
 
             let detail = SKLabelNode(
-                text: "\(player.hand.count) cards  •  Lv \(player.currentLevel)"
+                text: isActive
+                    ? (usesCompactSeat ? "PLAYING" : "PLAYING NOW")
+                    : (usesCompactSeat
+                        ? "\(player.hand.count) • L\(player.currentLevel)"
+                        : "\(player.hand.count) cards  •  Lv \(player.currentLevel)")
             )
             detail.fontName = theme.bodyFont
-            detail.fontSize = 9
-            detail.fontColor = theme.seatSub
+            detail.fontSize = usesCompactSeat ? 8 : 9
+            detail.fontColor = isActive ? theme.turnGlow : theme.seatSub
             detail.horizontalAlignmentMode = .left
             detail.verticalAlignmentMode = .center
             detail.position = CGPoint(x: nameX, y: seat.anchor.y - 8)
             detail.zPosition = 3
             seatsLayer.addChild(detail)
         }
+    }
+
+    private func addActiveTurnHalo(
+        at position: CGPoint,
+        size: CGSize,
+        to layer: SKNode
+    ) {
+        let haloSize = CGSize(width: size.width + 10, height: size.height + 10)
+        let halo = SKShapeNode(
+            rectOf: haloSize,
+            cornerRadius: haloSize.height / 2
+        )
+        halo.fillColor = .clear
+        halo.strokeColor = theme.turnGlow
+        halo.lineWidth = 3
+        halo.glowWidth = 6
+        halo.alpha = 0.95
+        halo.position = position
+        halo.zPosition = 1
+        halo.name = "active-turn-halo"
+        layer.addChild(halo)
+
+        let pulseOut = SKAction.group([
+            .scale(to: 1.035, duration: 0.65),
+            .fadeAlpha(to: 0.55, duration: 0.65),
+        ])
+        let pulseIn = SKAction.group([
+            .scale(to: 1.0, duration: 0.65),
+            .fadeAlpha(to: 0.95, duration: 0.65),
+        ])
+        halo.run(.repeatForever(.sequence([pulseOut, pulseIn])))
     }
 
     private func buildMelds() {
@@ -442,11 +498,19 @@ final class GameScene: SKScene {
     }
 
     private func drawOwnMeldsAboveHand(_ melds: [Meld]) {
-        let scale: CGFloat = 0.42
+        let meldGap: CGFloat = 14
+        let scale = ownMeldScale(for: melds, meldGap: meldGap)
         let cardW = CardNode.size.width * scale
         let cardH = CardNode.size.height * scale
-        let overlap: CGFloat = cardW * 0.42
-        let meldGap: CGFloat = 14
+        let cardStepFraction = Self.fittedMeldStepFraction(
+            cardCounts: melds.map(\.cards.count),
+            scale: scale,
+            desiredStepFraction: Self.meldCardStepFraction,
+            meldGap: meldGap,
+            availableWidth: stagingTrayRect.width,
+            targetPadding: 16
+        )
+        let overlap: CGFloat = cardW * cardStepFraction
 
         let widths = melds.map { CGFloat($0.cards.count - 1) * overlap + cardW }
         let totalWidth = widths.reduce(0, +) + CGFloat(melds.count - 1) * meldGap
@@ -462,8 +526,8 @@ final class GameScene: SKScene {
         for (meldIndex, meld) in melds.enumerated() {
             let width = widths[meldIndex]
             addMeldTarget(for: meld,
-                          rect: CGRect(x: x - 6, y: rowY - cardH / 2 - 5,
-                                       width: width + 12, height: cardH + 10))
+                          rect: CGRect(x: x - 8, y: rowY - cardH / 2 - 5,
+                                       width: width + 16, height: cardH + 10))
             for (idx, card) in meld.cards.enumerated() {
                 let node = CardNode(card: card, faceUp: true, theme: theme)
                 node.setScale(scale)
@@ -479,60 +543,475 @@ final class GameScene: SKScene {
         }
     }
 
+    private enum MeldRowAlignment {
+        case leading
+        case center
+        case trailing
+    }
+
     private func drawMelds(_ melds: [Meld], near seat: SeatLayout.Seat) {
-        let useCompactMelds = (size.width < 720
-            && (seat.edge == .left || seat.edge == .right))
-            || (seat.edge == .top && vm.state.players.count >= 5)
-        let scale: CGFloat = useCompactMelds ? 0.26 : 0.38
+        let seatHalfWidth = opponentSeatWidth / 2
+        let seatHalfHeight: CGFloat = 42 / 2
+        let seatPadding: CGFloat = 6
+        let edgeMargin: CGFloat = 24
+        let meldGap: CGFloat = melds.count > 2 ? 8 : 12
+        let desiredScale: CGFloat = 0.46
+        let minimumScale: CGFloat = 0.34
+        let pileCorridorHalfWidth = Self.protectedPileCorridorHalfWidth
+
+        switch seat.edge {
+        case .left, .right:
+            let bounds: ClosedRange<CGFloat>
+            let alignment: MeldRowAlignment
+            if seat.edge == .left {
+                bounds = (seat.anchor.x + seatHalfWidth + seatPadding)...(
+                    size.width / 2 - pileCorridorHalfWidth
+                )
+                alignment = .leading
+            } else {
+                bounds = (size.width / 2 + pileCorridorHalfWidth)...(
+                    seat.anchor.x - seatHalfWidth - seatPadding
+                )
+                alignment = .trailing
+            }
+            drawSideMeldRows(
+                melds,
+                bounds: bounds,
+                alignment: alignment,
+                seatY: seat.anchor.y,
+                desiredScale: desiredScale,
+                minimumScale: minimumScale,
+                meldGap: meldGap
+            )
+
+        case .top where vm.state.players.count < 5:
+            let bounds = edgeMargin...(
+                seat.anchor.x - seatHalfWidth - seatPadding
+            )
+            drawFittedMeldRow(
+                melds,
+                bounds: bounds,
+                rowY: seat.anchor.y,
+                alignment: .trailing,
+                desiredScale: desiredScale,
+                minimumScale: minimumScale,
+                meldGap: meldGap
+            )
+
+        case .top:
+            drawCenterTopMeldWings(
+                melds,
+                seatY: seat.anchor.y,
+                desiredScale: desiredScale,
+                minimumScale: minimumScale,
+                meldGap: meldGap
+            )
+
+        case .topLeft, .topRight:
+            let bounds: ClosedRange<CGFloat>
+            if seat.edge == .topLeft {
+                bounds = edgeMargin...(
+                    size.width / 2 - pileCorridorHalfWidth
+                )
+            } else {
+                bounds = (size.width / 2 + pileCorridorHalfWidth)...(
+                    size.width - edgeMargin
+                )
+            }
+            let rowScale = fittedScale(
+                for: melds,
+                desiredScale: minimumScale,
+                minimumScale: minimumScale,
+                meldGap: meldGap,
+                availableWidth: max(0, bounds.upperBound - bounds.lowerBound)
+            )
+            let rowY = seat.anchor.y - seatHalfHeight - seatPadding
+                - CardNode.size.height * rowScale / 2
+            drawFittedMeldRow(
+                melds,
+                bounds: bounds,
+                rowY: rowY,
+                alignment: .center,
+                desiredScale: minimumScale,
+                minimumScale: minimumScale,
+                meldGap: meldGap
+            )
+
+        case .bottom:
+            break
+        }
+    }
+
+    private func drawSideMeldRows(
+        _ melds: [Meld],
+        bounds: ClosedRange<CGFloat>,
+        alignment: MeldRowAlignment,
+        seatY: CGFloat,
+        desiredScale: CGFloat,
+        minimumScale: CGFloat,
+        meldGap: CGFloat
+    ) {
+        let availableWidth = max(0, bounds.upperBound - bounds.lowerBound)
+        if Self.meldRowWidth(
+            cardCounts: melds.map(\.cards.count),
+            scale: desiredScale,
+            cardStepFraction: Self.meldCardStepFraction,
+            meldGap: meldGap
+        ) <= availableWidth {
+            drawMeldRow(
+                melds,
+                bounds: bounds,
+                rowY: seatY,
+                alignment: alignment,
+                scale: desiredScale,
+                cardStepFraction: Self.meldCardStepFraction,
+                meldGap: meldGap
+            )
+            return
+        }
+        if Self.meldRowWidth(
+            cardCounts: melds.map(\.cards.count),
+            scale: minimumScale,
+            cardStepFraction: Self.minimumMeldStepFraction,
+            meldGap: meldGap
+        ) <= availableWidth {
+            drawFittedMeldRow(
+                melds,
+                bounds: bounds,
+                rowY: seatY,
+                alignment: alignment,
+                desiredScale: minimumScale,
+                minimumScale: minimumScale,
+                meldGap: meldGap
+            )
+            return
+        }
+
+        var rows = greedyMeldRows(
+            melds,
+            scale: minimumScale,
+            meldGap: meldGap,
+            availableWidth: availableWidth
+        )
+        if rows.count > 2 {
+            rows = balancedMeldGroups(melds, groupCount: 2)
+        }
+
+        let rowYs = sideMeldRowYs(
+            rowCount: rows.count,
+            seatY: seatY,
+            cardScale: minimumScale
+        )
+        for (index, row) in rows.enumerated() {
+            drawFittedMeldRow(
+                row,
+                bounds: bounds,
+                rowY: rowYs[index],
+                alignment: alignment,
+                desiredScale: minimumScale,
+                minimumScale: minimumScale,
+                meldGap: meldGap
+            )
+        }
+    }
+
+    private func sideMeldRowYs(
+        rowCount: Int,
+        seatY: CGFloat,
+        cardScale: CGFloat
+    ) -> [CGFloat] {
+        guard rowCount > 1 else { return [seatY] }
+
+        let cardHeight = CardNode.size.height * cardScale
+        let ownMeldTop = tableauLaneY + CardNode.size.height * 0.50 / 2
+        let minimumCenter = ownMeldTop + cardHeight / 2 + 2
+        var spacing = cardHeight + 10
+        var maximumCenter = CGFloat.greatestFiniteMagnitude
+        if vm.state.players.count >= 5 {
+            let topSeatY = size.height - 24 - 60
+            let topCornerMeldBottom = topSeatY - 21 - 6 - cardHeight
+            maximumCenter = topCornerMeldBottom - cardHeight / 2 - 2
+            spacing = min(spacing, max(0, maximumCenter - minimumCenter))
+        }
+
+        let preferredMidpoint = seatY + 2
+        let minimumMidpoint = minimumCenter + spacing / 2
+        let maximumMidpoint = maximumCenter - spacing / 2
+        let midpoint = min(
+            max(preferredMidpoint, minimumMidpoint),
+            maximumMidpoint
+        )
+        return [midpoint - spacing / 2, midpoint + spacing / 2]
+    }
+
+    private func drawCenterTopMeldWings(
+        _ melds: [Meld],
+        seatY: CGFloat,
+        desiredScale: CGFloat,
+        minimumScale: CGFloat,
+        meldGap: CGFloat
+    ) {
+        let seatHalfWidth = opponentSeatWidth / 2
+        let seatPadding: CGFloat = 6
+        let outerSeatX = size.width * SeatLayout.topCornerXFraction
+        let centerX = size.width / 2
+        let leftBounds = (outerSeatX + seatHalfWidth + seatPadding)...(
+            centerX - seatHalfWidth - seatPadding
+        )
+        let rightBounds = (centerX + seatHalfWidth + seatPadding)...(
+            size.width - outerSeatX - seatHalfWidth - seatPadding
+        )
+        let groups = balancedMeldGroups(melds, groupCount: 2)
+
+        if let left = groups.first, !left.isEmpty {
+            drawFittedMeldRow(
+                left,
+                bounds: leftBounds,
+                rowY: seatY,
+                alignment: .center,
+                desiredScale: desiredScale,
+                minimumScale: minimumScale,
+                meldGap: meldGap
+            )
+        }
+        if groups.count > 1, !groups[1].isEmpty {
+            drawFittedMeldRow(
+                groups[1],
+                bounds: rightBounds,
+                rowY: seatY,
+                alignment: .center,
+                desiredScale: desiredScale,
+                minimumScale: minimumScale,
+                meldGap: meldGap
+            )
+        }
+    }
+
+    private func drawFittedMeldRow(
+        _ melds: [Meld],
+        bounds: ClosedRange<CGFloat>,
+        rowY: CGFloat,
+        alignment: MeldRowAlignment,
+        desiredScale: CGFloat,
+        minimumScale: CGFloat,
+        meldGap: CGFloat
+    ) {
+        let availableWidth = max(0, bounds.upperBound - bounds.lowerBound)
+        let scale = fittedScale(
+            for: melds,
+            desiredScale: desiredScale,
+            minimumScale: minimumScale,
+            meldGap: meldGap,
+            availableWidth: availableWidth
+        )
+        let stepFraction = Self.fittedMeldStepFraction(
+            cardCounts: melds.map(\.cards.count),
+            scale: scale,
+            desiredStepFraction: Self.meldCardStepFraction,
+            meldGap: meldGap,
+            availableWidth: availableWidth
+        )
+        drawMeldRow(
+            melds,
+            bounds: bounds,
+            rowY: rowY,
+            alignment: alignment,
+            scale: scale,
+            cardStepFraction: stepFraction,
+            meldGap: meldGap
+        )
+    }
+
+    private func drawMeldRow(
+        _ melds: [Meld],
+        bounds: ClosedRange<CGFloat>,
+        rowY: CGFloat,
+        alignment: MeldRowAlignment,
+        scale: CGFloat,
+        cardStepFraction: CGFloat,
+        meldGap: CGFloat
+    ) {
         let cardW = CardNode.size.width * scale
         let cardH = CardNode.size.height * scale
-        let overlap: CGFloat = cardW * 0.42
-        let meldGap: CGFloat = useCompactMelds ? 6 : 10
-        let bgHalfHeight: CGFloat = 42 / 2
-        let bgHalfWidth: CGFloat = 138 / 2
-
-        let widths = melds.map { CGFloat($0.cards.count - 1) * overlap + cardW }
-        let totalWidth = widths.reduce(0, +) + CGFloat(melds.count - 1) * meldGap
-
-        let padding: CGFloat = 6
-        let rowY: CGFloat
-        let centerX: CGFloat
-        switch seat.edge {
-        case .left:
-            rowY = seat.anchor.y
-            centerX = seat.anchor.x + bgHalfWidth + padding + totalWidth / 2
-        case .right:
-            rowY = seat.anchor.y
-            centerX = seat.anchor.x - bgHalfWidth - padding - totalWidth / 2
-        case .top where vm.state.players.count < 5:
-            rowY = seat.anchor.y
-            centerX = seat.anchor.x - bgHalfWidth - padding - totalWidth / 2
-        default:
-            rowY = seat.anchor.y - bgHalfHeight - padding - cardH / 2
-            let margin: CGFloat = 24
-            centerX = min(max(seat.anchor.x, margin + totalWidth / 2),
-                          size.width - margin - totalWidth / 2)
+        let cardStep = cardW * cardStepFraction
+        let widths = melds.map {
+            CGFloat(max(0, $0.cards.count - 1)) * cardStep + cardW
         }
-        var x = centerX - totalWidth / 2
+        let totalWidth = widths.reduce(0, +)
+            + CGFloat(max(0, melds.count - 1)) * meldGap
+        let availableVisualWidth = max(
+            0,
+            bounds.upperBound - bounds.lowerBound - 14
+        )
+        let x: CGFloat
+        switch alignment {
+        case .leading:
+            x = bounds.lowerBound + 7
+        case .center:
+            x = bounds.lowerBound + 7
+                + max(0, availableVisualWidth - totalWidth) / 2
+        case .trailing:
+            x = bounds.upperBound - 7 - totalWidth
+        }
+        var meldX = x
 
         for (meldIndex, meld) in melds.enumerated() {
             let width = widths[meldIndex]
-            addMeldTarget(for: meld,
-                          rect: CGRect(x: x - 5, y: rowY - cardH / 2 - 4,
-                                       width: width + 10, height: cardH + 8))
-            for (idx, card) in meld.cards.enumerated() {
+            addMeldTarget(
+                for: meld,
+                rect: CGRect(
+                    x: meldX - 7,
+                    y: rowY - cardH / 2 - 5,
+                    width: width + 14,
+                    height: cardH + 10
+                )
+            )
+            for (cardIndex, card) in meld.cards.enumerated() {
                 let node = CardNode(card: card, faceUp: true, theme: theme)
                 node.setScale(scale)
-                let pos = CGPoint(x: x + CGFloat(idx) * overlap + cardW / 2, y: rowY)
-                if idx == 0 { attachShadow(to: node, at: pos, scale: scale) }
-                node.position = pos
-                node.zPosition = 3 + CGFloat(idx) * 0.01
+                let position = CGPoint(
+                    x: meldX + CGFloat(cardIndex) * cardStep + cardW / 2,
+                    y: rowY
+                )
+                if cardIndex == 0 {
+                    attachShadow(to: node, at: position, scale: scale)
+                }
+                node.position = position
+                node.zPosition = 3 + CGFloat(cardIndex) * 0.01
                 node.name = "meld:\(meld.id.uuidString)"
                 prepareMeldCardNode(node, card: card, in: meld)
                 meldsLayer.addChild(node)
             }
-            x += width + meldGap
+            meldX += width + meldGap
         }
+    }
+
+    private func greedyMeldRows(
+        _ melds: [Meld],
+        scale: CGFloat,
+        meldGap: CGFloat,
+        availableWidth: CGFloat
+    ) -> [[Meld]] {
+        var rows: [[Meld]] = []
+        for meld in melds {
+            guard var row = rows.popLast() else {
+                rows.append([meld])
+                continue
+            }
+            let candidate = row + [meld]
+            if Self.meldRowWidth(
+                cardCounts: candidate.map(\.cards.count),
+                scale: scale,
+                cardStepFraction: Self.meldCardStepFraction,
+                meldGap: meldGap
+            ) <= availableWidth {
+                row.append(meld)
+                rows.append(row)
+            } else {
+                rows.append(row)
+                rows.append([meld])
+            }
+        }
+        return rows
+    }
+
+    private func balancedMeldGroups(
+        _ melds: [Meld],
+        groupCount: Int
+    ) -> [[Meld]] {
+        let count = min(max(1, groupCount), max(1, melds.count))
+        var groups = Array(repeating: [Meld](), count: count)
+        var weights = Array(repeating: CGFloat.zero, count: count)
+        for meld in melds {
+            let targetIndex = weights.enumerated().min {
+                $0.element < $1.element
+            }?.offset ?? 0
+            groups[targetIndex].append(meld)
+            weights[targetIndex] += CGFloat(max(1, meld.cards.count))
+        }
+        return groups
+    }
+
+    private func fittedScale(
+        for melds: [Meld],
+        desiredScale: CGFloat,
+        minimumScale: CGFloat,
+        meldGap: CGFloat,
+        availableWidth: CGFloat
+    ) -> CGFloat {
+        max(
+            minimumScale,
+            Self.fittedMeldScale(
+                cardCounts: melds.map(\.cards.count),
+                desiredScale: desiredScale,
+                meldGap: meldGap,
+                availableWidth: availableWidth
+            )
+        )
+    }
+
+    static func fittedMeldScale(
+        cardCounts: [Int],
+        desiredScale: CGFloat,
+        meldGap: CGFloat,
+        availableWidth: CGFloat
+    ) -> CGFloat {
+        let targetPadding: CGFloat = 14
+        let totalGap = CGFloat(max(0, cardCounts.count - 1)) * meldGap
+        let unscaledCardWidth = cardCounts.reduce(CGFloat.zero) { total, count in
+            let steps = CGFloat(max(0, count - 1))
+            return total + CardNode.size.width * (
+                1 + steps * Self.meldCardStepFraction
+            )
+        }
+        guard unscaledCardWidth > 0 else { return desiredScale }
+
+        let fittedScale = max(
+            0,
+            availableWidth - targetPadding - totalGap
+        ) / unscaledCardWidth
+        return min(desiredScale, fittedScale)
+    }
+
+    static func fittedMeldStepFraction(
+        cardCounts: [Int],
+        scale: CGFloat,
+        desiredStepFraction: CGFloat,
+        meldGap: CGFloat,
+        availableWidth: CGFloat,
+        targetPadding: CGFloat = 14
+    ) -> CGFloat {
+        let cardWidth = CardNode.size.width * scale
+        let fixedWidth = CGFloat(cardCounts.count) * cardWidth
+            + CGFloat(max(0, cardCounts.count - 1)) * meldGap
+            + targetPadding
+        let totalSteps = CGFloat(
+            cardCounts.reduce(0) { $0 + max(0, $1 - 1) }
+        )
+        guard totalSteps > 0 else { return desiredStepFraction }
+        let fittedStep = max(0, availableWidth - fixedWidth)
+            / (totalSteps * cardWidth)
+        return max(
+            Self.minimumMeldStepFraction,
+            min(desiredStepFraction, fittedStep)
+        )
+    }
+
+    static func meldRowWidth(
+        cardCounts: [Int],
+        scale: CGFloat,
+        cardStepFraction: CGFloat,
+        meldGap: CGFloat
+    ) -> CGFloat {
+        let cardWidth = CardNode.size.width * scale
+        let cardsWidth = cardCounts.reduce(CGFloat.zero) { total, count in
+            total + cardWidth * (
+                1 + CGFloat(max(0, count - 1)) * cardStepFraction
+            )
+        }
+        return cardsWidth
+            + CGFloat(max(0, cardCounts.count - 1)) * meldGap
+            + 14
     }
 
     private func prepareMeldCardNode(_ node: CardNode, card: Card, in meld: Meld) {
@@ -547,12 +1026,12 @@ final class GameScene: SKScene {
 
     private func addMeldTarget(for meld: Meld, rect: CGRect) {
         let acceptsCard = vm.canPlayAnyHandCard(to: meld)
-        let target = SKShapeNode(rect: rect, cornerRadius: 8)
-        target.fillColor = theme.contractPillBg.withAlphaComponent(0.28)
+        let target = SKShapeNode(rect: rect, cornerRadius: 10)
+        target.fillColor = theme.contractPillBg.withAlphaComponent(0.40)
         target.strokeColor = acceptsCard
-            ? UIColor(red: 0.38, green: 0.86, blue: 0.66, alpha: 0.48)
-            : theme.feltStroke.withAlphaComponent(0.45)
-        target.lineWidth = acceptsCard ? 1.5 : 1
+            ? UIColor(red: 0.38, green: 0.86, blue: 0.66, alpha: 0.62)
+            : theme.feltStroke.withAlphaComponent(0.58)
+        target.lineWidth = acceptsCard ? 1.8 : 1.2
         target.zPosition = 2
         target.name = "meld:\(meld.id.uuidString)"
         meldsLayer.addChild(target)
@@ -568,22 +1047,17 @@ final class GameScene: SKScene {
         let center = CGPoint(x: horizontalEdgeInset + panelSize.width / 2,
                              y: stagingTrayY)
         let panel = SKShapeNode(rectOf: panelSize, cornerRadius: 23)
+        if isActive {
+            addActiveTurnHalo(at: center, size: panelSize, to: seatsLayer)
+        }
         panel.fillColor = isActive ? theme.seatBgCurrent : theme.seatBgOther
         panel.strokeColor = isActive
             ? theme.turnGlow.withAlphaComponent(0.85)
             : theme.feltStroke.withAlphaComponent(0.7)
-        panel.lineWidth = isActive ? 1.5 : 1
+        panel.lineWidth = isActive ? 3 : 1
         panel.position = center
         panel.zPosition = 2
         seatsLayer.addChild(panel)
-
-        if isActive {
-            let ringPulse = SKAction.sequence([
-                .fadeAlpha(to: 0.5, duration: 0.7),
-                .fadeAlpha(to: 1.0, duration: 0.7),
-            ])
-            panel.run(.repeatForever(ringPulse))
-        }
 
         let avatarRadius: CGFloat = 15
         let avatarPosition = CGPoint(x: center.x - panelSize.width / 2 + 24,
@@ -591,8 +1065,10 @@ final class GameScene: SKScene {
         let avatarColor = theme.avatarColors[colorIndex % theme.avatarColors.count]
         let avatar = SKShapeNode(circleOfRadius: avatarRadius)
         avatar.fillColor = avatarColor
-        avatar.strokeColor = UIColor.white.withAlphaComponent(0.8)
-        avatar.lineWidth = 1
+        avatar.strokeColor = isActive
+            ? theme.turnGlow
+            : UIColor.white.withAlphaComponent(0.8)
+        avatar.lineWidth = isActive ? 2.5 : 1
         avatar.position = avatarPosition
         avatar.zPosition = 3
         seatsLayer.addChild(avatar)
@@ -610,7 +1086,7 @@ final class GameScene: SKScene {
         let name = SKLabelNode(text: player.name)
         name.fontName = theme.titleFont
         name.fontSize = 12
-        name.fontColor = theme.seatTitle
+        name.fontColor = isActive ? theme.turnGlow : theme.seatTitle
         name.horizontalAlignmentMode = .left
         name.verticalAlignmentMode = .center
         name.position = CGPoint(x: textX, y: center.y + 8)
@@ -621,10 +1097,10 @@ final class GameScene: SKScene {
         let status = ownMeldCount == 0
             ? "Lv \(player.currentLevel)  •  \(player.totalScore) pts"
             : "\(ownMeldCount) down  •  \(player.totalScore) pts"
-        let detail = SKLabelNode(text: status)
+        let detail = SKLabelNode(text: isActive ? "YOUR TURN" : status)
         detail.fontName = theme.bodyFont
         detail.fontSize = 9
-        detail.fontColor = theme.seatSub
+        detail.fontColor = isActive ? theme.turnGlow : theme.seatSub
         detail.horizontalAlignmentMode = .left
         detail.verticalAlignmentMode = .center
         detail.position = CGPoint(x: textX, y: center.y - 9)
@@ -638,6 +1114,7 @@ final class GameScene: SKScene {
         let hand = vm.unstagedCards
         let ownerId = vm.currentPlayer.id
         let currentIds = Set(vm.currentPlayer.hand.map(\.id))
+        let highlightedIds = vm.state.highlightedCardIds(for: ownerId)
         let newlyDrawnIds = lastRenderedHandOwnerId == ownerId
             ? currentIds.subtracting(lastRenderedHandIds)
             : []
@@ -645,14 +1122,15 @@ final class GameScene: SKScene {
         lastRenderedHandIds = currentIds
         guard !hand.isEmpty else { return }
 
-        let cardWidth = CardNode.size.width
+        let cardSize = scaledHandCardSize
+        let cardWidth = cardSize.width
         let availableWidth = size.width - horizontalEdgeInset * 2 - 8
         let step: CGFloat
         if hand.count == 1 {
             step = 0
         } else {
             step = min(cardWidth + 8,
-                       max(27, (availableWidth - cardWidth) / CGFloat(hand.count - 1)))
+                       max(25, (availableWidth - cardWidth) / CGFloat(hand.count - 1)))
         }
         let totalWidth = cardWidth + CGFloat(hand.count - 1) * step
         let startX = (size.width - totalWidth) / 2 + cardWidth / 2
@@ -663,18 +1141,21 @@ final class GameScene: SKScene {
         for (i, card) in hand.enumerated() {
             let node = CardNode(card: card, faceUp: true, theme: theme)
             node.name = "card:\(card.id.uuidString)"
+            node.setScale(handCardScale)
             let centeredIdx = CGFloat(i) - CGFloat(hand.count - 1) / 2
             let norm = centeredIdx / max(1, CGFloat(hand.count - 1) / 2)
             let lift = maxLift * (1 - norm * norm)
             let x = startX + CGFloat(i) * step
-            let y = baseY + lift
+            let isHighlighted = highlightedIds.contains(card.id)
+            let y = baseY + lift + (isHighlighted ? 5 : 0)
             let angle = -norm * maxAngle
             let pos = CGPoint(x: x, y: y)
+            node.setNewCardHighlighted(isHighlighted)
             node.zPosition = 4 + CGFloat(i) * 0.01
             if newlyDrawnIds.contains(card.id) {
                 node.position = SeatLayout.pileCenter(sceneSize: size)
                 node.zRotation = 0
-                node.setScale(0.78)
+                node.setScale(handCardScale * 0.78)
                 node.alpha = 0.25
                 handLayer.addChild(node)
 
@@ -684,15 +1165,25 @@ final class GameScene: SKScene {
                     move,
                     .rotate(toAngle: angle, duration: 0.24,
                             shortestUnitArc: true),
-                    .scale(to: 1.0, duration: 0.24),
+                    .scale(to: handCardScale, duration: 0.24),
                     .fadeAlpha(to: 1.0, duration: 0.16),
                 ])
                 node.run(settle) { [weak self, weak node] in
                     guard let self, let node else { return }
-                    self.attachShadow(to: node, at: pos, rotation: angle)
+                    self.attachShadow(
+                        to: node,
+                        at: pos,
+                        rotation: angle,
+                        scale: self.handCardScale
+                    )
                 }
             } else {
-                attachShadow(to: node, at: pos, rotation: angle)
+                attachShadow(
+                    to: node,
+                    at: pos,
+                    rotation: angle,
+                    scale: handCardScale
+                )
                 node.position = pos
                 node.zRotation = angle
                 handLayer.addChild(node)
@@ -703,8 +1194,41 @@ final class GameScene: SKScene {
 
     // MARK: - Layout constants
 
+    private static let pileScale: CGFloat = 0.90
+    private static let pileGap: CGFloat = 34
+    private static let meldCardStepFraction: CGFloat = 0.50
+    private static let minimumMeldStepFraction: CGFloat = 0.25
+    private static var protectedPileCorridorHalfWidth: CGFloat {
+        (
+            CardNode.size.width * pileScale
+                + pileGap
+                + pileZoneSize.width
+        ) / 2 + 6
+    }
+    private static var pileZoneSize: CGSize {
+        CGSize(
+            width: CardNode.size.width * pileScale + 24,
+            height: CardNode.size.height * pileScale + 12
+        )
+    }
+
+    private var handCardScale: CGFloat {
+        size.height < 500 ? 0.84 : 1
+    }
+
+    private var opponentSeatWidth: CGFloat {
+        size.width < 720 ? 64 : 138
+    }
+
+    private var scaledHandCardSize: CGSize {
+        CGSize(
+            width: CardNode.size.width * handCardScale,
+            height: CardNode.size.height * handCardScale
+        )
+    }
+
     private var handRowY: CGFloat {
-        max(CardNode.size.height / 2 + 18, size.height * 0.15)
+        max(scaledHandCardSize.height / 2 + 18, size.height * 0.15)
     }
 
     private var horizontalEdgeInset: CGFloat {
@@ -712,7 +1236,7 @@ final class GameScene: SKScene {
     }
 
     private var stagingTrayY: CGFloat {
-        handRowY + CardNode.size.height / 2 + 36
+        handRowY + scaledHandCardSize.height / 2 + 36
     }
 
     private var stagingTrayRect: CGRect {
@@ -724,6 +1248,20 @@ final class GameScene: SKScene {
     }
 
     private var tableauLaneY: CGFloat { stagingTrayY }
+
+    private func ownMeldScale(for melds: [Meld], meldGap: CGFloat) -> CGFloat {
+        let desiredScale: CGFloat = 0.50
+        let widthAtScaleOne = melds.reduce(CGFloat.zero) { total, meld in
+            total + CardNode.size.width * (
+                1 + CGFloat(max(0, meld.cards.count - 1))
+                    * Self.meldCardStepFraction
+            )
+        }
+        let totalGaps = CGFloat(max(0, melds.count - 1)) * meldGap
+        let available = max(1, stagingTrayRect.width - 16 - totalGaps)
+        guard widthAtScaleOne > 0 else { return desiredScale }
+        return min(desiredScale, max(0.34, available / widthAtScaleOne))
+    }
 
     // MARK: - Inline staging and contextual actions
 
@@ -852,6 +1390,7 @@ final class GameScene: SKScene {
     private func buildContextActions() {
         actionLayer.removeAllChildren()
         guard !vm.isCurrentPlayerCPU else { return }
+        guard !vm.isBuyDecisionActive else { return }
 
         let action = contextAction
         addActionButton(title: action.title, name: action.name,
@@ -871,19 +1410,7 @@ final class GameScene: SKScene {
                                 emphasized: Bool) {
         switch vm.state.phase {
         case .awaitingDraw:
-            if vm.isLocalPlayersTurn {
-                if let requester = vm.prioritizedBuyRequesterName {
-                    return ("\(requester.uppercased()) WANTS TO BUY", nil, false, false)
-                }
-                return ("CHOOSE A PILE", nil, false, false)
-            }
-            if vm.hasRequestedBuy {
-                return ("CANCEL BUY", "toggle-buy", true, false)
-            }
-            if vm.canRequestBuy {
-                return ("BUY DISCARD", "toggle-buy", true, true)
-            }
-            return ("WAITING FOR \(vm.currentPlayerName.uppercased())", nil, false, false)
+            return ("PURCHASE ROUND", nil, false, false)
         case .awaitingMeldOrDiscard:
             if !vm.isLocalPlayersTurn {
                 return ("\(vm.currentPlayerName.uppercased())'S TURN", nil, false, false)
@@ -1047,7 +1574,7 @@ final class GameScene: SKScene {
         if let uuid = Self.handCardId(
             at: point,
             slots: handSlots,
-            cardSize: CardNode.size
+            cardSize: scaledHandCardSize
         ), let hit = handLayer.children.first(where: {
             $0.name == "card:\(uuid.uuidString)"
         }) as? CardNode {
@@ -1088,11 +1615,24 @@ final class GameScene: SKScene {
         if let id = draggingCardId,
            let card = vm.currentPlayer.hand.first(where: { $0.id == id }) {
             if vm.isLocalPlayersTurn,
-               vm.state.phase == .awaitingMeldOrDiscard,
-               discardDropZone().contains(point) {
-                guard let node = draggingCard else { return }
-                animateDiscard(card, node: node)
-                return
+               vm.state.phase == .awaitingMeldOrDiscard {
+                switch cardDropTarget(at: point, for: card) {
+                case .some(.discard):
+                    guard let node = draggingCard else { return }
+                    animateDiscard(card, node: node)
+                    return
+                case .some(.meld(let meldId)):
+                    if vm.playHandCard(card, to: meldId) {
+                        successFeedback()
+                        completeDrag()
+                    } else {
+                        warningFeedback()
+                        cancelDrag()
+                    }
+                    return
+                case .none:
+                    break
+                }
             }
 
             if vm.isLocalPlayersTurn,
@@ -1102,17 +1642,6 @@ final class GameScene: SKScene {
                 vm.toggleStaged(cardId: id)
                 selectionFeedback()
                 completeDrag()
-                return
-            }
-
-            if let meldId = meldId(at: point, for: card) {
-                if vm.playHandCard(card, to: meldId) {
-                    successFeedback()
-                    completeDrag()
-                } else {
-                    warningFeedback()
-                    cancelDrag()
-                }
                 return
             }
 
@@ -1178,13 +1707,6 @@ final class GameScene: SKScene {
             vm.drawFromDiscard()
             if previousPhase != vm.state.phase { selectionFeedback() }
             return true
-        case "toggle-buy":
-            let wasRequested = vm.hasRequestedBuy
-            vm.toggleLocalBuyRequest()
-            if wasRequested != vm.hasRequestedBuy {
-                selectionFeedback()
-            }
-            return true
         case "save-meld":
             if vm.saveStagedAsMeld() {
                 successFeedback()
@@ -1246,17 +1768,89 @@ final class GameScene: SKScene {
         return UUID(uuidString: String(suffix))
     }
 
-    private func meldId(at point: CGPoint, for card: Card) -> UUID? {
+    private func cardDropTarget(
+        at point: CGPoint,
+        for card: Card
+    ) -> CardDropTarget? {
         let pointInMeldLayer = meldsLayer.convert(point, from: self)
         let targetFrames = meldTargetNodes.mapValues { $0.frame }
         let eligibleIds = Set(vm.state.melds.compactMap {
             vm.canPlay(card, to: $0) ? $0.id : nil
         })
-        return Self.meldTargetId(
+        let discardFrame = convertedRect(
+            discardDropZone(),
+            from: self,
+            to: meldsLayer
+        )
+        return Self.preferredCardDropTarget(
             at: pointInMeldLayer,
-            targetFrames: targetFrames,
+            discardFrame: discardFrame,
+            meldTargetFrames: targetFrames,
             eligibleIds: eligibleIds
         )
+    }
+
+    private func convertedRect(
+        _ rect: CGRect,
+        from source: SKNode,
+        to destination: SKNode
+    ) -> CGRect {
+        let corners = [
+            CGPoint(x: rect.minX, y: rect.minY),
+            CGPoint(x: rect.minX, y: rect.maxY),
+            CGPoint(x: rect.maxX, y: rect.minY),
+            CGPoint(x: rect.maxX, y: rect.maxY),
+        ].map { source.convert($0, to: destination) }
+        let xs = corners.map(\.x)
+        let ys = corners.map(\.y)
+        return CGRect(
+            x: xs.min() ?? 0,
+            y: ys.min() ?? 0,
+            width: (xs.max() ?? 0) - (xs.min() ?? 0),
+            height: (ys.max() ?? 0) - (ys.min() ?? 0)
+        )
+    }
+
+    static func preferredCardDropTarget(
+        at point: CGPoint,
+        discardFrame: CGRect,
+        meldTargetFrames: [UUID: CGRect],
+        eligibleIds: Set<UUID>
+    ) -> CardDropTarget? {
+        let meldId = meldTargetId(
+            at: point,
+            targetFrames: meldTargetFrames,
+            eligibleIds: eligibleIds
+        )
+        let isInDiscard = discardFrame.contains(point)
+        switch (isInDiscard, meldId) {
+        case (false, nil):
+            return nil
+        case (true, nil):
+            return .discard
+        case (false, .some(let meldId)):
+            return .meld(meldId)
+        case (true, .some(let meldId)):
+            guard let meldFrame = meldTargetFrames[meldId] else {
+                return .discard
+            }
+            let discardCenter = CGPoint(
+                x: discardFrame.midX,
+                y: discardFrame.midY
+            )
+            let meldCenter = CGPoint(
+                x: meldFrame.midX,
+                y: meldFrame.midY
+            )
+            let discardDistance = squaredDistance(
+                from: point,
+                to: discardCenter
+            )
+            let meldDistance = squaredDistance(from: point, to: meldCenter)
+            return meldDistance <= discardDistance
+                ? .meld(meldId)
+                : .discard
+        }
     }
 
     static func meldTargetId(
@@ -1290,7 +1884,7 @@ final class GameScene: SKScene {
     /// True if `point` sits in the vertical band occupied by the hand fan —
     /// used to distinguish "drop back to reorder" from "cancel drag".
     private func isInHandRowBand(_ point: CGPoint) -> Bool {
-        let halfH = CardNode.size.height * 0.75
+        let halfH = scaledHandCardSize.height * 0.75
         let center = handRowY
         return point.y >= center - halfH && point.y <= center + halfH
     }
@@ -1341,10 +1935,11 @@ final class GameScene: SKScene {
         dragOrigin = card.position
         dragOriginRotation = card.zRotation
         dragOriginZ = card.zPosition
+        dragOriginScale = card.xScale
         card.removeAllActions()
         card.zPosition = 500
         card.zRotation = 0
-        card.run(SKAction.scale(to: 1.08, duration: 0.08))
+        card.run(SKAction.scale(to: dragOriginScale * 1.08, duration: 0.08))
         guard let value = vm.currentPlayer.hand.first(where: { $0.id == id }) else {
             return
         }
@@ -1368,7 +1963,7 @@ final class GameScene: SKScene {
             SKAction.move(to: dragOrigin, duration: 0.15),
             SKAction.rotate(toAngle: dragOriginRotation, duration: 0.15,
                             shortestUnitArc: true),
-            SKAction.scale(to: 1.0, duration: 0.15)
+            SKAction.scale(to: dragOriginScale, duration: 0.15)
         ])
         card.run(snap) { [weak self, weak card] in
             card?.zPosition = self?.dragOriginZ ?? 4
@@ -1419,19 +2014,24 @@ final class GameScene: SKScene {
     /// The tappable/droppable rectangle around the discard pile, in scene
     /// coordinates. Slightly larger than the pile visual for easier drops.
     private func discardDropZone() -> CGRect {
-        let center = SeatLayout.pileCenter(sceneSize: size)
-        let gap: CGFloat = 34
-        let pileScale: CGFloat = 0.90
+        Self.discardDropZone(sceneSize: size)
+    }
+
+    static func discardDropZone(sceneSize: CGSize) -> CGRect {
+        let center = SeatLayout.pileCenter(sceneSize: sceneSize)
+        let gap = Self.pileGap
+        let pileScale = Self.pileScale
         let pileWidth = CardNode.size.width * pileScale
         let pileHeight = CardNode.size.height * pileScale
         let basePos = CGPoint(x: center.x + pileWidth / 2 + gap / 2,
                               y: center.y)
-        let pad: CGFloat = 24
+        let horizontalPad: CGFloat = 12
+        let verticalPad: CGFloat = 10
         return CGRect(
-            x: basePos.x - pileWidth / 2 - pad,
-            y: basePos.y - pileHeight / 2 - pad,
-            width: pileWidth + pad * 2,
-            height: pileHeight + pad * 2
+            x: basePos.x - pileWidth / 2 - horizontalPad,
+            y: basePos.y - pileHeight / 2 - verticalPad,
+            width: pileWidth + horizontalPad * 2,
+            height: pileHeight + verticalPad * 2
         )
     }
 

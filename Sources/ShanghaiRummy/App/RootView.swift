@@ -94,8 +94,13 @@ struct RootView: View {
     /// Stage the first triplet-forming set of cards in the current player's
     /// hand (if any) so the inline meld tray renders in demo screenshots.
     private func stageFirstTriplet(in vm: GameViewModel) {
-        if vm.state.phase == .awaitingDraw {
-            vm.drawFromStock()
+        while vm.state.phase == .awaitingDraw {
+            let decisionPlayerId = vm.state.buyDecisionPlayerId
+            vm.passBuyOffer()
+            vm.acknowledgeTurnPassed()
+            if vm.state.buyDecisionPlayerId == decisionPlayerId {
+                break
+            }
         }
         let hand = vm.currentPlayer.hand
         let byRank = Dictionary(grouping: hand, by: { $0.rank })

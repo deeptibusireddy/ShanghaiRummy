@@ -156,6 +156,88 @@ final class GameViewModelGoDownTests: XCTestCase {
         XCTAssertEqual(updated?.cards.count, 4)
     }
 
+    func testLayoffRejectsNaturalSuitAlreadyInTriplet() {
+        let existing = Meld(
+            kind: .triplet,
+            cards: [
+                c(.hearts, .king),
+                c(.spades, .king),
+                c(.diamonds, .king),
+            ],
+            ownerId: UUID()
+        )
+        let duplicateSuit = c(.hearts, .king)
+        let v = vm(
+            hand: [duplicateSuit],
+            melds: [existing],
+            hasGoneDown: true,
+            laidDownThisTurn: false
+        )
+
+        XCTAssertFalse(v.canLayOff(duplicateSuit, to: existing))
+        XCTAssertFalse(v.layoffHandCard(duplicateSuit, to: existing.id))
+    }
+
+    func testWildLayoffPromptsWhenBothSequenceEndsAreValid() {
+        let wild = Card.joker()
+        let existing = Meld(
+            kind: .sequence,
+            cards: [
+                c(.clubs, .five),
+                c(.clubs, .six),
+                c(.clubs, .seven),
+                c(.clubs, .eight),
+            ],
+            ownerId: UUID()
+        )
+        let v = vm(
+            hand: [wild],
+            melds: [existing],
+            hasGoneDown: true,
+            laidDownThisTurn: false
+        )
+
+        XCTAssertTrue(v.layoffHandCard(wild, to: existing.id))
+        let pending = v.pendingSequenceEndChoice
+        XCTAssertEqual(pending?.card.id, wild.id)
+        XCTAssertEqual(pending?.meldId, existing.id)
+        XCTAssertEqual(pending?.startRepresentation?.suit, .clubs)
+        XCTAssertEqual(pending?.startRepresentation?.rank, .four)
+        XCTAssertEqual(pending?.endRepresentation?.suit, .clubs)
+        XCTAssertEqual(pending?.endRepresentation?.rank, .nine)
+        XCTAssertTrue(v.currentPlayer.hand.contains(where: { $0.id == wild.id }))
+
+        XCTAssertTrue(v.chooseSequenceEnd(.start))
+        XCTAssertNil(v.pendingSequenceEndChoice)
+        XCTAssertEqual(v.state.melds.first?.cards.first?.id, wild.id)
+        XCTAssertFalse(v.currentPlayer.hand.contains(where: { $0.id == wild.id }))
+    }
+
+    func testWildLayoffUsesOnlyValidSequenceEndWithoutPrompting() {
+        let existingWild = Card.joker()
+        let newWild = Card.joker()
+        let existing = Meld(
+            kind: .sequence,
+            cards: [
+                c(.clubs, .ace),
+                existingWild,
+                c(.clubs, .three),
+                c(.clubs, .four),
+            ],
+            ownerId: UUID()
+        )
+        let v = vm(
+            hand: [newWild],
+            melds: [existing],
+            hasGoneDown: true,
+            laidDownThisTurn: false
+        )
+
+        XCTAssertTrue(v.layoffHandCard(newWild, to: existing.id))
+        XCTAssertNil(v.pendingSequenceEndChoice)
+        XCTAssertEqual(v.state.melds.first?.cards.last?.id, newWild.id)
+    }
+
     func testLayoffRejectsWhenNotGoneDown() {
         let owner = UUID()
         let existing = Meld(

@@ -70,7 +70,7 @@ enum RealtimeGameMessage: Codable, Equatable, Sendable {
 }
 
 enum RealtimeMessageCodec {
-    static let protocolVersion = 1
+    static let protocolVersion = 2
 
     private struct Envelope: Codable {
         let protocolVersion: Int
@@ -100,13 +100,9 @@ enum RealtimeMessageCodec {
 
 struct RealtimeGameAuthority {
     private(set) var snapshot: RealtimeGameSnapshot
-    private var buyWindowBaseRevision: Int?
 
     init(snapshot: RealtimeGameSnapshot) {
         self.snapshot = snapshot
-        buyWindowBaseRevision = snapshot.state.phase == .awaitingDraw
-            ? snapshot.revision
-            : nil
     }
 
     mutating func apply(
@@ -131,11 +127,7 @@ struct RealtimeGameAuthority {
                 )
             )
         }
-        guard request.expectedRevision == snapshot.revision
-                || (
-                    request.expectedRevision < snapshot.revision
-                    && canRebase(request)
-                ) else {
+        guard request.expectedRevision == snapshot.revision else {
             return .failure(
                 rejection(
                     request,
@@ -155,37 +147,44 @@ struct RealtimeGameAuthority {
                 )
             )
         case .success(let state):
-            let next = RealtimeGameSnapshot(
-                revision: snapshot.revision + 1,
-                state: state,
-                participants: snapshot.participants,
-                hostGamePlayerId: snapshot.hostGamePlayerId,
+            let next = advance(
+                to: state,
                 lastAppliedRequestId: request.id
             )
-            if state.phase == .awaitingDraw {
-                if snapshot.state.phase != .awaitingDraw {
-                    buyWindowBaseRevision = next.revision
-                }
-            } else {
-                buyWindowBaseRevision = nil
-            }
-            snapshot = next
             return .success(next)
         }
     }
 
-    private func canRebase(_ request: RealtimeActionRequest) -> Bool {
-        guard snapshot.state.phase == .awaitingDraw,
-              let buyWindowBaseRevision,
-              request.expectedRevision >= buyWindowBaseRevision else {
-            return false
+    mutating func passTimedOutBuyOffer(
+        playerId: UUID,
+        expectedRevision: Int
+    ) -> RealtimeGameSnapshot? {
+        guard snapshot.revision == expectedRevision,
+              snapshot.state.phase == .awaitingDraw,
+              snapshot.state.buyDecisionPlayerId == playerId,
+              playerId != snapshot.state.currentPlayerId,
+              case .success(let state) = TurnEngine.apply(
+                  .passBuyOffer(playerId: playerId),
+                  to: snapshot.state
+              ) else {
+            return nil
         }
-        switch request.action {
-        case .requestBuy, .cancelBuyRequest, .draw:
-            return true
-        default:
-            return false
-        }
+        return advance(to: state, lastAppliedRequestId: nil)
+    }
+
+    private mutating func advance(
+        to state: GameState,
+        lastAppliedRequestId: UUID?
+    ) -> RealtimeGameSnapshot {
+        let next = RealtimeGameSnapshot(
+            revision: snapshot.revision + 1,
+            state: state,
+            participants: snapshot.participants,
+            hostGamePlayerId: snapshot.hostGamePlayerId,
+            lastAppliedRequestId: lastAppliedRequestId
+        )
+        snapshot = next
+        return next
     }
 
     private func rejection(

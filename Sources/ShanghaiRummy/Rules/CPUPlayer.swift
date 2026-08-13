@@ -13,13 +13,14 @@ import Foundation
 ///  * Pure — no side effects, safe from any thread.
 ///  * Testable — every heuristic is exposed as an internal helper.
 ///
-/// Not covered in this iteration (deferred): wild redemption, contested
-/// buys, discard-guarding to prevent opponents from completing a contract.
+/// Not covered in this iteration (deferred): wild redemption and
+/// discard-guarding to prevent opponents from completing a contract.
 public enum CPUPlayer {
 
     // MARK: - Public entry point
 
-    /// The next action this CPU would take. Assumes it IS this player's turn.
+    /// The next action this CPU would take. Assumes it is this player's turn
+    /// or the active buyer during a purchase round.
     /// If the phase is `.roundEnded` / `.gameEnded`, returns a harmless
     /// stock draw (the caller should not be asking on those phases).
     public static func nextAction(for playerId: UUID,
@@ -29,6 +30,12 @@ public enum CPUPlayer {
         }
         switch state.phase {
         case .awaitingDraw:
+            if state.buyDecisionPlayerId != state.currentPlayerId {
+                if state.discard.last?.isWild == true {
+                    return .acceptBuyOffer(playerId: player.id)
+                }
+                return .passBuyOffer(playerId: player.id)
+            }
             return chooseDraw(player: player, state: state)
         case .awaitingMeldOrDiscard:
             return chooseMeldOrDiscard(player: player, state: state)
@@ -199,19 +206,54 @@ public enum CPUPlayer {
         let maxWilds = RulesConfig.maxWilds(inMeldOfSize: size)
         var candidates: [[Card]] = []
         for (_, naturals) in byRank {
+            var firstCardBySuit: [Suit: Card] = [:]
+            for natural in naturals {
+                guard let suit = natural.suit, firstCardBySuit[suit] == nil else {
+                    continue
+                }
+                firstCardBySuit[suit] = natural
+            }
+            let distinctSuitNaturals = Suit.allCases.compactMap {
+                firstCardBySuit[$0]
+            }
             for w in 0...min(maxWilds, wilds.count) {
                 let naturalsNeeded = size - w
                 guard naturalsNeeded >= 1 else { continue }
-                if naturals.count >= naturalsNeeded {
-                    let picked = Array(naturals.prefix(naturalsNeeded))
-                        + Array(wilds.prefix(w))
-                    candidates.append(picked)
+                guard distinctSuitNaturals.count >= naturalsNeeded else {
+                    continue
+                }
+                for pickedNaturals in combinations(
+                    distinctSuitNaturals,
+                    choosing: naturalsNeeded
+                ) {
+                    candidates.append(
+                        pickedNaturals + Array(wilds.prefix(w))
+                    )
                 }
             }
         }
         return candidates.sorted { a, b in
             a.filter(\.isWild).count < b.filter(\.isWild).count
         }
+    }
+
+    private static func combinations<T>(
+        _ values: [T],
+        choosing count: Int
+    ) -> [[T]] {
+        guard count >= 0, count <= values.count else { return [] }
+        if count == 0 { return [[]] }
+        if count == values.count { return [values] }
+
+        var result: [[T]] = []
+        for index in 0...(values.count - count) {
+            let tails = combinations(
+                Array(values.dropFirst(index + 1)),
+                choosing: count - 1
+            )
+            result.append(contentsOf: tails.map { [values[index]] + $0 })
+        }
+        return result
     }
 
     /// All ways to build a sequence of `size` from `hand`. Prefers fewer wilds.

@@ -10,7 +10,7 @@ final class CPUPlayerTests: XCTestCase {
 
     /// Build a minimal GameState with a single player under test at index 0
     /// and a filler opponent at index 1 (so `advanceHand`/turn indices are
-    /// exercisable). Round defaults to 1 (contract: 2× triplet of 3).
+    /// exercisable). Round defaults to 1 (contract: 2 triplets).
     private func state(hand: [Card],
                        phase: GameState.Phase = .awaitingDraw,
                        melds: [Meld] = [],
@@ -86,6 +86,34 @@ final class CPUPlayerTests: XCTestCase {
         XCTAssertEqual(src, .stock)
     }
 
+    func testAcceptsWildDiscardWhenOfferedABuy() {
+        var (s, me) = state(
+            hand: [c(.hearts, .three)],
+            discard: [joker()]
+        )
+        s.currentTurnIndex = 1
+        s.buyDecisionPlayerId = me.id
+
+        XCTAssertEqual(
+            CPUPlayer.nextAction(for: me.id, in: s),
+            .acceptBuyOffer(playerId: me.id)
+        )
+    }
+
+    func testPassesNonWildDiscardWhenOfferedABuy() {
+        var (s, me) = state(
+            hand: [c(.hearts, .three)],
+            discard: [c(.hearts, .five)]
+        )
+        s.currentTurnIndex = 1
+        s.buyDecisionPlayerId = me.id
+
+        XCTAssertEqual(
+            CPUPlayer.nextAction(for: me.id, in: s),
+            .passBuyOffer(playerId: me.id)
+        )
+    }
+
     // MARK: - Discard selection
 
     func testDiscardsHighestPenaltyNonWild() {
@@ -147,6 +175,24 @@ final class CPUPlayerTests: XCTestCase {
             case .success: break
             case .failure(let e): XCTFail("Invalid triplet: \(e)")
             }
+        }
+    }
+
+    func testTripletCandidatesNeverReuseANaturalSuit() {
+        let hand = [
+            c(.hearts, .king),
+            c(.hearts, .king),
+            c(.spades, .king),
+            c(.diamonds, .king),
+        ]
+        let candidates = CPUPlayer.candidateTriplets(of: 3, from: hand)
+
+        XCTAssertFalse(candidates.isEmpty)
+        for candidate in candidates {
+            let naturalSuits = candidate.compactMap {
+                $0.isWild ? nil : $0.suit
+            }
+            XCTAssertEqual(Set(naturalSuits).count, naturalSuits.count)
         }
     }
 
@@ -247,17 +293,27 @@ final class CPUPlayerTests: XCTestCase {
         let vm = GameViewModel(state: built.state)
         vm.cpuPlayerIds = built.cpuIds
         // newGame seats "You" at index 0 as dealer, so the Bot (index 1)
-        // is up first. Pump their turn so control returns to You.
+        // is up first. A non-wild discard pauses its turn to offer You a buy.
         vm.runAllCPUTurns()
-        XCTAssertFalse(vm.isCurrentPlayerCPU,
-                       "CPU should have played and handed control back to You")
+        if vm.state.currentPlayerId != built.state.players[0].id {
+            XCTAssertEqual(
+                vm.state.buyDecisionPlayerId,
+                built.state.players[0].id
+            )
+            vm.passBuyOffer()
+        }
+        XCTAssertEqual(vm.state.currentPlayerId, built.state.players[0].id)
+        XCTAssertFalse(vm.isCurrentPlayerCPU)
 
-        // You draws + discards. The auto-pump inside dispatch should then
-        // run the Bot's next turn immediately.
+        // Resolve You's purchase round, discard, and decline any buy offered
+        // during the Bot's following turn.
         let you = vm.currentPlayer
         _ = vm.dispatch(.draw(playerId: you.id, source: .stock))
         let card = vm.currentPlayer.hand.max(by: { $0.points < $1.points })!
         _ = vm.dispatch(.discard(playerId: you.id, card: card))
+        if vm.state.buyDecisionPlayerId == you.id {
+            vm.passBuyOffer()
+        }
         XCTAssertTrue(
             vm.state.currentPlayerId == you.id
             || vm.state.phase == .roundEnded

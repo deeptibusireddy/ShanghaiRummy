@@ -14,7 +14,7 @@ public enum ContractComponent: Codable, Sendable, Equatable {
 
     public var displayName: String {
         switch self {
-        case .triplet(let n): return "triplet of \(n)"
+        case .triplet: return "triplet"
         case .sequence(let n): return "sequence of \(n)"
         }
     }
@@ -45,9 +45,9 @@ public struct Contract: Codable, Sendable, Equatable {
     }
 
     private func pluralize(_ s: String) -> String {
-        // "triplet of 3" -> "triplets of 3"; "sequence of 4" -> "sequences of 4"
-        s.replacingOccurrences(of: "triplet of", with: "triplets of")
-         .replacingOccurrences(of: "sequence of", with: "sequences of")
+        if s == "triplet" { return "triplets" }
+        return s.replacingOccurrences(of: "triplet of", with: "triplets of")
+            .replacingOccurrences(of: "sequence of", with: "sequences of")
     }
 }
 
@@ -80,6 +80,7 @@ public enum RulesConfig {
     public static let handSizeAtDeal = 11
     public static let maxBuysPerRound = 3
     public static let penaltyCardsOnBuy = 1
+    public static let buyOfferTimeoutSeconds = 20
     public static let minTripletSize = 3
     public static let minSequenceSize = 4
     /// Highest contract level. A player who completes level 10 wins the game.

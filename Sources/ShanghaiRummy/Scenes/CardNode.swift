@@ -2,8 +2,8 @@ import SpriteKit
 
 /// A single card sprite. Renders a real card face — corner rank+suit pip
 /// top-left + bottom-right, a large centered suit glyph — or a themed
-/// card back when `faceUp == false`. Jokers get a star; wild 2s get a
-/// small "★" badge; dead 2s get a "†".
+/// card back when `faceUp == false`. Jokers get traditional jester artwork;
+/// wild 2s get a small "★" badge; dead 2s get a "†".
 ///
 /// Colors and fonts come from the passed-in `VisualTheme` so the same
 /// scene can be reskinned by swapping themes.
@@ -14,6 +14,7 @@ final class CardNode: SKNode {
     let card: Card
     private let theme: VisualTheme
     private var faceBorder: SKShapeNode?
+    private var newCardHighlight: SKNode?
 
     init(card: Card, faceUp: Bool = true, theme: VisualTheme = .gameNight) {
         self.card = card
@@ -52,6 +53,11 @@ final class CardNode: SKNode {
         inner.strokeColor = UIColor.white.withAlphaComponent(0.42)
         inner.lineWidth = 0.8
         addChild(inner)
+
+        if card.isPrintedJoker {
+            addTraditionalJokerFace(rect: rect)
+            return
+        }
 
         let color = suitColor()
         let (rank, suit) = glyphs()
@@ -97,11 +103,11 @@ final class CardNode: SKNode {
         brContainer.addChild(brSuit)
         addChild(brContainer)
 
-        // Center glyph: big suit (or a star for the joker).
+        // Center glyph: large suit for quick recognition.
         let center = SKLabelNode(text: centerGlyph())
         center.fontName = theme.titleFont
-        center.fontSize = card.isPrintedJoker ? 36 : 31
-        center.fontColor = card.isPrintedJoker ? theme.jokerAccent : color
+        center.fontSize = 31
+        center.fontColor = color
         center.horizontalAlignmentMode = .center
         center.verticalAlignmentMode = .center
         center.position = CGPoint(x: 0, y: 0)
@@ -113,13 +119,193 @@ final class CardNode: SKNode {
             addAccentBand(rect: rect, color: theme.jokerAccent)
             addBadge(text: "W", color: theme.jokerAccent, at:
                      CGPoint(x: rect.maxX - 10, y: rect.maxY - 10))
-        } else if card.isPrintedJoker {
-            addAccentBand(rect: rect, color: theme.jokerAccent)
         } else if card.isDead2 {
             addAccentBand(rect: rect, color: UIColor(white: 0.45, alpha: 1))
             addBadge(text: "†", color: UIColor(white: 0.38, alpha: 1), at:
                      CGPoint(x: rect.maxX - 10, y: rect.maxY - 10))
         }
+    }
+
+    private func addTraditionalJokerFace(rect: CGRect) {
+        let ink = theme.blackSuit
+        let red = theme.redSuit
+
+        addJokerCornerLabel(
+            at: CGPoint(x: rect.minX + 5, y: rect.maxY - 6),
+            rotation: 0,
+            color: red
+        )
+        addJokerCornerLabel(
+            at: CGPoint(x: rect.maxX - 5, y: rect.minY + 6),
+            rotation: .pi,
+            color: red
+        )
+
+        let jester = SKNode()
+        jester.name = "joker-jester"
+        jester.position = CGPoint(x: 0, y: 4)
+        addChild(jester)
+
+        addJesterCapLobe(
+            points: [
+                CGPoint(x: -8, y: 10),
+                CGPoint(x: -20, y: 25),
+                CGPoint(x: -13, y: 7),
+            ],
+            color: red,
+            to: jester
+        )
+        addJesterCapLobe(
+            points: [
+                CGPoint(x: -8, y: 10),
+                CGPoint(x: 0, y: 29),
+                CGPoint(x: 8, y: 10),
+            ],
+            color: ink,
+            to: jester
+        )
+        addJesterCapLobe(
+            points: [
+                CGPoint(x: 8, y: 10),
+                CGPoint(x: 20, y: 25),
+                CGPoint(x: 13, y: 7),
+            ],
+            color: red,
+            to: jester
+        )
+
+        for point in [
+            CGPoint(x: -20, y: 25),
+            CGPoint(x: 0, y: 29),
+            CGPoint(x: 20, y: 25),
+        ] {
+            let bell = SKShapeNode(circleOfRadius: 2.5)
+            bell.fillColor = theme.jokerAccent
+            bell.strokeColor = ink
+            bell.lineWidth = 0.7
+            bell.position = point
+            jester.addChild(bell)
+        }
+
+        let face = SKShapeNode(
+            rectOf: CGSize(width: 19, height: 23),
+            cornerRadius: 9
+        )
+        face.fillColor = theme.cardFace
+        face.strokeColor = ink
+        face.lineWidth = 1.2
+        face.position = CGPoint(x: 0, y: 0)
+        jester.addChild(face)
+
+        let capBand = SKShapeNode(
+            rectOf: CGSize(width: 23, height: 5),
+            cornerRadius: 2
+        )
+        capBand.fillColor = red
+        capBand.strokeColor = ink
+        capBand.lineWidth = 0.9
+        capBand.position = CGPoint(x: 0, y: 10)
+        jester.addChild(capBand)
+
+        for x in [CGFloat(-4), CGFloat(4)] {
+            let eye = SKShapeNode(circleOfRadius: 1.15)
+            eye.fillColor = ink
+            eye.strokeColor = .clear
+            eye.position = CGPoint(x: x, y: 2)
+            jester.addChild(eye)
+        }
+
+        let smilePath = CGMutablePath()
+        smilePath.move(to: CGPoint(x: -4.5, y: -3))
+        smilePath.addQuadCurve(
+            to: CGPoint(x: 4.5, y: -3),
+            control: CGPoint(x: 0, y: -7)
+        )
+        let smile = SKShapeNode(path: smilePath)
+        smile.strokeColor = red
+        smile.lineWidth = 1.4
+        smile.lineCap = .round
+        jester.addChild(smile)
+
+        addJesterCollar(
+            points: [
+                CGPoint(x: -10, y: -10),
+                CGPoint(x: 0, y: -23),
+                CGPoint(x: 1, y: -10),
+            ],
+            color: red,
+            to: jester
+        )
+        addJesterCollar(
+            points: [
+                CGPoint(x: -1, y: -10),
+                CGPoint(x: 0, y: -23),
+                CGPoint(x: 10, y: -10),
+            ],
+            color: ink,
+            to: jester
+        )
+
+        let wordmark = SKLabelNode(text: "JOKER")
+        wordmark.name = "joker-wordmark"
+        wordmark.fontName = theme.titleFont
+        wordmark.fontSize = 10
+        wordmark.fontColor = ink
+        wordmark.horizontalAlignmentMode = .center
+        wordmark.verticalAlignmentMode = .center
+        wordmark.position = CGPoint(x: 0, y: -34)
+        addChild(wordmark)
+    }
+
+    private func addJokerCornerLabel(
+        at position: CGPoint,
+        rotation: CGFloat,
+        color: UIColor
+    ) {
+        let label = SKLabelNode(text: "JOKER")
+        label.fontName = theme.titleFont
+        label.fontSize = 6.5
+        label.fontColor = color
+        label.horizontalAlignmentMode = .left
+        label.verticalAlignmentMode = .top
+        label.position = position
+        label.zRotation = rotation
+        addChild(label)
+    }
+
+    private func addJesterCapLobe(
+        points: [CGPoint],
+        color: UIColor,
+        to parent: SKNode
+    ) {
+        let lobe = SKShapeNode(path: Self.closedPath(points))
+        lobe.fillColor = color
+        lobe.strokeColor = theme.blackSuit
+        lobe.lineWidth = 0.9
+        parent.addChild(lobe)
+    }
+
+    private func addJesterCollar(
+        points: [CGPoint],
+        color: UIColor,
+        to parent: SKNode
+    ) {
+        let collar = SKShapeNode(path: Self.closedPath(points))
+        collar.fillColor = color
+        collar.strokeColor = theme.blackSuit
+        collar.lineWidth = 0.8
+        parent.addChild(collar)
+    }
+
+    private static func closedPath(_ points: [CGPoint]) -> CGPath {
+        let path = CGMutablePath()
+        guard let first = points.first else { return path }
+        path.move(to: first)
+        for point in points.dropFirst() {
+            path.addLine(to: point)
+        }
+        path.closeSubpath()
+        return path
     }
 
     private func addAccentBand(rect: CGRect, color: UIColor) {
@@ -238,6 +424,54 @@ final class CardNode: SKNode {
         pill.addChild(label)
     }
 
+    func setNewCardHighlighted(_ highlighted: Bool) {
+        newCardHighlight?.removeFromParent()
+        newCardHighlight = nil
+        guard highlighted else { return }
+
+        let container = SKNode()
+        container.name = "new-card-highlight"
+        container.zPosition = 8
+
+        let rect = CGRect(
+            origin: CGPoint(x: -Self.size.width / 2, y: -Self.size.height / 2),
+            size: Self.size
+        )
+        let border = SKShapeNode(rect: rect, cornerRadius: 11)
+        border.fillColor = .clear
+        border.strokeColor = theme.turnGlow
+        border.lineWidth = 3.5
+        border.glowWidth = 6
+        container.addChild(border)
+
+        let badge = SKShapeNode(
+            rectOf: CGSize(width: 27, height: 14),
+            cornerRadius: 7
+        )
+        badge.fillColor = theme.turnGlow
+        badge.strokeColor = UIColor.white.withAlphaComponent(0.65)
+        badge.lineWidth = 0.8
+        badge.position = CGPoint(x: -16, y: -39)
+        container.addChild(badge)
+
+        let label = SKLabelNode(text: "NEW")
+        label.fontName = theme.titleFont
+        label.fontSize = 7
+        label.fontColor = theme.blackSuit
+        label.horizontalAlignmentMode = .center
+        label.verticalAlignmentMode = .center
+        label.position = CGPoint(x: 0, y: -0.5)
+        badge.addChild(label)
+
+        let pulse = SKAction.sequence([
+            .fadeAlpha(to: 0.68, duration: 0.75),
+            .fadeAlpha(to: 1.0, duration: 0.75),
+        ])
+        container.run(.repeatForever(pulse))
+        addChild(container)
+        newCardHighlight = container
+    }
+
     func setDropTargetHighlighted(_ highlighted: Bool) {
         faceBorder?.strokeColor = highlighted ? theme.turnGlow : theme.cardStroke
         faceBorder?.lineWidth = highlighted ? 4 : 1.4
@@ -246,7 +480,7 @@ final class CardNode: SKNode {
 
     // MARK: - Static shims kept for existing call sites (unused after refactor)
     static func shortName(_ card: Card) -> String {
-        if card.isPrintedJoker { return "★" }
+        if card.isPrintedJoker { return "JOKER" }
         guard let rank = card.rank, let suit = card.suit else { return "?" }
         return shortName(rank: rank, suit: suit)
     }

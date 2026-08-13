@@ -49,13 +49,17 @@ struct GameContainerView: View {
         }
         .statusBarHidden(true)
         .sheet(isPresented: $vm.isBetweenTurns) {
-            PassAndPlayView(nextPlayerName: vm.currentPlayerName) {
+            PassAndPlayView(nextPlayerName: vm.privacyPlayerName) {
                 vm.acknowledgeTurnPassed()
             }
             .interactiveDismissDisabled(true)
         }
         .overlay {
-            if vm.isHandOver {
+            if let choice = vm.pendingSequenceEndChoice {
+                sequenceEndChoiceOverlay(choice)
+            } else if vm.isBuyDecisionActive {
+                buyDecisionOverlay
+            } else if vm.isHandOver {
                 handOverOverlay
             } else if vm.isGameOver {
                 gameOverOverlay
@@ -63,7 +67,144 @@ struct GameContainerView: View {
         }
     }
 
+    private func sequenceEndChoiceOverlay(
+        _ choice: GameViewModel.PendingSequenceEndChoice
+    ) -> some View {
+        ZStack {
+            Color.black.opacity(0.48)
+                .ignoresSafeArea()
+                .contentShape(Rectangle())
+
+            VStack(spacing: 14) {
+                Text("Choose Sequence End")
+                    .font(.system(.title2, design: .rounded, weight: .bold))
+                Text(
+                    "\(CardNode.shortName(choice.card)) works on either end. Choose the natural position it should represent."
+                )
+                .font(.system(.footnote, design: .rounded))
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+
+                HStack(spacing: 12) {
+                    Button(sequenceEndLabel(
+                        title: "Low End",
+                        representation: choice.startRepresentation
+                    )) {
+                        vm.chooseSequenceEnd(.start)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .accessibilityIdentifier("sequence-low-end")
+
+                    Button(sequenceEndLabel(
+                        title: "High End",
+                        representation: choice.endRepresentation
+                    )) {
+                        vm.chooseSequenceEnd(.end)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .accessibilityIdentifier("sequence-high-end")
+                }
+
+                Button("Cancel") {
+                    vm.cancelSequenceEndChoice()
+                }
+                .buttonStyle(.bordered)
+                .accessibilityIdentifier("cancel-sequence-end")
+            }
+            .padding(22)
+            .frame(maxWidth: 460)
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 22))
+            .padding(28)
+        }
+        .accessibilityIdentifier("sequence-end-overlay")
+        .accessibilityAddTraits(.isModal)
+    }
+
+    private func sequenceEndLabel(
+        title: String,
+        representation: MeldValidator.WildRepresentation?
+    ) -> String {
+        guard let representation else { return title }
+        let cardName = CardNode.shortName(
+            rank: representation.rank,
+            suit: representation.suit
+        )
+        return "\(title) • \(cardName)"
+    }
+
     // MARK: - Hand / game over overlays
+
+    private var buyDecisionOverlay: some View {
+        ZStack {
+            Color.black.opacity(0.48)
+                .ignoresSafeArea()
+                .contentShape(Rectangle())
+
+            VStack(spacing: 14) {
+                Text("Purchase Round")
+                    .font(.system(.title2, design: .rounded, weight: .bold))
+
+                if vm.isLocalBuyDecision {
+                    localBuyDecision
+                } else {
+                    ProgressView()
+                        .controlSize(.large)
+                    Text("Waiting for \(vm.buyDecisionPlayerName ?? "another player")")
+                        .font(.system(.headline, design: .rounded))
+                    Text(
+                        vm.isTurnPlayersFirstRefusal
+                            ? "The current player is deciding whether to take the discard."
+                            : "The discard is moving clockwise. This offer automatically passes after \(RulesConfig.buyOfferTimeoutSeconds) seconds."
+                    )
+                    .font(.system(.footnote, design: .rounded))
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                }
+            }
+            .padding(22)
+            .frame(maxWidth: 460)
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 22))
+            .padding(28)
+        }
+        .accessibilityIdentifier("buy-decision-overlay")
+        .accessibilityAddTraits(.isModal)
+    }
+
+    @ViewBuilder
+    private var localBuyDecision: some View {
+        let discardName = vm.state.discard.last.map(CardNode.shortName) ?? "discard"
+        if vm.isTurnPlayersFirstRefusal {
+            Text("Do you want \(discardName)?")
+                .font(.system(.headline, design: .rounded))
+            Text("Take it for your turn, or pass it clockwise. If nobody buys it, you automatically draw from the stock.")
+                .font(.system(.footnote, design: .rounded))
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+        } else {
+            Text("Buy \(discardName)?")
+                .font(.system(.headline, design: .rounded))
+            Text("You receive the discard and the top stock card. \(vm.currentPlayerName) then draws the next stock card. Auto-pass occurs after \(RulesConfig.buyOfferTimeoutSeconds) seconds.")
+                .font(.system(.footnote, design: .rounded))
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+        }
+
+        HStack(spacing: 12) {
+            Button(vm.isTurnPlayersFirstRefusal ? "Take Discard" : "Buy + Draw 1") {
+                vm.acceptBuyOffer()
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(!vm.canAcceptBuyOffer || vm.isSubmittingOnlineAction)
+            .accessibilityIdentifier("accept-buy-offer")
+
+            Button(vm.isTurnPlayersFirstRefusal ? "Pass Clockwise" : "Pass") {
+                vm.passBuyOffer()
+            }
+            .buttonStyle(.bordered)
+            .disabled(!vm.canPassBuyOffer || vm.isSubmittingOnlineAction)
+            .accessibilityIdentifier("pass-buy-offer")
+        }
+    }
 
     private var handOverOverlay: some View {
         VStack(spacing: 14) {

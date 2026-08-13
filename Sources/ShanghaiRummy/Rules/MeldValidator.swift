@@ -19,6 +19,7 @@ public enum MeldValidator {
         case tooFewCards(min: Int, got: Int)
         case tooManyWilds(max: Int, got: Int)
         case tripletMixedRanks
+        case tripletDuplicateSuits
         case sequenceMixedSuits
         case sequenceNotConsecutive
         case sequenceOutOfRange   // e.g. K-A-2 wrap or start < ace
@@ -30,6 +31,7 @@ public enum MeldValidator {
             case .tooFewCards(let min, let got): return "Meld needs \(min) cards, got \(got)"
             case .tooManyWilds(let max, let got): return "Meld allows at most \(max) wild cards, got \(got)"
             case .tripletMixedRanks: return "Triplet cards must all be the same rank"
+            case .tripletDuplicateSuits: return "Natural cards in a triplet must have different suits"
             case .sequenceMixedSuits: return "Sequence cards must all be the same suit"
             case .sequenceNotConsecutive: return "Sequence cards must be consecutive"
             case .sequenceOutOfRange: return "Sequence goes out of bounds (Ace does not wrap)"
@@ -38,7 +40,7 @@ public enum MeldValidator {
         }
     }
 
-    /// Validate a proposed triplet — cards must be the same rank (with wild substitutes).
+    /// Validate a proposed triplet — natural cards must share a rank and use unique suits.
     public static func validateTriplet(_ cards: [Card]) -> Result<Void, ValidationError> {
         guard !cards.isEmpty else { return .failure(.emptyMeld) }
         guard cards.count >= RulesConfig.minTripletSize else {
@@ -54,6 +56,10 @@ public enum MeldValidator {
         }
         guard naturalRanks.allSatisfy({ $0 == first }) else {
             return .failure(.tripletMixedRanks)
+        }
+        let naturalSuits = cards.compactMap { $0.isWild ? nil : $0.suit }
+        guard Set(naturalSuits).count == naturalSuits.count else {
+            return .failure(.tripletDuplicateSuits)
         }
         return .success(())
     }
@@ -139,15 +145,25 @@ public enum MeldValidator {
 
     /// Convenience: try both meld kinds, return whichever succeeds (triplet first).
     public static func validate(_ cards: [Card]) -> Result<Meld.Kind, ValidationError> {
-        if case .success = validateTriplet(cards) { return .success(.triplet) }
-        return validateSequence(cards).map { .sequence }
+        let tripletResult = validateTriplet(cards)
+        if case .success = tripletResult { return .success(.triplet) }
+
+        let sequenceResult = validateSequence(cards)
+        if case .success = sequenceResult { return .success(.sequence) }
+
+        if case .failure(let tripletError) = tripletResult,
+           (cards.count < RulesConfig.minSequenceSize
+                || tripletError == .tripletDuplicateSuits) {
+            return .failure(tripletError)
+        }
+        return sequenceResult.map { .sequence }
     }
 
     // MARK: - Extensions to existing melds
 
     /// Validate adding `cards` to an already-laid `meld`.
-    /// For triplets: added cards must match the triplet's rank (or be wild), and
-    /// the resulting wild count must not exceed the new size's floor(size/2) limit.
+    /// For triplets: added natural cards must match the rank and use an unused
+    /// suit; wild count must remain within the new size's floor(size/2) limit.
     /// For sequences: cards can be added to either or both ends, keeping the run
     /// contiguous in the same suit, with the wild limit respected.
     ///

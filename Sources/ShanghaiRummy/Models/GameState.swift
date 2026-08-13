@@ -24,9 +24,15 @@ public struct GameState: Codable, Sendable, Equatable {
     /// multiple when they finish level 10 in the same hand and tie on
     /// cumulative score.
     public var gameWinnerIds: [UUID]
-    /// Out-of-turn players who announced "Buy" before the turn player draws.
-    /// Resolution uses table order, not request arrival order.
+    /// Legacy simultaneous-buy state retained only so older snapshots decode.
+    /// New games use `buyDecisionPlayerId` for sequential clockwise offers.
     public var buyRequestPlayerIds: [UUID]
+    /// Player currently deciding whether to take or pass the top discard.
+    /// The turn player decides first; eligible buyers then decide clockwise.
+    public var buyDecisionPlayerId: UUID?
+    /// Cards visually marked as newly added, tracked separately for each
+    /// private hand so purchase cards survive until that buyer's next turn.
+    public var highlightedCardIdsByPlayer: [UUID: [UUID]]
 
     private enum CodingKeys: String, CodingKey {
         case players
@@ -41,6 +47,8 @@ public struct GameState: Codable, Sendable, Equatable {
         case randomSeed
         case gameWinnerIds
         case buyRequestPlayerIds
+        case buyDecisionPlayerId
+        case highlightedCardIdsByPlayer
     }
 
     public enum Phase: String, Codable, Sendable {
@@ -60,18 +68,75 @@ public struct GameState: Codable, Sendable, Equatable {
         guard let p = players.first(where: { $0.id == id }) else { return nil }
         return RoundSchedule.contract(forRound: p.currentLevel)
     }
-    public var prioritizedBuyRequesterId: UUID? {
-        guard players.count > 1 else { return nil }
-        let requested = Set(buyRequestPlayerIds)
+    public var activePlayerId: UUID {
+        if phase == .awaitingDraw, let buyDecisionPlayerId {
+            return buyDecisionPlayerId
+        }
+        return currentPlayerId
+    }
+    public var buyDecisionPlayer: Player? {
+        guard let buyDecisionPlayerId else { return nil }
+        return players.first(where: { $0.id == buyDecisionPlayerId })
+    }
+    public func isEligibleBuyer(_ player: Player) -> Bool {
+        stock.count > RulesConfig.penaltyCardsOnBuy
+            && player.id != currentPlayerId
+            && !player.hasGoneDownThisRound
+            && player.buysUsedThisRound < RulesConfig.maxBuysPerRound
+    }
+    public func nextEligibleBuyer(after playerId: UUID) -> UUID? {
+        guard players.count > 1,
+              let startIndex = players.firstIndex(where: {
+                  $0.id == playerId
+              }) else {
+            return nil
+        }
+
         for offset in 1..<players.count {
-            let index = (currentTurnIndex + offset) % players.count
+            let index = (startIndex + offset) % players.count
+            if index == currentTurnIndex {
+                return nil
+            }
             let player = players[index]
-            if requested.contains(player.id),
-               player.buysUsedThisRound < RulesConfig.maxBuysPerRound {
+            if isEligibleBuyer(player) {
                 return player.id
             }
         }
         return nil
+    }
+
+    public func highlightedCardIds(for playerId: UUID) -> Set<UUID> {
+        Set(highlightedCardIdsByPlayer[playerId] ?? [])
+    }
+
+    mutating func replaceHighlightedCards(
+        for playerId: UUID,
+        with cards: [Card]
+    ) {
+        highlightedCardIdsByPlayer[playerId] = cards.map(\.id)
+    }
+
+    mutating func appendHighlightedCards(
+        for playerId: UUID,
+        cards: [Card]
+    ) {
+        var ids = highlightedCardIdsByPlayer[playerId] ?? []
+        let existing = Set(ids)
+        ids.append(contentsOf: cards.map(\.id).filter { !existing.contains($0) })
+        highlightedCardIdsByPlayer[playerId] = ids
+    }
+
+    mutating func removeHighlightedCards(
+        for playerId: UUID,
+        cardIds: Set<UUID>
+    ) {
+        guard let ids = highlightedCardIdsByPlayer[playerId] else { return }
+        let remaining = ids.filter { !cardIds.contains($0) }
+        if remaining.isEmpty {
+            highlightedCardIdsByPlayer.removeValue(forKey: playerId)
+        } else {
+            highlightedCardIdsByPlayer[playerId] = remaining
+        }
     }
 
     public init(
@@ -86,7 +151,9 @@ public struct GameState: Codable, Sendable, Equatable {
         stockReshufflesUsed: Int,
         randomSeed: UInt64,
         gameWinnerIds: [UUID] = [],
-        buyRequestPlayerIds: [UUID] = []
+        buyRequestPlayerIds: [UUID] = [],
+        buyDecisionPlayerId: UUID? = nil,
+        highlightedCardIdsByPlayer: [UUID: [UUID]] = [:]
     ) {
         self.players = players
         self.currentRound = currentRound
@@ -100,6 +167,13 @@ public struct GameState: Codable, Sendable, Equatable {
         self.randomSeed = randomSeed
         self.gameWinnerIds = gameWinnerIds
         self.buyRequestPlayerIds = buyRequestPlayerIds
+        self.buyDecisionPlayerId = buyDecisionPlayerId
+            ?? Self.initialBuyDecisionPlayerId(
+                players: players,
+                currentTurnIndex: currentTurnIndex,
+                phase: phase
+            )
+        self.highlightedCardIdsByPlayer = highlightedCardIdsByPlayer
     }
 
     public init(from decoder: Decoder) throws {
@@ -125,5 +199,29 @@ public struct GameState: Codable, Sendable, Equatable {
             [UUID].self,
             forKey: .buyRequestPlayerIds
         ) ?? []
+        buyDecisionPlayerId = try container.decodeIfPresent(
+            UUID.self,
+            forKey: .buyDecisionPlayerId
+        ) ?? Self.initialBuyDecisionPlayerId(
+            players: players,
+            currentTurnIndex: currentTurnIndex,
+            phase: phase
+        )
+        highlightedCardIdsByPlayer = try container.decodeIfPresent(
+            [UUID: [UUID]].self,
+            forKey: .highlightedCardIdsByPlayer
+        ) ?? [:]
+    }
+
+    private static func initialBuyDecisionPlayerId(
+        players: [Player],
+        currentTurnIndex: Int,
+        phase: Phase
+    ) -> UUID? {
+        guard phase == .awaitingDraw,
+              players.indices.contains(currentTurnIndex) else {
+            return nil
+        }
+        return players[currentTurnIndex].id
     }
 }

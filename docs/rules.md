@@ -8,10 +8,10 @@
 
 ## Terminology
 
-- **Triplet** — 3 or more cards of the same rank, any suits. The minimum size
-  to satisfy a contract is 3; once a triplet is on the table, it can be
-  extended by any player (once they've gone down) with additional cards of
-  the same rank.
+- **Triplet** — 3 or more cards of the same rank with no repeated natural
+  suits. The minimum size to satisfy a contract is 3; once a triplet is on the
+  table, it can be extended by any player (once they've gone down) with a
+  same-rank card whose natural suit is not already present, or with a wild.
 - **Sequence** — 4 or more consecutive cards of the same suit. The minimum
   size to satisfy a contract is 4; once on the table, it can be extended at
   either end.
@@ -44,15 +44,15 @@ same time.
 
 | Level | Contract                          | Cards needed |
 |-------|-----------------------------------|--------------|
-| 1     | 2 triplets of 3                   | 6            |
-| 2     | 1 triplet of 3 + 1 sequence of 4  | 7            |
+| 1     | 2 triplets                        | 6            |
+| 2     | 1 triplet + 1 sequence of 4       | 7            |
 | 3     | 2 sequences of 4                  | 8            |
-| 4     | 3 triplets of 3                   | 9            |
-| 5     | 1 triplet of 3 + 1 sequence of 7  | 10           |
-| 6     | 2 triplets of 3 + 1 sequence of 5 | 11           |
+| 4     | 3 triplets                        | 9            |
+| 5     | 1 triplet + 1 sequence of 7       | 10           |
+| 6     | 2 triplets + 1 sequence of 5      | 11           |
 | 7     | 3 sequences of 4                  | 12           |
-| 8     | 1 triplet of 3 + 1 sequence of 10 | 13           |
-| 9     | 3 triplets of 3 + 1 sequence of 5 | 14           |
+| 8     | 1 triplet + 1 sequence of 10      | 13           |
+| 9     | 3 triplets + 1 sequence of 5      | 14           |
 | 10    | 3 sequences of 5                  | 15           |
 
 Later levels start with a hand smaller than the contract requires — you draw
@@ -70,7 +70,10 @@ and/or buy your way up before you can go down.
 
 ## A turn (in order)
 
-1. **Draw:** Take the top of the **stock** *or* the top of the **discard pile**.
+1. **Resolve the purchase round:** Choose the top **discard** or pass it
+   clockwise. If you pass, other eligible players are offered the discard one
+   at a time. You automatically draw from the **stock** when the purchase round
+   ends without you taking the discard.
 2. **Meld** (only if you've already gone down this round):
    - Lay additional cards on any meld already on the table (yours or opponents').
 3. **Discard:** Place one card face-up on the discard pile. Your turn ends.
@@ -82,23 +85,26 @@ final round in this variant.
 
 ### Triplet (3+ cards, same rank)
 - **Contract size:** exactly 3 at the moment you go down.
-- **After laid down:** can be extended by adding more same-rank cards.
-- Any suits, any repetition of suits (2 decks means you can have 2×♠7 in the
-  same triplet).
-- Example: ♠7 ♥7 ♦7 (legal) • ♠7 ♠7 ♥7 (legal, from 2 decks).
+- **After laid down:** can be extended with an unused natural suit or a wild.
+- Natural cards must all have different suits, even when a wild completes the
+  triplet. A wild card's printed suit does not consume a suit.
+- Example: ♠7 ♥7 ♦7 (legal) • ♠7 ♠7 ♥7 (illegal).
 
 ### Sequence (4+ cards, same suit, consecutive)
 - **Contract size:** the exact size specified by the round's contract (e.g.,
   a "sequence of 7" must be exactly 7 cards long when laid down).
 - **After laid down:** can be extended at either end.
+- When a wild can legally extend both ends, the player chooses the low or high
+  end. If only one end is legal, placement is automatic.
 - Aces are **either low (A-2-3-4) or high (J-Q-K-A)**.
 - **No wrap-around** — K-A-2 is illegal.
 - Example: ♣5 ♣6 ♣7 ♣8 (legal) • ♥Q ♥K ♥A (illegal, only 3 cards; a sequence needs 4).
 
 ### Wild card rules
-- Jokers and 2s are wild — they can substitute for any card.
+- Jokers and 2s are wild — they can substitute for any card. In a triplet,
+  natural cards must still have different suits.
 - **Maximum wilds per meld = floor(meld size / 2).**
-  - Triplet of 3 → max **1** wild
+  - Triplet (3 cards) → max **1** wild
   - Triplet/sequence of 4 → max **2** wilds
   - Triplet/sequence of 5 → max **2** wilds
   - Sequence of 6 → max **3** wilds
@@ -160,16 +166,24 @@ permanently**, no matter who eventually picks it up.
 
 ## Buying the discard
 
-When it's **not your turn**, you may claim the top of the discard pile:
+Before each turn's draw, play pauses for a sequential **purchase round**:
 
-- Announce **"buy"** before the next player draws.
-- You receive the discarded card **plus one penalty card from the stock**.
-- Both cards go into your hand (no immediate meld).
+- The turn player has **first refusal** and must explicitly take the discard or
+  pass it clockwise. Taking it is their normal draw and does not count as a buy.
+- After a pass, the discard is offered to each eligible non-turn player, one at
+  a time in clockwise order.
+- A non-turn offer automatically passes after **20 seconds**. The turn player's
+  first-refusal decision has no timeout.
+- Players who have already gone down this round are skipped and cannot buy.
+  Players who have used all 3 buys are also skipped.
+- A buyer receives the discard **plus the current top stock card**. Both go
+  into the buyer's hand, their buy count increases, and they cannot meld
+  immediately.
+- After a buy, the turn player automatically receives the **next** stock card
+  and continues their turn.
+- If every eligible buyer passes, the turn player automatically receives the
+  current top stock card.
 - **Limit: 3 buys per player per round.**
-- **First right of refusal:** the player whose turn it is to draw always has
-  priority — if they want the discard, they take it and no buy occurs.
-- If multiple non-turn players want to buy simultaneously, priority goes to
-  the player nearest to the current turn player (going clockwise).
 
 ## Going out
 

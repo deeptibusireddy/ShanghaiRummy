@@ -9,6 +9,17 @@ import Combine
 /// authoritative Game Center host and publishes the returned snapshots.
 @MainActor
 public final class GameViewModel: ObservableObject {
+    public enum SequenceEnd: Equatable {
+        case start
+        case end
+    }
+
+    public struct PendingSequenceEndChoice: Equatable {
+        let card: Card
+        let meldId: UUID
+        let startRepresentation: MeldValidator.WildRepresentation?
+        let endRepresentation: MeldValidator.WildRepresentation?
+    }
 
     // MARK: - Published state
 
@@ -28,6 +39,8 @@ public final class GameViewModel: ObservableObject {
     /// hot-seat / GameKit modes.
     @Published public var cpuPlayerIds: Set<UUID> = []
     @Published public private(set) var isSubmittingOnlineAction = false
+    @Published public private(set) var pendingSequenceEndChoice:
+        PendingSequenceEndChoice? = nil
 
     /// Non-nil in online mode. The local hand remains at the bottom even while
     /// another participant owns the turn.
@@ -36,12 +49,14 @@ public final class GameViewModel: ObservableObject {
     /// Re-entrancy guard for the CPU auto-play loop (see `dispatch`).
     private var isRunningCPUTurns: Bool = false
     private var onlineActionSubmitter: ((TurnEngine.Action) -> Bool)?
+    private var localBuyOfferTimeoutTask: Task<Void, Never>?
 
     // MARK: - Init
 
     public init(state: GameState, localPlayerId: UUID? = nil) {
         self.state = state
         self.localPlayerId = localPlayerId
+        scheduleLocalBuyOfferTimeout()
     }
 
     /// Convenience factory: build a fresh match from names.
@@ -56,7 +71,8 @@ public final class GameViewModel: ObservableObject {
     public var currentPlayer: Player {
         guard let localPlayerId,
               let local = state.players.first(where: { $0.id == localPlayerId }) else {
-            return turnPlayer
+            return state.players.first(where: { $0.id == state.activePlayerId })
+                ?? turnPlayer
         }
         return local
     }
@@ -64,7 +80,9 @@ public final class GameViewModel: ObservableObject {
     public var displayedPlayerIndex: Int {
         guard let localPlayerId,
               let index = state.players.firstIndex(where: { $0.id == localPlayerId }) else {
-            return state.currentTurnIndex
+            return state.players.firstIndex(where: {
+                $0.id == state.activePlayerId
+            }) ?? state.currentTurnIndex
         }
         return index
     }
@@ -76,25 +94,39 @@ public final class GameViewModel: ObservableObject {
         state.contract(forPlayer: currentPlayer.id)?.displayName ?? "—"
     }
     public var canDrawFromDiscard: Bool {
-        isLocalPlayersTurn && state.phase == .awaitingDraw && !state.discard.isEmpty
+        isLocalBuyDecision
+            && isTurnPlayersFirstRefusal
+            && !state.discard.isEmpty
     }
     public var canDrawFromStock: Bool {
-        isLocalPlayersTurn && state.phase == .awaitingDraw && !state.stock.isEmpty
+        isLocalBuyDecision
+            && isTurnPlayersFirstRefusal
+            && !state.stock.isEmpty
     }
-    public var hasRequestedBuy: Bool {
-        state.buyRequestPlayerIds.contains(currentPlayer.id)
+    public var isBuyDecisionActive: Bool {
+        state.phase == .awaitingDraw && state.buyDecisionPlayerId != nil
     }
-    public var canRequestBuy: Bool {
-        isOnlineGame
-            && !isLocalPlayersTurn
-            && state.phase == .awaitingDraw
-            && !state.discard.isEmpty
-            && currentPlayer.buysUsedThisRound < RulesConfig.maxBuysPerRound
-            && !hasRequestedBuy
+    public var isLocalBuyDecision: Bool {
+        isBuyDecisionActive
+            && state.buyDecisionPlayerId == currentPlayer.id
+            && !cpuPlayerIds.contains(currentPlayer.id)
     }
-    public var prioritizedBuyRequesterName: String? {
-        guard let id = state.prioritizedBuyRequesterId else { return nil }
-        return state.players.first(where: { $0.id == id })?.name
+    public var isTurnPlayersFirstRefusal: Bool {
+        state.buyDecisionPlayerId == state.currentPlayerId
+    }
+    public var buyDecisionPlayerName: String? {
+        state.buyDecisionPlayer?.name
+    }
+    public var canAcceptBuyOffer: Bool {
+        guard isLocalBuyDecision, !state.discard.isEmpty else { return false }
+        return isTurnPlayersFirstRefusal
+            || state.isEligibleBuyer(currentPlayer)
+    }
+    public var canPassBuyOffer: Bool {
+        isLocalBuyDecision && !state.stock.isEmpty
+    }
+    public var privacyPlayerName: String {
+        currentPlayer.name
     }
     public var canAdvanceHand: Bool {
         state.phase == .roundEnded && isLocalPlayersTurn
@@ -125,28 +157,32 @@ public final class GameViewModel: ObservableObject {
     @discardableResult
     public func applyAuthoritative(_ action: TurnEngine.Action) -> Bool {
         let outgoingId = state.currentPlayerId
+        let outgoingActiveId = state.activePlayerId
         switch TurnEngine.apply(action, to: state) {
         case .success(let newState):
-            let didAdvanceTurn =
-                newState.currentTurnIndex != state.currentTurnIndex
-                && newState.phase == .awaitingDraw
+            let didAdvanceTurn = newState.currentTurnIndex != state.currentTurnIndex
+            let incomingActiveId = newState.activePlayerId
+            let didHandOff = outgoingActiveId != incomingActiveId
             state = newState
             lastError = nil
             if didAdvanceTurn {
-                let incomingId = newState.currentPlayerId
                 let outgoingIsCPU = cpuPlayerIds.contains(outgoingId)
-                let incomingIsCPU = cpuPlayerIds.contains(incomingId)
-                // Only show the pass-and-play interstitial when handing off
-                // between two humans. Bot ↔ human and bot ↔ bot skip it.
-                isBetweenTurns = !isOnlineGame
-                    && !(outgoingIsCPU || incomingIsCPU)
                 stagedCardIds.removeAll()
                 contractDraft.removeAll()
-                // Auto-pump the CPU's turn(s) so the UI never has to wait on
-                // a bot. Re-entrancy guard prevents recursion from the loop.
-                if incomingIsCPU && !isRunningCPUTurns {
-                    runAllCPUTurns()
+                if outgoingIsCPU {
+                    isBetweenTurns = false
                 }
+            }
+            let incomingIsCPU = cpuPlayerIds.contains(incomingActiveId)
+            let outgoingActiveIsCPU = cpuPlayerIds.contains(outgoingActiveId)
+            if didHandOff {
+                isBetweenTurns = !isOnlineGame
+                    && !(outgoingActiveIsCPU || incomingIsCPU)
+            }
+            scheduleLocalBuyOfferTimeout()
+            // Auto-pump CPU turns and CPU buy decisions.
+            if incomingIsCPU && !isRunningCPUTurns {
+                runAllCPUTurns()
             }
             return true
         case .failure(let err):
@@ -158,6 +194,8 @@ public final class GameViewModel: ObservableObject {
     public func configureOnlineActionSubmitter(
         _ submitter: @escaping (TurnEngine.Action) -> Bool
     ) {
+        localBuyOfferTimeoutTask?.cancel()
+        localBuyOfferTimeoutTask = nil
         onlineActionSubmitter = submitter
     }
 
@@ -167,18 +205,22 @@ public final class GameViewModel: ObservableObject {
     ) {
         state = newState
         lastError = nil
+        pendingSequenceEndChoice = nil
         if completesPendingAction {
             isSubmittingOnlineAction = false
         }
         isBetweenTurns = false
+        scheduleLocalBuyOfferTimeout()
         reconcileDraftWithAuthoritativeHand()
     }
 
     public func rejectOnlineAction(message: String, state newState: GameState) {
         state = newState
         lastError = message
+        pendingSequenceEndChoice = nil
         isSubmittingOnlineAction = false
         isBetweenTurns = false
+        scheduleLocalBuyOfferTimeout()
         reconcileDraftWithAuthoritativeHand()
     }
 
@@ -215,17 +257,51 @@ public final class GameViewModel: ObservableObject {
         dispatch(.redeemWild(playerId: currentPlayer.id, meldId: meldId,
                              wildCardId: wildCardId, replacementCard: replacementCard))
     }
-    public func requestBuy(as playerId: UUID) {
-        dispatch(.requestBuy(playerId: playerId))
+    public func acceptBuyOffer() {
+        guard isLocalBuyDecision else { return }
+        dispatch(.acceptBuyOffer(playerId: currentPlayer.id))
     }
-    public func cancelBuyRequest(as playerId: UUID) {
-        dispatch(.cancelBuyRequest(playerId: playerId))
+    public func passBuyOffer() {
+        guard isLocalBuyDecision else { return }
+        dispatch(.passBuyOffer(playerId: currentPlayer.id))
     }
-    public func toggleLocalBuyRequest() {
-        if hasRequestedBuy {
-            cancelBuyRequest(as: currentPlayer.id)
-        } else if canRequestBuy {
-            requestBuy(as: currentPlayer.id)
+
+    @discardableResult
+    func passTimedOutLocalBuyOffer(expectedPlayerId: UUID) -> Bool {
+        guard !isOnlineGame,
+              !isBetweenTurns,
+              state.phase == .awaitingDraw,
+              state.buyDecisionPlayerId == expectedPlayerId,
+              expectedPlayerId != state.currentPlayerId else {
+            return false
+        }
+        return applyAuthoritative(
+            .passBuyOffer(playerId: expectedPlayerId)
+        )
+    }
+
+    private func scheduleLocalBuyOfferTimeout() {
+        localBuyOfferTimeoutTask?.cancel()
+        localBuyOfferTimeoutTask = nil
+        guard !isOnlineGame,
+              !isBetweenTurns,
+              state.phase == .awaitingDraw,
+              let offeredPlayerId = state.buyDecisionPlayerId,
+              offeredPlayerId != state.currentPlayerId else {
+            return
+        }
+
+        localBuyOfferTimeoutTask = Task { @MainActor [weak self] in
+            do {
+                try await Task.sleep(
+                    for: .seconds(RulesConfig.buyOfferTimeoutSeconds)
+                )
+            } catch {
+                return
+            }
+            _ = self?.passTimedOutLocalBuyOffer(
+                expectedPlayerId: offeredPlayerId
+            )
         }
     }
 
@@ -246,7 +322,10 @@ public final class GameViewModel: ObservableObject {
     }
 
     /// The next player has acknowledged the pass-and-play prompt.
-    public func acknowledgeTurnPassed() { isBetweenTurns = false }
+    public func acknowledgeTurnPassed() {
+        isBetweenTurns = false
+        scheduleLocalBuyOfferTimeout()
+    }
 
     // MARK: - End-of-hand summary (M2e)
 
@@ -531,7 +610,10 @@ public final class GameViewModel: ObservableObject {
         let pretty = remaining.map { key -> String in
             let parts = key.split(separator: "-")
             let n = parts.last ?? "?"
-            return parts.first == "triplet" ? "triplet of \(n)" : "sequence of \(n)"
+            if parts.first == "triplet", n == "3" { return "triplet" }
+            return parts.first == "triplet"
+                ? "triplet of \(n)"
+                : "sequence of \(n)"
         }.joined(separator: " + ")
         return "Still need: \(pretty)"
     }
@@ -626,16 +708,83 @@ public final class GameViewModel: ObservableObject {
     public func layoffHandCard(_ card: Card, to meldId: UUID) -> Bool {
         guard let meld = state.melds.first(where: { $0.id == meldId }),
               canLayOff(card, to: meld) else { return false }
-        if isValid(meld.kind, cards: meld.cards + [card]) {
+        let canAddAtEnd = isValid(meld.kind, cards: meld.cards + [card])
+        let canAddAtStart = isValid(meld.kind, cards: [card] + meld.cards)
+        if meld.kind == .sequence,
+           card.isWild,
+           canAddAtStart,
+           canAddAtEnd {
+            pendingSequenceEndChoice = PendingSequenceEndChoice(
+                card: card,
+                meldId: meld.id,
+                startRepresentation: representedNatural(
+                    for: card,
+                    in: [card] + meld.cards,
+                    ownerId: meld.ownerId
+                ),
+                endRepresentation: representedNatural(
+                    for: card,
+                    in: meld.cards + [card],
+                    ownerId: meld.ownerId
+                )
+            )
+            return true
+        }
+        if canAddAtEnd {
             return dispatch(.addToMeld(playerId: currentPlayer.id,
                                        meldId: meld.id,
                                        cardsAtStart: [],
                                        cardsAtEnd: [card]))
         }
-        return dispatch(.addToMeld(playerId: currentPlayer.id,
-                                   meldId: meld.id,
-                                   cardsAtStart: [card],
-                                   cardsAtEnd: []))
+        if canAddAtStart {
+            return dispatch(.addToMeld(playerId: currentPlayer.id,
+                                       meldId: meld.id,
+                                       cardsAtStart: [card],
+                                       cardsAtEnd: []))
+        }
+        return false
+    }
+
+    @discardableResult
+    public func chooseSequenceEnd(_ end: SequenceEnd) -> Bool {
+        guard let pending = pendingSequenceEndChoice,
+              let card = currentPlayer.hand.first(where: {
+                  $0.id == pending.card.id
+              }),
+              state.melds.contains(where: {
+                  $0.id == pending.meldId
+              }) else {
+            pendingSequenceEndChoice = nil
+            return false
+        }
+        pendingSequenceEndChoice = nil
+        return dispatch(
+            .addToMeld(
+                playerId: currentPlayer.id,
+                meldId: pending.meldId,
+                cardsAtStart: end == .start ? [card] : [],
+                cardsAtEnd: end == .end ? [card] : []
+            )
+        )
+    }
+
+    public func cancelSequenceEndChoice() {
+        pendingSequenceEndChoice = nil
+    }
+
+    private func representedNatural(
+        for wild: Card,
+        in cards: [Card],
+        ownerId: UUID
+    ) -> MeldValidator.WildRepresentation? {
+        MeldValidator.representedNatural(
+            for: wild.id,
+            in: Meld(
+                kind: .sequence,
+                cards: cards,
+                ownerId: ownerId
+            )
+        )
     }
 
     private func canPlayFromHand(_ card: Card) -> Bool {
@@ -660,7 +809,7 @@ public final class GameViewModel: ObservableObject {
 
     /// True when the player whose turn it is right now is a CPU.
     public var isCurrentPlayerCPU: Bool {
-        cpuPlayerIds.contains(state.currentPlayerId)
+        cpuPlayerIds.contains(state.activePlayerId)
     }
 
     /// If the current player is a CPU and the round is still live, run a
@@ -671,7 +820,7 @@ public final class GameViewModel: ObservableObject {
         guard isCurrentPlayerCPU else { return false }
         guard state.phase == .awaitingDraw
                 || state.phase == .awaitingMeldOrDiscard else { return false }
-        let action = CPUPlayer.nextAction(for: state.currentPlayerId, in: state)
+        let action = CPUPlayer.nextAction(for: state.activePlayerId, in: state)
         return dispatch(action)
     }
 

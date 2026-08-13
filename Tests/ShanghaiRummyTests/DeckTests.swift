@@ -78,6 +78,21 @@ final class ContractTests: XCTestCase {
         let r8 = RoundSchedule.contract(forRound: 8)!
         XCTAssertTrue(r8.components.contains(.sequence(size: 10)))
     }
+
+    func testContractDisplayNamesDoNotRepeatTripletSize() {
+        XCTAssertEqual(
+            ContractComponent.triplet(size: 3).displayName,
+            "triplet"
+        )
+        XCTAssertEqual(
+            RoundSchedule.contract(forRound: 1)?.displayName,
+            "2 triplets"
+        )
+        XCTAssertEqual(
+            RoundSchedule.contract(forRound: 2)?.displayName,
+            "1 triplet + 1 sequence of 4"
+        )
+    }
 }
 
 final class RulesConfigTests: XCTestCase {
@@ -96,4 +111,3 @@ final class RulesConfigTests: XCTestCase {
         XCTAssertEqual(RulesConfig.penaltyCardsOnBuy, 1)
     }
 }
-

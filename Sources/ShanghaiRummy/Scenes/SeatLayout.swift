@@ -10,6 +10,7 @@ import Foundation
 /// == scene.size). The layout is derived once per rebuild and does not
 /// depend on SpriteKit — pure math, unit-testable.
 enum SeatLayout {
+    static let topCornerXFraction: CGFloat = 0.135
 
     /// A single seat's placement on the table.
     struct Seat: Equatable {
@@ -44,8 +45,8 @@ enum SeatLayout {
         // Leave room for the 48pt turn ribbon and the device safe area.
         let topY = h - insets - 60
         let botY = insets + 60
-        let quarterLeft = w * 0.25
-        let quarterRight = w * 0.75
+        let quarterLeft = w * topCornerXFraction
+        let quarterRight = w * (1 - topCornerXFraction)
 
         switch playerCount {
         case 2:

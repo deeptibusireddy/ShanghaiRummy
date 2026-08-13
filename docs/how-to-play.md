@@ -72,13 +72,14 @@ Everything you lay down is one of these two shapes:
 
 ### 🃏 Triplet — "three of a kind"
 
-Three or more cards of the **same rank**, any suits.
+Three or more cards of the **same rank**. Every natural card must have a
+**different suit**.
 ```
-♠7  ♥7  ♦7           ← triplet of 3
-♠K  ♥K  ♦K  ♣K       ← triplet of 4 (extended after being laid down)
+♠7  ♥7  ♦7           ← triplet
+♠K  ♥K  ♦K  ♣K       ← extended triplet (card added after being laid down)
 ```
-Because there are two full decks in play, it's fine to have two of the same
-suit (`♠7 ♠7 ♥7` is legal).
+Cards from duplicate decks cannot repeat a natural suit inside one triplet
+(`♠7 ♠7 ♥7` is illegal).
 
 ### 🎴 Sequence — "run"
 
@@ -100,6 +101,9 @@ You can slip wilds into any meld:
 ♣5  ♣6  🃏  ♣8       ← the joker stands in for ♣7
 ♠K  🃏  ♦K           ← the joker stands in for any King
 ```
+
+Wilds do not consume a suit in a triplet, but the natural cards must still use
+different suits. For example, `♥K ♥K 🃏` is illegal.
 
 But there's a **limit**: at most **half** the meld (rounded down) can be
 wilds. So:
@@ -141,15 +145,15 @@ be on different levels at the same time.
 
 | Level | You must lay down                    | Total cards |
 |:-----:|--------------------------------------|:-----------:|
-| 1     | 2 triplets of 3                      | 6           |
-| 2     | 1 triplet of 3 + 1 sequence of 4     | 7           |
+| 1     | 2 triplets                           | 6           |
+| 2     | 1 triplet + 1 sequence of 4          | 7           |
 | 3     | 2 sequences of 4                     | 8           |
-| 4     | 3 triplets of 3                      | 9           |
-| 5     | 1 triplet of 3 + 1 sequence of 7     | 10          |
-| 6     | 2 triplets of 3 + 1 sequence of 5    | 11          |
+| 4     | 3 triplets                           | 9           |
+| 5     | 1 triplet + 1 sequence of 7          | 10          |
+| 6     | 2 triplets + 1 sequence of 5         | 11          |
 | 7     | 3 sequences of 4                     | 12          |
-| 8     | 1 triplet of 3 + 1 sequence of 10    | 13          |
-| 9     | 3 triplets of 3 + 1 sequence of 5    | 14          |
+| 8     | 1 triplet + 1 sequence of 10         | 13          |
+| 9     | 3 triplets + 1 sequence of 5         | 14          |
 | 10    | 3 sequences of 5                     | 15          |
 
 **Important:** you always start each hand with **11 cards**, even on the
@@ -168,10 +172,10 @@ Triplet contract sizes are always 3 at go-down time. Any extras go on later.
 
 When it's your turn, you do these three things in order:
 
-### 1. Draw (mandatory)
-Take **one card** — either:
-- The **top of the stock** (face-down pile), or
-- The **top of the discard pile** (face-up pile)
+### 1. Resolve the purchase round (mandatory)
+You decide first: take the **top discard**, or pass it clockwise. If you pass,
+the game asks each eligible player in order whether they want to buy it. Once
+the offers finish, the game automatically gives you the correct stock card.
 
 ### 2. Meld (optional — only if you've already gone down this round)
 - If you have cards that fit on any meld already on the table (yours *or*
@@ -197,7 +201,7 @@ discarding.
   melds.** Go down, discard, done. From your next turn onward, you're free
   to add to any meld on the table.
 
-### Example — Round 1 (2 triplets of 3)
+### Example — Round 1 (2 triplets)
 
 Your hand:
 ```
@@ -219,17 +223,20 @@ cards first.
 ## Buying the discard
 
 Sometimes the top of the discard pile is a card you desperately want, but
-it's not your turn. **You can buy it.**
+it's not your turn. **You can buy it when the offer reaches you.**
 
-- Say **"buy"** *before* the next player draws.
-- You get **the discarded card + 1 penalty card from the stock**.
-- Both cards go into your hand — you can't immediately meld them.
-- **You get 3 buys per round.** After that you can watch the discard slide
-  past you.
-- **The turn player has first refusal.** If they wanted that discard, they
-  take it and no buy happens.
-- If two off-turn players both call "buy", the one **closer to the current
-  turn** (going clockwise) wins.
+- **The turn player decides first.** They must take the discard or pass it
+  clockwise. Their decision never times out.
+- The offer then moves one player at a time in clockwise order. You have
+  **20 seconds** to buy or pass; no answer counts as a pass.
+- If you buy, you get **the discard + the current top stock card**. Both go
+  into your hand, and you can't immediately meld them.
+- The turn player then automatically receives the **next** stock card and
+  continues their turn.
+- If everyone passes, the turn player automatically draws the top stock card.
+- **You get 3 buys per round.** After that, the game skips you.
+- Once you have gone down in the current round, the game also skips you —
+  players who are down cannot buy.
 
 ---
 
@@ -241,6 +248,9 @@ onto any meld that's already on the table — including your opponents'.
 - Extend a triplet with a matching-rank card.
 - Extend a sequence at either end with the next card of the same suit.
 - Extend with wilds (subject to the wild limit).
+- If a joker or live wild 2 can legally extend **either** end of a sequence,
+  choose its low-end or high-end position. If only one end works, the game
+  places it there automatically.
 
 This is the main way to shed cards after you've gone down.
 

@@ -23,6 +23,7 @@ final class GameCenterManager: NSObject, ObservableObject {
     private var authority: RealtimeGameAuthority?
     private var currentSnapshot: RealtimeGameSnapshot?
     private var pendingLocalRequestId: UUID?
+    private var buyOfferTimeoutTask: Task<Void, Never>?
 
     func authenticate() async {
         let localPlayer = GKLocalPlayer.local
@@ -80,6 +81,7 @@ final class GameCenterManager: NSObject, ObservableObject {
         request.minPlayers = RulesConfig.minPlayers
         request.maxPlayers = RulesConfig.minPlayers
         request.defaultNumberOfPlayers = RulesConfig.minPlayers
+        request.playerGroup = RealtimeMessageCodec.protocolVersion
 
         Task { [weak self] in
             do {
@@ -114,6 +116,7 @@ final class GameCenterManager: NSObject, ObservableObject {
             request.minPlayers = RulesConfig.minPlayers
             request.maxPlayers = RulesConfig.maxPlayers
             request.defaultNumberOfPlayers = RulesConfig.minPlayers
+            request.playerGroup = RealtimeMessageCodec.protocolVersion
             request.inviteMessage = "Join my Shanghai Rummy table"
             request.recipientResponseHandler = { [weak self] player, response in
                 Task { @MainActor in
@@ -301,12 +304,62 @@ final class GameCenterManager: NSObject, ObservableObject {
             onlineGame = viewModel
         }
         onlineStatusMessage = "Connected"
+        scheduleBuyOfferTimeout(for: snapshot)
+    }
+
+    private func scheduleBuyOfferTimeout(
+        for snapshot: RealtimeGameSnapshot
+    ) {
+        buyOfferTimeoutTask?.cancel()
+        buyOfferTimeoutTask = nil
+
+        guard snapshot.hostGamePlayerId
+                == GKLocalPlayer.local.gamePlayerID,
+              snapshot.state.phase == .awaitingDraw,
+              let offeredPlayerId = snapshot.state.buyDecisionPlayerId,
+              offeredPlayerId != snapshot.state.currentPlayerId else {
+            return
+        }
+
+        let expectedRevision = snapshot.revision
+        buyOfferTimeoutTask = Task { @MainActor [weak self] in
+            do {
+                try await Task.sleep(
+                    for: .seconds(RulesConfig.buyOfferTimeoutSeconds)
+                )
+            } catch {
+                return
+            }
+            guard let self,
+                  self.currentSnapshot?.revision == expectedRevision,
+                  self.currentSnapshot?.state.buyDecisionPlayerId
+                    == offeredPlayerId,
+                  var authority = self.authority,
+                  let next = authority.passTimedOutBuyOffer(
+                      playerId: offeredPlayerId,
+                      expectedRevision: expectedRevision
+                  ) else {
+                return
+            }
+            self.buyOfferTimeoutTask = nil
+            self.authority = authority
+            self.install(next)
+            self.sendToAll(.snapshot(next))
+        }
     }
 
     private func isValid(_ snapshot: RealtimeGameSnapshot) -> Bool {
         let participantIds = snapshot.participants.map(\.playerId)
         let gamePlayerIds = snapshot.participants.map(\.gamePlayerId)
         let stateIds = snapshot.state.players.map(\.id)
+        let decisionIsValid: Bool
+        if snapshot.state.phase == .awaitingDraw {
+            decisionIsValid = snapshot.state.buyDecisionPlayerId.map {
+                stateIds.contains($0)
+            } == true
+        } else {
+            decisionIsValid = snapshot.state.buyDecisionPlayerId == nil
+        }
         return snapshot.participants.count == snapshot.state.players.count
             && Set(participantIds).count == participantIds.count
             && Set(gamePlayerIds).count == gamePlayerIds.count
@@ -314,6 +367,7 @@ final class GameCenterManager: NSObject, ObservableObject {
             && snapshot.participants.contains {
                 $0.gamePlayerId == snapshot.hostGamePlayerId
             }
+            && decisionIsValid
     }
 
     private func submit(_ action: TurnEngine.Action) -> Bool {
@@ -475,6 +529,8 @@ final class GameCenterManager: NSObject, ObservableObject {
         authority = nil
         currentSnapshot = nil
         pendingLocalRequestId = nil
+        buyOfferTimeoutTask?.cancel()
+        buyOfferTimeoutTask = nil
         quickPairSearchId = nil
         onlineGame = nil
         hasActiveMatch = false

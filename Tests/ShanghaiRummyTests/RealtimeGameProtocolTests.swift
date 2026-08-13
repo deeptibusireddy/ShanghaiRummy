@@ -54,8 +54,8 @@ final class RealtimeGameProtocolTests: XCTestCase {
                 replacementCard: cards[0]
             ),
             .discard(playerId: current, card: cards[0]),
-            .requestBuy(playerId: current),
-            .cancelBuyRequest(playerId: current),
+            .acceptBuyOffer(playerId: current),
+            .passBuyOffer(playerId: current),
             .advanceHand(playerId: current),
         ]
 
@@ -102,7 +102,7 @@ final class RealtimeGameProtocolTests: XCTestCase {
         var authority = RealtimeGameAuthority(snapshot: fixture.snapshot)
         let request = RealtimeActionRequest(
             expectedRevision: 0,
-            action: .draw(playerId: currentId, source: .stock)
+            action: .acceptBuyOffer(playerId: currentId)
         )
 
         let updated = try! authority.apply(
@@ -162,127 +162,170 @@ final class RealtimeGameProtocolTests: XCTestCase {
         XCTAssertEqual(rejection.currentSnapshot.revision, 0)
     }
 
-    func testAuthorityAcceptsOutOfTurnBuyRequestFromItsOwner() {
+    func testAuthorityAdvancesOfferAfterCurrentPlayerPasses() {
         let fixture = fixture()
-        let requester = fixture.snapshot.participants.first {
+        let current = fixture.snapshot.participants.first {
+            $0.playerId == fixture.snapshot.state.currentPlayerId
+        }!
+        let buyer = fixture.snapshot.participants.first {
             $0.playerId != fixture.snapshot.state.currentPlayerId
         }!
         var authority = RealtimeGameAuthority(snapshot: fixture.snapshot)
         let request = RealtimeActionRequest(
             expectedRevision: 0,
-            action: .requestBuy(playerId: requester.playerId)
+            action: .passBuyOffer(playerId: current.playerId)
         )
 
         let updated = try! authority.apply(
             request,
-            fromGamePlayerId: requester.gamePlayerId
+            fromGamePlayerId: current.gamePlayerId
         ).get()
 
-        XCTAssertEqual(updated.state.buyRequestPlayerIds, [requester.playerId])
+        XCTAssertEqual(updated.revision, 1)
+        XCTAssertEqual(updated.state.buyDecisionPlayerId, buyer.playerId)
+        XCTAssertEqual(updated.state.phase, .awaitingDraw)
     }
 
-    func testAuthorityMergesSimultaneousBuyRequestsThenUsesSeatPriority() {
-        let state = GameFactory.newGame(
-            playerNames: ["Farther", "Turn", "Nearest"],
-            seed: 18
-        )
-        XCTAssertEqual(state.currentTurnIndex, 1)
-        let bindings = zip(
-            ["gc-farther", "gc-turn", "gc-nearest"],
-            state.players
-        ).map {
-            RealtimeParticipantBinding(
-                gamePlayerId: $0.0,
-                playerId: $0.1.id,
-                displayName: $0.1.name
-            )
-        }
-        let snapshot = RealtimeGameSnapshot(
-            revision: 0,
-            state: state,
-            participants: bindings,
-            hostGamePlayerId: "gc-turn"
-        )
-        var authority = RealtimeGameAuthority(snapshot: snapshot)
-        let fartherRequest = RealtimeActionRequest(
-            expectedRevision: 0,
-            action: .requestBuy(playerId: state.players[0].id)
-        )
-        let nearestRequest = RealtimeActionRequest(
-            expectedRevision: 0,
-            action: .requestBuy(playerId: state.players[2].id)
-        )
+    func testAuthorityAcceptsOfferFromCurrentDecisionOwner() {
+        let fixture = fixture()
+        let current = fixture.snapshot.participants.first {
+            $0.playerId == fixture.snapshot.state.currentPlayerId
+        }!
+        let buyer = fixture.snapshot.participants.first {
+            $0.playerId != fixture.snapshot.state.currentPlayerId
+        }!
+        var authority = RealtimeGameAuthority(snapshot: fixture.snapshot)
 
-        _ = try! authority.apply(
-            fartherRequest,
-            fromGamePlayerId: "gc-farther"
-        ).get()
-        let merged = try! authority.apply(
-            nearestRequest,
-            fromGamePlayerId: "gc-nearest"
-        ).get()
-
-        XCTAssertEqual(merged.revision, 2)
-        XCTAssertEqual(merged.state.buyRequestPlayerIds.count, 2)
-        XCTAssertEqual(
-            merged.state.prioritizedBuyRequesterId,
-            state.players[2].id
-        )
-    }
-
-    func testAuthorityDoesNotRebaseRequestFromAnEarlierBuyWindow() {
-        let state = GameFactory.newGame(
-            playerNames: ["One", "Two", "Three"],
-            seed: 19
-        )
-        let bindings = zip(
-            ["gc-one", "gc-two", "gc-three"],
-            state.players
-        ).map {
-            RealtimeParticipantBinding(
-                gamePlayerId: $0.0,
-                playerId: $0.1.id,
-                displayName: $0.1.name
-            )
-        }
-        var authority = RealtimeGameAuthority(
-            snapshot: RealtimeGameSnapshot(
-                revision: 0,
-                state: state,
-                participants: bindings,
-                hostGamePlayerId: "gc-two"
-            )
-        )
-        let turnPlayer = state.players[1]
-        let drawn = try! authority.apply(
+        let passed = try! authority.apply(
             RealtimeActionRequest(
                 expectedRevision: 0,
-                action: .draw(playerId: turnPlayer.id, source: .stock)
+                action: .passBuyOffer(playerId: current.playerId)
             ),
-            fromGamePlayerId: "gc-two"
+            fromGamePlayerId: current.gamePlayerId
         ).get()
-        _ = try! authority.apply(
+        let accepted = try! authority.apply(
             RealtimeActionRequest(
-                expectedRevision: drawn.revision,
-                action: .discard(
-                    playerId: turnPlayer.id,
-                    card: drawn.state.players[1].hand[0]
-                )
+                expectedRevision: passed.revision,
+                action: .acceptBuyOffer(playerId: buyer.playerId)
             ),
-            fromGamePlayerId: "gc-two"
+            fromGamePlayerId: buyer.gamePlayerId
         ).get()
-        let delayed = RealtimeActionRequest(
-            expectedRevision: 0,
-            action: .requestBuy(playerId: state.players[0].id)
-        )
 
+        XCTAssertEqual(accepted.revision, 2)
+        XCTAssertEqual(accepted.state.phase, .awaitingMeldOrDiscard)
+        XCTAssertNil(accepted.state.buyDecisionPlayerId)
+        XCTAssertEqual(
+            accepted.state.players.first(where: {
+                $0.id == buyer.playerId
+            })?.buysUsedThisRound,
+            1
+        )
+    }
+
+    func testAuthorityRejectsResponseFromPlayerWithoutTheOffer() {
+        let fixture = fixture()
+        let buyer = fixture.snapshot.participants.first {
+            $0.playerId != fixture.snapshot.state.currentPlayerId
+        }!
+        var authority = RealtimeGameAuthority(snapshot: fixture.snapshot)
         let result = authority.apply(
-            delayed,
-            fromGamePlayerId: "gc-one"
+            RealtimeActionRequest(
+                expectedRevision: 0,
+                action: .acceptBuyOffer(playerId: buyer.playerId)
+            ),
+            fromGamePlayerId: buyer.gamePlayerId
         )
 
         guard case .failure(let rejection) = result else {
-            return XCTFail("Expected the old buy request to be stale")
+            return XCTFail("Expected the non-owner response to fail")
+        }
+        XCTAssertEqual(rejection.reason, .illegalAction)
+        XCTAssertEqual(rejection.currentSnapshot, fixture.snapshot)
+    }
+
+    func testAuthorityTimeoutPassesNonTurnBuyerOffer() {
+        let fixture = fixture()
+        let current = fixture.snapshot.participants.first {
+            $0.playerId == fixture.snapshot.state.currentPlayerId
+        }!
+        let buyer = fixture.snapshot.participants.first {
+            $0.playerId != fixture.snapshot.state.currentPlayerId
+        }!
+        var authority = RealtimeGameAuthority(snapshot: fixture.snapshot)
+        let turnHandBefore = fixture.snapshot.state.players.first(where: {
+            $0.id == current.playerId
+        })!.hand.count
+
+        let passed = try! authority.apply(
+            RealtimeActionRequest(
+                expectedRevision: 0,
+                action: .passBuyOffer(playerId: current.playerId)
+            ),
+            fromGamePlayerId: current.gamePlayerId
+        ).get()
+        let timedOut = authority.passTimedOutBuyOffer(
+            playerId: buyer.playerId,
+            expectedRevision: passed.revision
+        )
+
+        let updated = try! XCTUnwrap(timedOut)
+        XCTAssertEqual(updated.revision, 2)
+        XCTAssertNil(updated.lastAppliedRequestId)
+        XCTAssertEqual(updated.state.phase, .awaitingMeldOrDiscard)
+        XCTAssertNil(updated.state.buyDecisionPlayerId)
+        XCTAssertEqual(
+            updated.state.players.first(where: {
+                $0.id == current.playerId
+            })?.hand.count,
+            turnHandBefore + 1
+        )
+    }
+
+    func testAuthorityNeverTimesOutCurrentPlayersFirstRefusal() {
+        let fixture = fixture()
+        var authority = RealtimeGameAuthority(snapshot: fixture.snapshot)
+
+        let result = authority.passTimedOutBuyOffer(
+            playerId: fixture.snapshot.state.currentPlayerId,
+            expectedRevision: fixture.snapshot.revision
+        )
+
+        XCTAssertNil(result)
+        XCTAssertEqual(authority.snapshot, fixture.snapshot)
+    }
+
+    func testResponseArrivingAfterTimeoutIsRejectedAsStale() {
+        let fixture = fixture()
+        let current = fixture.snapshot.participants.first {
+            $0.playerId == fixture.snapshot.state.currentPlayerId
+        }!
+        let buyer = fixture.snapshot.participants.first {
+            $0.playerId != fixture.snapshot.state.currentPlayerId
+        }!
+        var authority = RealtimeGameAuthority(snapshot: fixture.snapshot)
+        let passed = try! authority.apply(
+            RealtimeActionRequest(
+                expectedRevision: 0,
+                action: .passBuyOffer(playerId: current.playerId)
+            ),
+            fromGamePlayerId: current.gamePlayerId
+        ).get()
+        let timedOut = authority.passTimedOutBuyOffer(
+            playerId: buyer.playerId,
+            expectedRevision: passed.revision
+        )
+        XCTAssertNotNil(timedOut)
+
+        let result = authority.apply(
+            RealtimeActionRequest(
+                expectedRevision: passed.revision,
+                action: .acceptBuyOffer(playerId: buyer.playerId)
+            ),
+            fromGamePlayerId: buyer.gamePlayerId
+        )
+
+        guard case .failure(let rejection) = result else {
+            return XCTFail("Expected the late response to be stale")
         }
         XCTAssertEqual(rejection.reason, .staleState)
     }

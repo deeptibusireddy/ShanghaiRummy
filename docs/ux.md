@@ -128,18 +128,31 @@ LEFT: opp #1    piles              RIGHT: opp #5
           YOU
 ```
 
-For 5 & 6 players we compress each opponent seat (smaller name + level chip,
-melds fold under an expand tap). This is the constraint that ruled out
+For 5 & 6 players, the top-corner seats move outward so their melds stay in
+pile-free outer bands. A sixth player's center-top melds split into readable
+left and right wings beside that seat. This is the constraint that ruled out
 portrait mode.
+
+On iPhone, the hand cards render slightly smaller than their full logical size
+to reserve a dedicated tableau lane. Meld cards use larger, more exposed faces
+and stronger container outlines so ranks and suits remain readable. Crowded
+side-seat melds wrap into two rows with a 34% card-scale floor; only card
+overlap tightens on especially narrow screens, while at least 25% of each card
+remains exposed. Compact-width opponent seats use avatar-first pills to reserve
+that space. All opponent layouts preserve a protected corridor around the
+shared piles. The discard drop zone follows the visible pile instead of
+extending into the tableau; if padded targets ever touch, the nearest visual
+target wins and an exact tie favors the meld.
 
 ## Interaction spec
 
 ### Drawing (start of your turn)
 
-- **Tap** the stock pile → draw top card. Card animates to your hand.
-- **Tap** the discard pile → draw top discard card.
-- Phase transitions to "meld or discard" automatically.
-- If you tap either pile out of turn: gentle shake + toast "Not your turn."
+- A blocking **Purchase Round** overlay pauses table interaction.
+- The turn player explicitly chooses **Take Discard** or **Pass Clockwise**.
+- Taking the discard moves it to the turn player's hand. Passing starts the
+  sequential buyer offers; when those end, the stock draw is automatic.
+- Phase transitions to "meld or discard" automatically after resolution.
 
 ### Meld staging (after draw, before discard)
 
@@ -147,7 +160,9 @@ Two modes:
 
 1. **Add to an existing meld** — after going down on an earlier turn, tap
    a compatible hand card for automatic placement or drag it to a specific
-   glowing meld. A successful drop commits immediately.
+   glowing meld. A successful drop commits immediately unless a wild fits both
+   sequence ends; then a blocking low-end/high-end picker asks for its position.
+   If only one sequence end is legal, placement remains automatic.
 2. **Build a new contract meld** — tap cards or drag them into the persistent
    **staging tray**. Save each valid set/run as a draft chip, then tap
    **Go Down** when the full contract is ready.
@@ -180,15 +195,16 @@ with warning feedback.
 
 ### Buying (out of turn only)
 
-- When someone else discards, an animation ~1 sec offers a **Buy**
-  button that pops up on each non-turn seat.
-- Priority: turn player has right of first refusal (unshown to others).
-- Tap Buy to announce a request; tap again to cancel before the turn player
-  draws.
-- The turn player keeps first refusal. If they draw from stock, the nearest
-  clockwise requester receives the discard + 1 penalty card, regardless of
-  request arrival order.
-- Up to 3 buys per player per hand.
+- After the turn player passes, the blocking overlay moves clockwise to one
+  eligible player at a time.
+- The offered player chooses **Buy + Draw 1** or **Pass**. Their offer
+  automatically passes after 20 seconds.
+- Players who have gone down and players who have used all 3 buys are skipped.
+- A buyer receives the discard and current top stock card. The turn player
+  then receives the next stock card.
+- If nobody buys, the turn player receives the current top stock card.
+- Waiting players see who is deciding; underlying card and pile input remains
+  blocked for the entire purchase round.
 
 ### Go Down
 
@@ -225,7 +241,7 @@ with warning feedback.
 | Joker / wild 2       | Amber side band and unmistakable wild marker           |
 | Meld target          | Dark translucent group; mint outline when playable     |
 | Staging tray         | Indigo glass-like panel kept inline above the hand     |
-| Turn ribbon          | Compact dark pill; active amber dot and contract       |
+| Turn ribbon          | Bright amber outline, pulsing dot, active player, and contract |
 | Buttons              | One contextual amber primary action; quiet secondary chips |
 | Sensitive states     | Coral warning, mint confirmation, plus motion/haptics  |
 | Typography           | Rounded system typography throughout                   |
@@ -233,11 +249,17 @@ with warning feedback.
 ## Animation & feedback
 
 - Card draw: 250 ms ease-out from pile to hand slot.
+- Newly added hand cards: lifted slightly with a pulsing amber outline and
+  **NEW** badge. A normal draw replaces that player's previous highlights;
+  purchased cards remain highlighted until the buyer's next turn draw.
 - Card discard: 200 ms ease-in to pile top.
 - Meld commit: 350 ms with mild spring (staged cards slide into row).
 - Wild redemption: cross-fade + subtle scale bump.
 - Illegal action: horizontal shake 6 px, 3 cycles, 250 ms total; error toast.
-- Buy button: fades in over 400 ms after discard, dwells 1.5 s, fades out.
+- Purchase overlay: fades between decision owners while table input remains
+  blocked.
+- Active turn: the current player's seat uses a bright pulsing amber halo,
+  amber avatar/name treatment, and an explicit playing/your-turn label.
 
 Haptics (M4):
 - Draw: `.light`

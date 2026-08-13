@@ -58,7 +58,7 @@ final class GameViewModelStagingTests: XCTestCase {
 
     func testStagingClearsOnTurnAdvance() {
         let vm = makeVM()
-        // Stage a card, then complete a draw + discard cycle to advance turn.
+        // Stage a card, then complete the purchase round and discard.
         guard let first = vm.currentPlayer.hand.first else {
             return XCTFail("expected a non-empty hand")
         }
@@ -66,7 +66,10 @@ final class GameViewModelStagingTests: XCTestCase {
         XCTAssertFalse(vm.stagedCardIds.isEmpty)
 
         vm.drawFromStock()
-        // After drawing we're in the discard phase; pick a card to discard.
+        vm.acknowledgeTurnPassed()
+        vm.passBuyOffer()
+        vm.acknowledgeTurnPassed()
+
         guard let toss = vm.currentPlayer.hand.first else {
             return XCTFail("no card to discard")
         }
