@@ -150,6 +150,7 @@ final class GameScene: SKScene {
     }
 
     private func rebuildDynamicLayers() {
+        guard hasUsableLayoutSize else { return }
         buildHeader()
         shadowsLayer.removeAllChildren()
         buildPiles()
@@ -1210,6 +1211,17 @@ final class GameScene: SKScene {
             width: CardNode.size.width * pileScale + 24,
             height: CardNode.size.height * pileScale + 12
         )
+    }
+
+    private var hasUsableLayoutSize: Bool {
+        // SwiftUI creates the scene at 1x1 before GeometryReader supplies
+        // landscape bounds; closed meld lanes are invalid at that placeholder.
+        let sideSeatCenterInset: CGFloat = 24 + 60
+        let sideMeldStart = sideSeatCenterInset + opponentSeatWidth / 2 + 6
+        let sideMeldEnd = size.width / 2
+            - Self.protectedPileCorridorHalfWidth
+        return sideMeldStart <= sideMeldEnd
+            && size.height >= CardNode.size.height * 2.5
     }
 
     private var handCardScale: CGFloat {

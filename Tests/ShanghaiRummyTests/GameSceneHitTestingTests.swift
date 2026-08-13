@@ -3,6 +3,17 @@ import XCTest
 
 @MainActor
 final class GameSceneHitTestingTests: XCTestCase {
+    func testMidGameSceneDefersLayoutWhileUsingPlaceholderSize() {
+        let vm = GameViewModel(state: GameFactory.demoMidGame())
+
+        let scene = GameScene(
+            size: CGSize(width: 1, height: 1),
+            viewModel: vm
+        )
+
+        XCTAssertEqual(scene.size, CGSize(width: 1, height: 1))
+    }
+
     func testMeldTargetHitTestingUsesRenderedTargetFrames() {
         let ownMeldId = UUID()
         let opponentMeldId = UUID()
