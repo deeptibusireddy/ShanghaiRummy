@@ -132,22 +132,28 @@ struct FamilyTableSetupView: View {
                     }
 
                     if configuration.canAddSeat {
-                        Menu {
+                        HStack(spacing: 12) {
                             Button {
                                 configuration.addSeat(kind: .human)
                             } label: {
-                                Label("Add Human", systemImage: "person.badge.plus")
+                                Label(
+                                    "Add Human",
+                                    systemImage: "person.badge.plus"
+                                )
+                                .frame(maxWidth: .infinity)
                             }
+                            .buttonStyle(.borderless)
+                            .accessibilityIdentifier("add-family-human")
 
                             Button {
                                 configuration.addSeat(kind: .bot)
                             } label: {
                                 Label("Add Bot", systemImage: "cpu")
+                                    .frame(maxWidth: .infinity)
                             }
-                        } label: {
-                            Label("Add Player", systemImage: "plus.circle.fill")
+                            .buttonStyle(.borderless)
+                            .accessibilityIdentifier("add-family-bot")
                         }
-                        .accessibilityIdentifier("add-family-player")
                     }
                 } header: {
                     Text("Players (\(configuration.totalPlayerCount))")

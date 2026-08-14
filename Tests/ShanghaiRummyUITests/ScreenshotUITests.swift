@@ -62,11 +62,8 @@ final class ScreenshotUITests: XCTestCase {
         XCTAssertFalse(start.isEnabled)
         snapshot(named: "02-family-table-setup")
 
-        let addPlayer = app.buttons["add-family-player"]
-        XCTAssertTrue(addPlayer.exists)
-        addPlayer.tap()
-        let addBot = app.buttons["Add Bot"]
-        XCTAssertTrue(addBot.waitForExistence(timeout: 2))
+        let addBot = app.buttons["add-family-bot"]
+        XCTAssertTrue(addBot.exists)
         addBot.tap()
         XCTAssertTrue(app.staticTexts["Bot 1"].waitForExistence(timeout: 2))
         XCTAssertTrue(app.buttons["Remove Bot 1"].exists)
