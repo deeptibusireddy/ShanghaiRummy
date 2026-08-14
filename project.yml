@@ -25,6 +25,7 @@ targets:
       path: Sources/ShanghaiRummy/Info.plist
       properties:
         CFBundleDisplayName: Shanghai Rummy
+        ITSAppUsesNonExemptEncryption: false
         UILaunchScreen: {}
         UIRequiredDeviceCapabilities: [arm64]
         UISupportedInterfaceOrientations:
