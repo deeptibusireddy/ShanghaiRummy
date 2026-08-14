@@ -56,13 +56,21 @@ final class ScreenshotUITests: XCTestCase {
             app.navigationBars["Create Table"].waitForExistence(timeout: 5)
         )
         XCTAssertTrue(app.staticTexts["You"].exists)
-        XCTAssertTrue(app.staticTexts["Bot 1"].exists)
-        XCTAssertTrue(app.buttons["Remove Bot 1"].exists)
+        XCTAssertFalse(app.staticTexts["Bot 1"].exists)
         let start = app.buttons["start-family-table"]
         XCTAssertTrue(start.exists)
-        XCTAssertTrue(start.isEnabled)
+        XCTAssertFalse(start.isEnabled)
         snapshot(named: "02-family-table-setup")
 
+        let addPlayer = app.buttons["add-family-player"]
+        XCTAssertTrue(addPlayer.exists)
+        addPlayer.tap()
+        let addBot = app.buttons["Add Bot"]
+        XCTAssertTrue(addBot.waitForExistence(timeout: 2))
+        addBot.tap()
+        XCTAssertTrue(app.staticTexts["Bot 1"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.buttons["Remove Bot 1"].exists)
+        XCTAssertTrue(start.isEnabled)
         start.tap()
         XCTAssertTrue(app.buttons["quit-game"].waitForExistence(timeout: 5))
     }

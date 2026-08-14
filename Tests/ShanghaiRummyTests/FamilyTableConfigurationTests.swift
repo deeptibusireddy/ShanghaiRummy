@@ -2,14 +2,14 @@ import XCTest
 @testable import ShanghaiRummy
 
 final class FamilyTableConfigurationTests: XCTestCase {
-    func testDefaultTableIsYouAndOneBot() {
+    func testDefaultTableIsYouOnly() {
         let configuration = FamilyTableConfiguration()
 
-        XCTAssertEqual(configuration.totalPlayerCount, 2)
-        XCTAssertEqual(configuration.botCount, 1)
+        XCTAssertEqual(configuration.totalPlayerCount, 1)
+        XCTAssertEqual(configuration.botCount, 0)
         XCTAssertEqual(configuration.invitedHumanCount, 0)
-        XCTAssertEqual(configuration.actionTitle, "Play with 1 Bot")
-        XCTAssertTrue(
+        XCTAssertEqual(configuration.actionTitle, "Start Game")
+        XCTAssertFalse(
             configuration.canStart(isGameCenterAuthenticated: false)
         )
     }
@@ -17,7 +17,7 @@ final class FamilyTableConfigurationTests: XCTestCase {
     func testTableSupportsYouAndFiveBots() {
         var configuration = FamilyTableConfiguration()
 
-        for _ in 0..<4 {
+        for _ in 0..<5 {
             XCTAssertTrue(configuration.addSeat(kind: .bot))
         }
 
@@ -30,7 +30,7 @@ final class FamilyTableConfigurationTests: XCTestCase {
 
     func testHumanSeatsRequireGameCenter() {
         var configuration = FamilyTableConfiguration()
-        configuration.seats[0].kind = .human
+        configuration.addSeat(kind: .human)
 
         XCTAssertEqual(configuration.invitedHumanCount, 1)
         XCTAssertEqual(configuration.gameCenterPlayerCount, 2)
@@ -67,12 +67,15 @@ final class FamilyTableConfigurationTests: XCTestCase {
         )
     }
 
-    func testOnlyOpponentCannotBeRemoved() {
-        var configuration = FamilyTableConfiguration()
+    func testLastOpponentCanBeRemoved() {
+        var configuration = FamilyTableConfiguration(seatKinds: [.bot])
 
-        XCTAssertFalse(
+        XCTAssertTrue(
             configuration.removeSeat(id: configuration.seats[0].id)
         )
-        XCTAssertEqual(configuration.totalPlayerCount, 2)
+        XCTAssertEqual(configuration.totalPlayerCount, 1)
+        XCTAssertFalse(
+            configuration.canStart(isGameCenterAuthenticated: true)
+        )
     }
 }

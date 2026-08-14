@@ -320,8 +320,9 @@ Haptics (M4):
   hands stay hidden, and the turn banner shows whose turn or buy decision is
   active.
 - **Create Table** opens one roster for 2–6 seats. The local player is fixed;
-  every added seat can switch between Human and Bot or be removed. It defaults
-  to You + Bot 1, and bot-only tables start locally without Game Center.
+  the roster starts with only You, and every added seat can switch between
+  Human and Bot or be removed. Start stays disabled until at least one seat is
+  added, and bot-only tables start locally without Game Center.
 - Mixed tables reserve their bot seats and open Apple's matchmaker only for the
   exact selected human count. A noninteractive notice over Apple's screen keeps
   the reserved bot count visible.

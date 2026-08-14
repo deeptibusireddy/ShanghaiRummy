@@ -27,8 +27,7 @@ struct FamilyTableSeat: Identifiable, Equatable {
 struct FamilyTableConfiguration: Equatable {
     var seats: [FamilyTableSeat]
 
-    init(seatKinds: [FamilyTableSeatKind] = [.bot]) {
-        precondition(!seatKinds.isEmpty, "A table needs at least one opponent")
+    init(seatKinds: [FamilyTableSeatKind] = []) {
         precondition(
             seatKinds.count < RulesConfig.maxPlayers,
             "A table cannot exceed the player limit"
@@ -47,6 +46,7 @@ struct FamilyTableConfiguration: Equatable {
     var canAddSeat: Bool { totalPlayerCount < RulesConfig.maxPlayers }
 
     var actionTitle: String {
+        guard !seats.isEmpty else { return "Start Game" }
         if invitedHumanCount == 0 {
             return "Play with \(botCount) \(botCount == 1 ? "Bot" : "Bots")"
         }
@@ -69,8 +69,7 @@ struct FamilyTableConfiguration: Equatable {
 
     @discardableResult
     mutating func removeSeat(id: UUID) -> Bool {
-        guard seats.count > 1,
-              let index = seats.firstIndex(where: { $0.id == id }) else {
+        guard let index = seats.firstIndex(where: { $0.id == id }) else {
             return false
         }
         seats.remove(at: index)
@@ -126,7 +125,6 @@ struct FamilyTableSetupView: View {
                             }
                             .buttonStyle(.plain)
                             .foregroundStyle(.secondary)
-                            .disabled(configuration.seats.count == 1)
                             .accessibilityLabel(
                                 "Remove \(configuration.label(for: seat.id))"
                             )
@@ -206,6 +204,10 @@ struct FamilyTableSetupView: View {
     }
 
     private var footerMessage: String {
+        if configuration.seats.isEmpty {
+            return "Add at least one Human or Bot. Tables support 2–6 total "
+                + "players."
+        }
         if configuration.invitedHumanCount > 0,
            !isGameCenterAuthenticated {
             return "Sign in to Game Center to invite people, or change every "
