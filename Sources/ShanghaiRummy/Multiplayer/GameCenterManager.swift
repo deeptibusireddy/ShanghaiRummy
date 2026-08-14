@@ -25,6 +25,7 @@ final class GameCenterManager: NSObject, ObservableObject {
     private var pendingLocalRequestId: UUID?
     private var buyOfferTimeoutTask: Task<Void, Never>?
     private var gameSetup: RealtimeGameSetup?
+    private var requestedRemoteHumanCount: Int?
     private var shouldBroadcastGameSetup = false
     private var isRunningHostedBots = false
 
@@ -58,20 +59,29 @@ final class GameCenterManager: NSObject, ObservableObject {
         }
     }
 
-    func beginMatchmaking(botCount: Int = 0) {
+    func beginMatchmaking(invitedHumanCount: Int, botCount: Int) {
         guard isAuthenticated else {
             lastError = "Sign in to Game Center before starting an online game"
             return
         }
-        guard (0...(RulesConfig.maxPlayers - RulesConfig.minPlayers))
-                .contains(botCount) else {
-            lastError = "Online tables support 0–4 bots"
+        guard invitedHumanCount >= 1,
+              botCount >= 0,
+              invitedHumanCount + botCount + 1 <= RulesConfig.maxPlayers else {
+            lastError = "Choose 2–6 total human and bot players"
             return
         }
         gameSetup = RealtimeGameSetup(botCount: botCount)
+        requestedRemoteHumanCount = invitedHumanCount
         shouldBroadcastGameSetup = true
         lastError = nil
-        matchmakerNotice = nil
+        let people = invitedHumanCount == 1 ? "person" : "people"
+        if botCount == 0 {
+            matchmakerNotice = "Invite exactly \(invitedHumanCount) \(people)"
+        } else {
+            let bots = botCount == 1 ? "bot" : "bots"
+            matchmakerNotice = "\(botCount) \(bots) reserved • Invite exactly "
+                + "\(invitedHumanCount) \(people)"
+        }
         isPresentingMatchmaker = true
     }
 
@@ -83,6 +93,7 @@ final class GameCenterManager: NSObject, ObservableObject {
         let searchId = UUID()
         quickPairSearchId = searchId
         gameSetup = RealtimeGameSetup(botCount: 0)
+        requestedRemoteHumanCount = nil
         shouldBroadcastGameSetup = false
         lastError = nil
         matchmakerNotice = nil
@@ -124,15 +135,24 @@ final class GameCenterManager: NSObject, ObservableObject {
             pendingInvite = nil
             controller = GKMatchmakerViewController(invite: invite)
         } else {
+            guard let requestedRemoteHumanCount else {
+                lastError = "Choose the human seats before opening Game Center"
+                return nil
+            }
             let botCount = gameSetup?.botCount ?? 0
+            let gameCenterPlayerCount = requestedRemoteHumanCount + 1
             let request = GKMatchRequest()
-            request.minPlayers = RulesConfig.minPlayers
-            request.maxPlayers = RulesConfig.maxPlayers - botCount
-            request.defaultNumberOfPlayers = RulesConfig.minPlayers
+            request.minPlayers = gameCenterPlayerCount
+            request.maxPlayers = gameCenterPlayerCount
+            request.defaultNumberOfPlayers = gameCenterPlayerCount
             request.playerGroup = RealtimeMessageCodec.playerGroup(
                 botCount: botCount
             )
-            request.inviteMessage = "Join my Shanghai Rummy table"
+            request.inviteMessage = botCount == 0
+                ? "Join my Shanghai Rummy table"
+                : "Join my Shanghai Rummy table — \(botCount) bot "
+                    + (botCount == 1 ? "seat" : "seats")
+                    + " reserved"
             request.recipientResponseHandler = { [weak self] player, response in
                 Task { @MainActor in
                     self?.handleInvitationResponse(
@@ -151,7 +171,7 @@ final class GameCenterManager: NSObject, ObservableObject {
         _ response: GKInviteRecipientResponse,
         from playerName: String
     ) {
-        let message: String
+        var message: String
         let isFailure: Bool
         switch response {
         case .accepted:
@@ -176,6 +196,11 @@ final class GameCenterManager: NSObject, ObservableObject {
             message = "Game Center returned an unknown invitation response"
             isFailure = true
         }
+        if let botCount = gameSetup?.botCount, botCount > 0 {
+            message += " • \(botCount) bot "
+                + (botCount == 1 ? "seat" : "seats")
+                + " reserved"
+        }
         matchmakerNotice = message
         if isFailure {
             lastError = message
@@ -194,6 +219,7 @@ final class GameCenterManager: NSObject, ObservableObject {
     private func accept(match: GKMatch) {
         self.match?.disconnect()
         self.match = match
+        requestedRemoteHumanCount = nil
         match.delegate = self
         hasActiveMatch = true
         isChoosingHost = false
@@ -611,6 +637,7 @@ final class GameCenterManager: NSObject, ObservableObject {
         buyOfferTimeoutTask = nil
         quickPairSearchId = nil
         gameSetup = nil
+        requestedRemoteHumanCount = nil
         shouldBroadcastGameSetup = false
         isRunningHostedBots = false
         onlineGame = nil
@@ -679,6 +706,7 @@ extension GameCenterManager: GKMatchmakerViewControllerDelegate {
             self?.isPresentingMatchmaker = false
             self?.matchmakerNotice = nil
             self?.gameSetup = nil
+            self?.requestedRemoteHumanCount = nil
             self?.shouldBroadcastGameSetup = false
         }
     }
@@ -692,6 +720,7 @@ extension GameCenterManager: GKMatchmakerViewControllerDelegate {
             self?.matchmakerNotice = nil
             self?.lastError = error.localizedDescription
             self?.gameSetup = nil
+            self?.requestedRemoteHumanCount = nil
             self?.shouldBroadcastGameSetup = false
         }
     }
@@ -786,6 +815,7 @@ extension GameCenterManager: GKLocalPlayerListener {
             guard let self else { return }
             self.pendingInvite = invite
             self.gameSetup = nil
+            self.requestedRemoteHumanCount = nil
             self.shouldBroadcastGameSetup = false
             self.isPresentingMatchmaker = true
         }

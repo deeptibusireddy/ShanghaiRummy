@@ -48,6 +48,25 @@ final class ScreenshotUITests: XCTestCase {
         snapshot(named: "03-hand-1-scaffold")
     }
 
+    func testCaptureFamilyTableSetup() throws {
+        app.launchArguments += ["--demo-family-table-setup"]
+        app.launch()
+
+        XCTAssertTrue(
+            app.navigationBars["Create Table"].waitForExistence(timeout: 5)
+        )
+        XCTAssertTrue(app.staticTexts["You"].exists)
+        XCTAssertTrue(app.staticTexts["Bot 1"].exists)
+        XCTAssertTrue(app.buttons["Remove Bot 1"].exists)
+        let start = app.buttons["start-family-table"]
+        XCTAssertTrue(start.exists)
+        XCTAssertTrue(start.isEnabled)
+        snapshot(named: "02-family-table-setup")
+
+        start.tap()
+        XCTAssertTrue(app.buttons["quit-game"].waitForExistence(timeout: 5))
+    }
+
     func testCaptureMidGamePreview() throws {
         // Boots directly into a rigged 4-player mid-game state so we can
         // preview the table populated with melds from every player.

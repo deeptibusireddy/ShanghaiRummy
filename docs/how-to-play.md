@@ -26,8 +26,10 @@ level 10 wins.**
 The app deals the cards, tracks scoring, enforces rules, and lets everyone
 play from their own iPhone via Game Center.
 
-For an invited online game, choose 0–4 bots before opening Game Center. Invite
-at least one other person; people and bots can fill up to six total seats.
+Use **Create Table** to build any 2–6 player mix. You can play immediately with
+1–5 bots and no human invitation. For a mixed table, mark each added seat as
+Human or Bot; the app reserves the bots and opens Game Center only for the exact
+number of people selected.
 
 ---
 

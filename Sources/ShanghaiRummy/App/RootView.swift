@@ -5,7 +5,8 @@ struct RootView: View {
     @State private var activeGame: GameViewModel?
     @State private var activeTheme: VisualTheme = .gameNight
     @State private var showingSetup = false
-    @State private var showingOnlineBotOptions = false
+    @State private var showingFamilyTableSetup = false
+    @State private var pendingFamilyTable: FamilyTableConfiguration?
 
     var body: some View {
         if let game = gameCenter.onlineGame {
@@ -26,32 +27,17 @@ struct RootView: View {
                         activeGame = vm
                     }
                 }
-                .confirmationDialog(
-                    "Add Bots",
-                    isPresented: $showingOnlineBotOptions,
-                    titleVisibility: .visible
+                .sheet(
+                    isPresented: $showingFamilyTableSetup,
+                    onDismiss: startPendingFamilyTable
                 ) {
-                    Button("No Bots") {
-                        gameCenter.beginMatchmaking(botCount: 0)
+                    FamilyTableSetupView(
+                        localPlayerName: gameCenter.displayName,
+                        isGameCenterAuthenticated: gameCenter.isAuthenticated
+                    ) { configuration in
+                        pendingFamilyTable = configuration
+                        showingFamilyTableSetup = false
                     }
-                    Button("1 Bot") {
-                        gameCenter.beginMatchmaking(botCount: 1)
-                    }
-                    Button("2 Bots") {
-                        gameCenter.beginMatchmaking(botCount: 2)
-                    }
-                    Button("3 Bots") {
-                        gameCenter.beginMatchmaking(botCount: 3)
-                    }
-                    Button("4 Bots") {
-                        gameCenter.beginMatchmaking(botCount: 4)
-                    }
-                    Button("Cancel", role: .cancel) {}
-                } message: {
-                    Text(
-                        "Choose bots first, then invite people in Game Center. "
-                            + "The table supports up to six total players."
-                    )
                 }
                 .fullScreenCover(isPresented: $gameCenter.isPresentingMatchmaker) {
                     ZStack(alignment: .bottom) {
@@ -78,7 +64,11 @@ struct RootView: View {
                     }
                 }
                 .onAppear {
-                    if activeGame == nil,
+                    if CommandLine.arguments.contains(
+                        "--demo-family-table-setup"
+                    ) {
+                        showingFamilyTableSetup = true
+                    } else if activeGame == nil,
                        CommandLine.arguments.contains("--demo-six-player-status") {
                         activeTheme = themeFromArgs()
                         let state = GameFactory.demoSixPlayerStatus()
@@ -160,6 +150,36 @@ struct RootView: View {
         return .gameNight
     }
 
+    private func startPendingFamilyTable() {
+        guard let configuration = pendingFamilyTable else { return }
+        pendingFamilyTable = nil
+
+        if configuration.invitedHumanCount == 0 {
+            startBotOnlyGame(botCount: configuration.botCount)
+        } else {
+            gameCenter.beginMatchmaking(
+                invitedHumanCount: configuration.invitedHumanCount,
+                botCount: configuration.botCount
+            )
+        }
+    }
+
+    private func startBotOnlyGame(botCount: Int) {
+        let botNames = (0..<botCount).map { "Bot \($0 + 1)" }
+        let built = GameFactory.newVsCPU(
+            you: "You",
+            cpuNames: botNames,
+            seed: UInt64.random(in: 0...UInt64.max)
+        )
+        let viewModel = GameViewModel(
+            state: built.state,
+            localPlayerId: built.state.players[0].id
+        )
+        viewModel.cpuPlayerIds = built.cpuIds
+        viewModel.runAllCPUTurns()
+        activeGame = viewModel
+    }
+
     private var homeMenu: some View {
         NavigationStack {
             VStack(spacing: 24) {
@@ -181,8 +201,8 @@ struct RootView: View {
                 .buttonStyle(.borderedProminent)
 
                 VStack(spacing: 8) {
-                    Button("Invite Family (Game Center)") {
-                        showingOnlineBotOptions = true
+                    Button("Create Table (People & Bots)") {
+                        showingFamilyTableSetup = true
                     }
                     .buttonStyle(.bordered)
 
@@ -190,13 +210,13 @@ struct RootView: View {
                         gameCenter.beginQuickPair()
                     }
                     .buttonStyle(.bordered)
+                    .disabled(!gameCenter.isAuthenticated)
 
                     Text("For Quick Pair, tap it on both phones at the same time.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
                 }
-                .disabled(!gameCenter.isAuthenticated)
 
                 if let error = gameCenter.lastError {
                     Text(error)
@@ -205,11 +225,6 @@ struct RootView: View {
                         .multilineTextAlignment(.center)
                 }
 
-                Button("Practice (vs. CPU)") {
-                    // TODO(M2.5): local single-player mode
-                }
-                .buttonStyle(.bordered)
-                .disabled(true)
             }
             .padding()
         }

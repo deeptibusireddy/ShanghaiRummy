@@ -3,10 +3,12 @@
 An iOS multiplayer card game (Shanghai Rummy / Contract Rummy variant) built for
 family play across iPhones via **Game Center**.
 
-For a direct Game Center invitation, choose 0–4 bots before inviting people;
-human and bot seats share the six-player table limit. During TestFlight beta
-testing, two players can use **Quick Pair** at the same time if Game Center
-cannot deliver a direct invitation.
+The **Create Table** screen supports any 2–6 player mix. You plus 1–5 bots
+starts immediately without an invitation. For mixed tables, choose each added
+seat as Human or Bot; bot seats stay reserved while Game Center opens for the
+exact number of invited people. During TestFlight beta testing, two players can
+use **Quick Pair** at the same time if Game Center cannot deliver a direct
+invitation.
 
 > **Status:** Early scaffold. See [`docs/rules.md`](docs/rules.md) for the rule
 > set being implemented and the session plan for milestones.

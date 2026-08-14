@@ -319,8 +319,12 @@ Haptics (M4):
 - Online: scene stays anchored to *you* (your seat always bottom); opponent
   hands stay hidden, and the turn banner shows whose turn or buy decision is
   active.
-- Before a direct Game Center invitation, the organizer chooses 0–4 bots.
-  Game Center limits human invite slots so humans plus bots never exceed six.
+- **Create Table** opens one roster for 2–6 seats. The local player is fixed;
+  every added seat can switch between Human and Bot or be removed. It defaults
+  to You + Bot 1, and bot-only tables start locally without Game Center.
+- Mixed tables reserve their bot seats and open Apple's matchmaker only for the
+  exact selected human count. A noninteractive notice over Apple's screen keeps
+  the reserved bot count visible.
 - Bot identities are shared with every device, but only the authoritative host
   runs their decisions. Humans cannot submit normal turn actions for bots.
 - When clockwise dealer rotation assigns the next deal to a bot, any human may
