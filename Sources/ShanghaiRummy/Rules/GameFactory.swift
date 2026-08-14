@@ -13,6 +13,10 @@ public enum GameFactory {
         var rng = SeededRNG(seed: seed)
         var deck = Deck(playerCount: playerNames.count)
         deck.shuffle(using: &rng)
+        let dealerIndex = Int.random(
+            in: 0..<playerNames.count,
+            using: &rng
+        )
 
         var players = playerNames.map { Player(name: $0) }
         for pi in players.indices {
@@ -25,8 +29,8 @@ public enum GameFactory {
         return GameState(
             players: players,
             currentRound: 1,
-            currentTurnIndex: (0 + 1) % players.count, // player to dealer's left
-            dealerIndex: 0,
+            currentTurnIndex: (dealerIndex + 1) % players.count,
+            dealerIndex: dealerIndex,
             stock: deck.cards,
             discard: initialDiscard,
             melds: [],
@@ -71,8 +75,8 @@ public enum GameFactory {
         }
         let initialDiscard = deck.draw().map { [$0] } ?? []
 
-        // Rotate dealer left; first to act is player after new dealer.
-        let newDealer = (state.dealerIndex + 1) % players.count
+        // Rotate one seat clockwise, independent of who ended the hand.
+        let newDealer = state.nextDealerIndex
         return GameState(
             players: players,
             currentRound: nextHandNumber,
@@ -196,6 +200,40 @@ public enum GameFactory {
             stockReshufflesUsed: 0,
             randomSeed: 42
         )
+    }
+
+    /// Six-player online-style status fixture for crowded-layout screenshots.
+    /// "You" stays at the bottom while Sam is active at the center-top seat.
+    public static func demoSixPlayerStatus() -> GameState {
+        func c(_ suit: Suit, _ rank: Rank) -> Card {
+            Card(suit: suit, rank: rank)
+        }
+
+        var state = demoMidGame()
+        state.players.append(Player(
+            name: "Taylor",
+            hand: [
+                c(.clubs, .three), c(.diamonds, .five),
+                c(.hearts, .seven), c(.spades, .nine),
+                c(.clubs, .jack), c(.diamonds, .king),
+            ],
+            totalScore: 75,
+            currentLevel: 4
+        ))
+        state.players.append(Player(
+            name: "Morgan",
+            hand: [
+                c(.spades, .three), c(.hearts, .four),
+                c(.diamonds, .six), c(.clubs, .seven),
+                c(.spades, .eight), c(.hearts, .nine),
+                c(.diamonds, .ten), c(.clubs, .queen),
+                c(.spades, .king), Card.joker(),
+            ],
+            totalScore: 95,
+            currentLevel: 3
+        ))
+        state.currentTurnIndex = 3
+        return state
     }
 
     /// A rigged end-of-hand state used only by CI screenshots and previews.

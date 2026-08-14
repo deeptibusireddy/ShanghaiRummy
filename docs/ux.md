@@ -27,9 +27,10 @@ file first, then the scene.
 - **Orientation:** Landscape only (locked).
 - **Aspect ratio target:** iPhone 15+ family (~19.5:9). Design at logical
   size 852×393 pt (iPhone 15 in landscape) and scale up for iPad later.
-- **Safe areas:** Home-indicator on bottom, Dynamic Island top center on
-  Pro models. Keep interactive zones out of the top 24 pt and bottom 16
-  pt inset.
+- **Safe areas:** The full-bleed table may extend behind the camera/Dynamic
+  Island and home indicator, but seats, player names, the local HUD, hand, and
+  controls use the device's live landscape safe-area insets. Edge seating is
+  clamped symmetrically so either landscape orientation remains readable.
 
 ## Table zones
 
@@ -67,11 +68,11 @@ percentages of the game surface so they scale to any device.
 | **Your hand**     | Bottom strip, cards fanned & sorted, drag source     |
 | **Your info**     | Below hand: name, current level, cumulative score, contract for your level |
 | **Your melds**    | Just above your hand, horizontal row (empty until you go down) |
-| **Opponent seats**| Left / right / top edges — one seat per opponent     |
+| **Opponent seats**| Left / right / top edges — avatar, name, cards, and level |
 | **Opponent meld strip** | Adjacent to each opponent's name & level     |
-| **Contract reminder** | Small chip at your seat showing your level's contract |
 | **Turn banner**   | Top strip with active player's name, cards in hand, level, and contract |
-| **Context action**| Bottom right: one stateful prompt/action for the current phase |
+| **Context action**| Bottom right only when a real action such as Save Meld or Go Down is available |
+| **Utility controls** | Top right: Score, Rank, and Suit |
 
 ## Seat layouts by player count
 
@@ -138,11 +139,28 @@ to reserve a dedicated tableau lane. Meld cards use larger, more exposed faces
 and stronger container outlines so ranks and suits remain readable. Crowded
 side-seat melds wrap into two rows with a 34% card-scale floor; only card
 overlap tightens on especially narrow screens, while at least 25% of each card
-remains exposed. Compact-width opponent seats use avatar-first pills to reserve
-that space. All opponent layouts preserve a protected corridor around the
-shared piles. The discard drop zone follows the visible pile instead of
-extending into the tableau; if padded targets ever touch, the nearest visual
-target wins and an exact tie favors the meld.
+remains exposed. Five/six-player and compact-width layouts use smaller,
+avatar-first opponent pills to reserve that space. All opponent layouts preserve
+a protected corridor around the shared piles. The discard drop zone follows the
+visible pile instead of extending into the tableau; if padded targets ever
+touch, the nearest visual target wins and an exact tie favors the meld.
+
+### Player status hierarchy
+
+- The top banner is the single glanceable active-turn summary: active name,
+  hand count, level/contract, and current guidance.
+- Seat pills are the spatial roster. They always retain name, hand count, and
+  level; amber border, avatar, and halo styling identify the active player
+  without replacing useful details with another turn label.
+- The bottom-left local HUD remains the persistent personal reference for name,
+  score, level, and contract.
+- The bottom-right area is reserved for real enabled actions. Passive prompts
+  and duplicated "[name]'s turn" boxes are omitted because guidance already
+  lives in the top banner.
+- Purchase and hand-summary overlays remain transient and role-specific.
+- **Score**, beside Rank and Suit, opens a dismissible live standings card with
+  player name, current level, and cumulative score, ordered lowest score first.
+  It is display-only and remains available during purchase decisions.
 
 ## Interaction spec
 
@@ -153,9 +171,12 @@ target wins and an exact tie favors the meld.
   **Offer Clockwise**.
 - A non-turn player whose offer is active sees **Buy Opportunity**. Everyone
   else sees **Waiting for [name]**.
-- These choices appear in a compact center panel across the stock and discard
-  piles without dimming or covering the local player's melds. The table remains
-  visible while input stays blocked.
+- These choices appear in a narrow center panel confined to the protected stock
+  and discard corridor. It does not dim or cover any player's melds, including
+  the left and right tableau lanes in four-player games. The full table remains
+  visible. The local player can still reorder their hand, use Rank/Suit, or
+  inspect Score while waiting; draw, discard, staging, and meld actions remain
+  locked.
 - Taking the discard moves it to the turn player's hand. Passing starts the
   sequential buyer offers; when those end, the stock draw is automatic.
 - Phase transitions to "meld or discard" automatically after resolution.
@@ -212,7 +233,8 @@ with warning feedback.
 - A buyer receives the discard and current top stock card. The turn player
   then receives the next stock card.
 - If nobody buys, the turn player receives the current top stock card.
-- Waiting players see who is deciding; underlying card and pile input remains
+- Waiting players see who is deciding. Their local hand remains available for
+  reordering and Rank/Suit sorting, while pile and turn-action input stays
   blocked for the entire purchase round.
 
 ### Go Down
@@ -259,8 +281,9 @@ with warning feedback.
 
 - Card draw: 250 ms ease-out from pile to hand slot.
 - Newly added hand cards: lifted slightly with a pulsing amber outline and
-  **NEW** badge. A normal draw replaces that player's previous highlights;
-  purchased cards remain highlighted until the buyer's next turn draw.
+  **NEW** badge. Both cards from an out-of-turn purchase remain highlighted
+  until the buyer's official draw. That draw replaces the purchase highlights,
+  and all remaining **NEW** highlighting clears when the player discards.
 - Card discard: 200 ms ease-in to pile top.
 - Meld commit: 350 ms with mild spring (staged cards slide into row).
 - Wild redemption: cross-fade + subtle scale bump.
@@ -288,14 +311,21 @@ Haptics (M4):
   text grows to 24 pt.
 - VoiceOver rotor: "Piles", "My hand", "My melds", "Opponents' melds".
 
-## Hot-seat vs online (later)
+## Hot-seat vs online
 
 - Hot-seat: the whole scene renders as-is, but the "your seat" rotates
   each turn. The pass-and-play interstitial hides the previous player's
   hand before the next one takes the device.
-- Online (M3): scene stays anchored to *you* (your seat always bottom);
-  opponent seats show name + level + score + meld count but hand is
-  hidden. Turn banner shows whose turn it is remotely.
+- Online: scene stays anchored to *you* (your seat always bottom); opponent
+  hands stay hidden, and the turn banner shows whose turn or buy decision is
+  active.
+- Before a direct Game Center invitation, the organizer chooses 0–4 bots.
+  Game Center limits human invite slots so humans plus bots never exceed six.
+- Bot identities are shared with every device, but only the authoritative host
+  runs their decisions. Humans cannot submit normal turn actions for bots.
+- When clockwise dealer rotation assigns the next deal to a bot, any human may
+  tap **Deal Next Hand** after reviewing the scorecard; the host validates and
+  performs that one delegated bot action.
 
 ## Open UX questions (park here)
 

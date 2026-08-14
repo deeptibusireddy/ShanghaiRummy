@@ -33,8 +33,10 @@
 - **Deal:** **11 cards** to each player at the start of every round, regardless
   of contract. Top card of the remaining stock is flipped face-up to start the
   discard pile.
-- **Dealer:** Rotates left after each round.
-- **First to act:** Player to the dealer's left.
+- **Dealer:** The opening dealer is chosen randomly. After every hand, dealing
+  moves exactly one seat clockwise, regardless of who went out.
+- **First to act:** The player one seat clockwise from the dealer (the player
+  to the dealer's left).
 
 ## The 10 contract levels (per player)
 
@@ -77,6 +79,8 @@ and/or buy your way up before you can go down.
 2. **Meld** (only if you've already gone down this round):
    - Lay additional cards on any meld already on the table (yours or opponents').
 3. **Discard:** Place one card face-up on the discard pile. Your turn ends.
+   You may skip this only when laying off every remaining card makes you go
+   out on a turn after you originally went down.
 
 Round 10 follows the same rules — there is no "no discard, go out in one turn"
 final round in this variant.
@@ -199,6 +203,8 @@ Before each turn's draw, play pauses for a sequential **purchase round**:
 - After you have gone down, on your subsequent turns you may go out by playing
   all your remaining cards — either laid onto existing melds, or discarded as
   your final discard.
+- Your initial contract must leave at least one card in hand for that turn's
+  discard; going down and going out in the same turn is not allowed.
 - The moment any player goes out, the round ends immediately.
 - You may go out with or without a final discard.
 

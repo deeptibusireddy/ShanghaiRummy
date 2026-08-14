@@ -1,4 +1,5 @@
 import XCTest
+import UIKit
 @testable import ShanghaiRummy
 
 @MainActor
@@ -12,6 +13,169 @@ final class GameSceneHitTestingTests: XCTestCase {
         )
 
         XCTAssertEqual(scene.size, CGSize(width: 1, height: 1))
+    }
+
+    func testLandscapeCutoutExpandsTableEdgeInsets() {
+        let safeArea = UIEdgeInsets(
+            top: 0,
+            left: 59,
+            bottom: 21,
+            right: 21
+        )
+
+        XCTAssertEqual(
+            GameScene.tableHorizontalEdgeInset(
+                sceneWidth: 852,
+                safeAreaInsets: safeArea
+            ),
+            67
+        )
+        XCTAssertEqual(
+            GameScene.seatLayoutHorizontalInset(for: safeArea),
+            74
+        )
+    }
+
+    func testBuyDecisionRecognizesOnlySafeUtilityControls() {
+        XCTAssertTrue(
+            GameScene.isSafeUtilityControlDuringBuyDecision("sort-rank")
+        )
+        XCTAssertTrue(
+            GameScene.isSafeUtilityControlDuringBuyDecision("sort-suit")
+        )
+        XCTAssertTrue(
+            GameScene.isSafeUtilityControlDuringBuyDecision("show-score")
+        )
+        XCTAssertFalse(
+            GameScene.isSafeUtilityControlDuringBuyDecision("stock")
+        )
+        XCTAssertFalse(
+            GameScene.isSafeUtilityControlDuringBuyDecision("discard")
+        )
+        XCTAssertFalse(
+            GameScene.isSafeUtilityControlDuringBuyDecision("save-meld")
+        )
+        XCTAssertFalse(
+            GameScene.isSafeUtilityControlDuringBuyDecision("card:\(UUID())")
+        )
+    }
+
+    func testReorderOnlyDragCannotBecomeGameplayDrop() {
+        XCTAssertFalse(
+            GameScene.allowsGameplayDrop(
+                isLocalPlayersTurn: true,
+                phase: .awaitingDraw,
+                isBuyDecisionActive: true
+            )
+        )
+        XCTAssertTrue(
+            GameScene.allowsGameplayDrop(
+                isLocalPlayersTurn: true,
+                phase: .awaitingMeldOrDiscard,
+                isBuyDecisionActive: false
+            )
+        )
+        XCTAssertFalse(
+            GameScene.allowsGameplayDrop(
+                isLocalPlayersTurn: false,
+                phase: .awaitingMeldOrDiscard,
+                isBuyDecisionActive: false
+            )
+        )
+    }
+
+    func testCardCountLabelUsesSingularOnlyForOne() {
+        XCTAssertEqual(GameScene.cardCountLabel(0), "0 cards")
+        XCTAssertEqual(GameScene.cardCountLabel(1), "1 card")
+        XCTAssertEqual(GameScene.cardCountLabel(2), "2 cards")
+    }
+
+    func testTurnTitleUsesRoleForLocalPlayerAndNameForOthers() {
+        XCTAssertEqual(
+            GameScene.turnTitle(
+                playerName: "You",
+                isLocalPlayersTurn: true,
+                isCPU: false
+            ),
+            "YOUR TURN"
+        )
+        XCTAssertEqual(
+            GameScene.turnTitle(
+                playerName: "Sam",
+                isLocalPlayersTurn: false,
+                isCPU: false
+            ),
+            "SAM'S TURN"
+        )
+        XCTAssertEqual(
+            GameScene.turnTitle(
+                playerName: "Bot",
+                isLocalPlayersTurn: true,
+                isCPU: true
+            ),
+            "BOT'S TURN"
+        )
+    }
+
+    func testFiveAndSixPlayerSeatsUseCompactWidth() {
+        XCTAssertEqual(
+            GameScene.opponentSeatWidth(sceneWidth: 852, playerCount: 4),
+            138
+        )
+        XCTAssertEqual(
+            GameScene.opponentSeatWidth(sceneWidth: 852, playerCount: 5),
+            112
+        )
+        XCTAssertEqual(
+            GameScene.opponentSeatWidth(sceneWidth: 852, playerCount: 6),
+            112
+        )
+        XCTAssertEqual(
+            GameScene.opponentSeatWidth(sceneWidth: 700, playerCount: 4),
+            64
+        )
+    }
+
+    func testTurnBannerLeavesRoomForThreeUtilityControls() {
+        let width = GameScene.turnBannerWidth(
+            sceneWidth: 852,
+            horizontalEdgeInset: 67
+        )
+        let bannerRightEdge = 852 / 2 + width / 2
+        let scoreControlLeftEdge: CGFloat = 852 - 67 - 118 - 22
+
+        XCTAssertEqual(width, 414)
+        XCTAssertLessThanOrEqual(
+            bannerRightEdge + 12,
+            scoreControlLeftEdge
+        )
+    }
+
+    func testSixPlayerStatusFixtureSeparatesLocalAndActivePlayers() {
+        let state = GameFactory.demoSixPlayerStatus()
+
+        XCTAssertEqual(state.players.count, 6)
+        XCTAssertEqual(state.players[0].name, "You")
+        XCTAssertEqual(state.players[state.currentTurnIndex].name, "Sam")
+        XCTAssertNotEqual(state.currentPlayerId, state.players[0].id)
+    }
+
+    func testContextAreaShowsOnlyRealEnabledActions() {
+        XCTAssertFalse(
+            GameScene.shouldDisplayContextAction(name: nil, enabled: false)
+        )
+        XCTAssertFalse(
+            GameScene.shouldDisplayContextAction(
+                name: "save-meld",
+                enabled: false
+            )
+        )
+        XCTAssertTrue(
+            GameScene.shouldDisplayContextAction(
+                name: "save-meld",
+                enabled: true
+            )
+        )
     }
 
     func testMeldTargetHitTestingUsesRenderedTargetFrames() {

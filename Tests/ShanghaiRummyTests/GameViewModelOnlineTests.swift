@@ -8,10 +8,12 @@ final class GameViewModelOnlineTests: XCTestCase {
     }
 
     func testOnlineViewModelKeepsLocalHandWhenAnotherPlayerHasTurn() {
-        let state = GameFactory.newGame(
+        var state = GameFactory.newGame(
             playerNames: ["Local", "Remote"],
             seed: 11
         )
+        state.currentTurnIndex = 1
+        state.buyDecisionPlayerId = state.players[1].id
         let local = state.players[0]
         XCTAssertNotEqual(state.currentPlayerId, local.id)
 
@@ -35,6 +37,44 @@ final class GameViewModelOnlineTests: XCTestCase {
         )
     }
 
+    func testOnlineLocalPlayerCanOrganizeHandDuringRemoteBuyDecision() {
+        var state = GameFactory.newGame(
+            playerNames: ["Local", "Remote"],
+            seed: 11
+        )
+        let cards = [
+            c(.hearts, .king),
+            c(.clubs, .three),
+            c(.spades, .ace),
+            Card.joker(),
+            c(.diamonds, .five),
+        ]
+        state.players[0].hand = cards
+        state.currentTurnIndex = 1
+        state.buyDecisionPlayerId = state.players[1].id
+        let local = state.players[0]
+        let viewModel = GameViewModel(
+            state: state,
+            localPlayerId: local.id
+        )
+
+        XCTAssertTrue(viewModel.isBuyDecisionActive)
+        XCTAssertFalse(viewModel.isLocalBuyDecision)
+        XCTAssertFalse(viewModel.isLocalPlayersTurn)
+
+        viewModel.moveHandCard(cards[3].id, before: cards[0].id)
+        XCTAssertEqual(viewModel.orderedHand.first?.id, cards[3].id)
+
+        viewModel.sortHandByRank()
+        XCTAssertEqual(
+            viewModel.orderedHand.map(\.id),
+            [cards[2].id, cards[1].id, cards[4].id, cards[0].id, cards[3].id]
+        )
+
+        viewModel.toggleStaged(cardId: cards[0].id)
+        XCTAssertTrue(viewModel.stagedCardIds.isEmpty)
+    }
+
     func testOnlineStatusKeepsLocalAndTurnPlayerContractsDistinct() {
         var state = GameFactory.newGame(
             playerNames: ["Local", "Remote"],
@@ -42,6 +82,8 @@ final class GameViewModelOnlineTests: XCTestCase {
         )
         state.players[0].currentLevel = 5
         state.players[1].currentLevel = 2
+        state.currentTurnIndex = 1
+        state.buyDecisionPlayerId = state.players[1].id
         let local = state.players[0]
         let remote = state.players[1]
         XCTAssertEqual(state.currentPlayerId, remote.id)
@@ -89,6 +131,8 @@ final class GameViewModelOnlineTests: XCTestCase {
         )
         let localId = state.players[0].id
         let remoteId = state.players[1].id
+        state.currentTurnIndex = 1
+        state.buyDecisionPlayerId = remoteId
         state = try! TurnEngine.apply(
             .passBuyOffer(playerId: remoteId),
             to: state
@@ -123,7 +167,9 @@ final class GameViewModelOnlineTests: XCTestCase {
             seed: 112
         )
         let observerId = state.players[0].id
-        let turnPlayerId = state.currentPlayerId
+        state.currentTurnIndex = 1
+        let turnPlayerId = state.players[1].id
+        state.buyDecisionPlayerId = turnPlayerId
         state = try! TurnEngine.apply(
             .passBuyOffer(playerId: turnPlayerId),
             to: state
@@ -139,6 +185,108 @@ final class GameViewModelOnlineTests: XCTestCase {
             viewModel.buyDecisionInstruction,
             "Buyer is deciding whether to buy the discard"
         )
+    }
+
+    func testOnlineNextDealerControlsHandAdvanceRegardlessOfWinner() {
+        var state = GameFactory.newGame(
+            playerNames: ["Winner", "Next Dealer"],
+            seed: 114
+        )
+        state.phase = .roundEnded
+        state.dealerIndex = 0
+        state.currentTurnIndex = 0
+        state.buyDecisionPlayerId = nil
+        state.players[0].hasGoneDownThisRound = true
+        state.players[0].hand = []
+
+        let winnerViewModel = GameViewModel(
+            state: state,
+            localPlayerId: state.players[0].id
+        )
+        let dealerViewModel = GameViewModel(
+            state: state,
+            localPlayerId: state.players[1].id
+        )
+
+        XCTAssertEqual(winnerViewModel.nextDealerName, "Next Dealer")
+        XCTAssertFalse(winnerViewModel.canAdvanceHand)
+        XCTAssertTrue(dealerViewModel.canAdvanceHand)
+        winnerViewModel.advanceHand()
+        XCTAssertNotNil(winnerViewModel.lastError)
+
+        var submittedAction: TurnEngine.Action?
+        dealerViewModel.configureOnlineActionSubmitter {
+            submittedAction = $0
+            return true
+        }
+        dealerViewModel.advanceHand()
+        XCTAssertEqual(
+            submittedAction,
+            .advanceHand(playerId: state.players[1].id)
+        )
+    }
+
+    func testOnlineHumanCanDealWhenNextDealerIsABot() {
+        var state = GameFactory.newGame(
+            playerNames: ["Local", "Remote", "Bot 1"],
+            seed: 115
+        )
+        state.phase = .roundEnded
+        state.dealerIndex = 1
+        state.currentTurnIndex = 0
+        state.buyDecisionPlayerId = nil
+        state.players[0].hasGoneDownThisRound = true
+        state.players[0].hand = []
+        let botId = state.players[2].id
+        let viewModel = GameViewModel(
+            state: state,
+            localPlayerId: state.players[0].id
+        )
+        viewModel.cpuPlayerIds = [botId]
+        var submittedAction: TurnEngine.Action?
+        viewModel.configureOnlineActionSubmitter {
+            submittedAction = $0
+            return true
+        }
+
+        XCTAssertTrue(viewModel.canAdvanceHand)
+        viewModel.advanceHand()
+
+        XCTAssertEqual(
+            submittedAction,
+            .advanceHand(playerId: botId)
+        )
+    }
+
+    func testOnlineViewModelDoesNotRunHostsBotActions() {
+        var state = GameFactory.newGame(
+            playerNames: ["Local", "Bot 1"],
+            seed: 116
+        )
+        state.currentTurnIndex = 0
+        state.buyDecisionPlayerId = state.players[0].id
+        let localId = state.players[0].id
+        let botId = state.players[1].id
+        let viewModel = GameViewModel(
+            state: state,
+            localPlayerId: localId
+        )
+        viewModel.cpuPlayerIds = [botId]
+        var submittedAction: TurnEngine.Action?
+        viewModel.configureOnlineActionSubmitter {
+            submittedAction = $0
+            return true
+        }
+
+        XCTAssertTrue(
+            viewModel.applyAuthoritative(
+                .passBuyOffer(playerId: localId)
+            )
+        )
+
+        XCTAssertEqual(viewModel.state.activePlayerId, botId)
+        XCTAssertNil(submittedAction)
+        XCTAssertFalse(viewModel.isSubmittingOnlineAction)
     }
 
     func testOnlineGoDownSnapshotCanRenderOnOpponentsTable() {
@@ -289,10 +437,12 @@ final class GameViewModelOnlineTests: XCTestCase {
     }
 
     func testNonTurnOnlinePlayerCannotStageCards() {
-        let state = GameFactory.newGame(
+        var state = GameFactory.newGame(
             playerNames: ["Local", "Remote"],
             seed: 15
         )
+        state.currentTurnIndex = 1
+        state.buyDecisionPlayerId = state.players[1].id
         let local = state.players[0]
         let viewModel = GameViewModel(
             state: state,
@@ -305,10 +455,12 @@ final class GameViewModelOnlineTests: XCTestCase {
     }
 
     func testHotSeatPurchaseOfferRequiresDeviceHandoff() {
-        let state = GameFactory.newGame(
+        var state = GameFactory.newGame(
             playerNames: ["Buyer", "Turn Player"],
             seed: 16
         )
+        state.currentTurnIndex = 1
+        state.buyDecisionPlayerId = state.players[1].id
         let turnPlayerId = state.currentPlayerId
         let buyerId = state.players[0].id
         let viewModel = GameViewModel(state: state)
@@ -329,10 +481,12 @@ final class GameViewModelOnlineTests: XCTestCase {
     }
 
     func testHotSeatTimeoutPassesNonTurnBuyerOffer() {
-        let state = GameFactory.newGame(
+        var state = GameFactory.newGame(
             playerNames: ["Buyer", "Turn Player"],
             seed: 17
         )
+        state.currentTurnIndex = 1
+        state.buyDecisionPlayerId = state.players[1].id
         let turnPlayerId = state.currentPlayerId
         let buyerId = state.players[0].id
         let turnHandBefore = state.players[1].hand.count

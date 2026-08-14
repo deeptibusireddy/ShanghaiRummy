@@ -400,12 +400,42 @@ final class TurnEngineTests: XCTestCase {
         XCTAssertEqual(g.players.count, 3)
         XCTAssertEqual(g.currentRound, 1)
         XCTAssertEqual(g.phase, .awaitingDraw)
-        XCTAssertEqual(g.dealerIndex, 0)
-        XCTAssertEqual(g.currentTurnIndex, 1) // player to dealer's left
+        XCTAssertTrue(g.players.indices.contains(g.dealerIndex))
+        XCTAssertEqual(
+            g.currentTurnIndex,
+            (g.dealerIndex + 1) % g.players.count
+        )
         for p in g.players {
             XCTAssertEqual(p.hand.count, RulesConfig.handSizeAtDeal)
         }
         XCTAssertEqual(g.discard.count, 1)
+    }
+
+    func testOpeningDealerIsSeededAndVariesAcrossMatches() {
+        let first = GameFactory.newGame(
+            playerNames: ["A", "B", "C", "D"],
+            seed: 84
+        )
+        let repeated = GameFactory.newGame(
+            playerNames: ["A", "B", "C", "D"],
+            seed: 84
+        )
+        XCTAssertEqual(first.dealerIndex, repeated.dealerIndex)
+
+        let games = (0..<16).map { seed in
+            GameFactory.newGame(
+                playerNames: ["A", "B", "C", "D"],
+                seed: UInt64(seed)
+            )
+        }
+        for game in games {
+            XCTAssertEqual(
+                game.currentTurnIndex,
+                (game.dealerIndex + 1) % game.players.count
+            )
+        }
+        let dealerIndices = Set(games.map(\.dealerIndex))
+        XCTAssertGreaterThan(dealerIndices.count, 1)
     }
 
     func testEveryonePassingDrawsStockForTurnPlayer() {
@@ -413,6 +443,7 @@ final class TurnEngineTests: XCTestCase {
         let turnPlayerId = original.currentPlayerId
         let before = original.players[original.currentTurnIndex].hand.count
         let stockBefore = original.stock.count
+        let stockDrawId = original.stock.last!.id
 
         let g = passPurchaseRound(in: original)
 
@@ -421,6 +452,10 @@ final class TurnEngineTests: XCTestCase {
         XCTAssertEqual(g.stock.count, stockBefore - 1)
         XCTAssertEqual(g.phase, .awaitingMeldOrDiscard)
         XCTAssertNil(g.buyDecisionPlayerId)
+        XCTAssertEqual(
+            g.highlightedCardIds(for: turnPlayerId),
+            Set([stockDrawId])
+        )
     }
 
     func testCurrentPlayerStartsWithFirstRefusal() {
@@ -463,10 +498,12 @@ final class TurnEngineTests: XCTestCase {
         g = passPurchaseRound(in: g)
         let toDiscard = g.players[g.currentTurnIndex].hand.first!
         let before = g.currentTurnIndex
+        XCTAssertFalse(g.highlightedCardIds(for: pid).isEmpty)
         g = try! TurnEngine.apply(.discard(playerId: pid, card: toDiscard), to: g).get()
         XCTAssertEqual(g.currentTurnIndex, (before + 1) % g.players.count)
         XCTAssertEqual(g.phase, .awaitingDraw)
         XCTAssertEqual(g.discard.last?.id, toDiscard.id)
+        XCTAssertTrue(g.highlightedCardIds(for: pid).isEmpty)
     }
 
     func testDiscardRejectsCardPayloadThatDoesNotMatchAuthoritativeHand() {
@@ -589,10 +626,11 @@ final class TurnEngineTests: XCTestCase {
         )
     }
 
-    func testPurchasedHighlightsAreReplacedByBuyersNextTurnDraw() {
+    func testNewCardHighlightsFollowPurchaseDrawAndTurnLifecycle() {
         var g = makeGame()
         let turnIndex = g.currentTurnIndex
         let buyerIndex = (turnIndex + 1) % g.players.count
+        let turnPlayerId = g.players[turnIndex].id
         let buyerId = g.players[buyerIndex].id
         let purchasedIds = Set([g.discard.last!.id, g.stock.last!.id])
 
@@ -611,6 +649,9 @@ final class TurnEngineTests: XCTestCase {
             .discard(playerId: g.players[turnIndex].id, card: turnDiscard),
             to: g
         ).get()
+        XCTAssertTrue(g.highlightedCardIds(for: turnPlayerId).isEmpty)
+        XCTAssertEqual(g.highlightedCardIds(for: buyerId), purchasedIds)
+
         let nextDrawId = g.discard.last!.id
         g = try! TurnEngine.apply(
             .acceptBuyOffer(playerId: buyerId),
@@ -621,6 +662,15 @@ final class TurnEngineTests: XCTestCase {
             g.highlightedCardIds(for: buyerId),
             Set([nextDrawId])
         )
+
+        let buyerDiscard = g.players[buyerIndex].hand.first {
+            $0.id != nextDrawId
+        }!
+        g = try! TurnEngine.apply(
+            .discard(playerId: buyerId, card: buyerDiscard),
+            to: g
+        ).get()
+        XCTAssertTrue(g.highlightedCardIds(for: buyerId).isEmpty)
     }
 
     func testOnlyDecisionOwnerCanRespond() {
@@ -817,6 +867,50 @@ final class TurnEngineTests: XCTestCase {
         if case .failure(let e) = result {
             if case .invalidContract = e { /* ok */ } else { XCTFail("expected invalidContract, got \(e)") }
         } else { XCTFail("expected failure") }
+    }
+
+    func testGoingDownMustLeaveACardToDiscard() {
+        let firstTriplet = [
+            c(.spades, .seven),
+            c(.hearts, .seven),
+            c(.diamonds, .seven),
+        ]
+        let secondTriplet = [
+            c(.spades, .king),
+            c(.hearts, .king),
+            c(.diamonds, .king),
+        ]
+        let player = Player(
+            name: "A",
+            hand: firstTriplet + secondTriplet
+        )
+        let opponent = Player(name: "B", hand: [c(.clubs, .three)])
+        let state = GameState(
+            players: [player, opponent],
+            currentRound: 1,
+            currentTurnIndex: 0,
+            dealerIndex: 1,
+            stock: [c(.clubs, .nine)],
+            discard: [c(.clubs, .ten)],
+            melds: [],
+            phase: .awaitingMeldOrDiscard,
+            stockReshufflesUsed: 0,
+            randomSeed: 0
+        )
+
+        let result = TurnEngine.apply(
+            .goDown(
+                playerId: player.id,
+                contract: [firstTriplet, secondTriplet]
+            ),
+            to: state
+        )
+
+        guard case .failure(let error) = result,
+              case .invalidContract(let reason) = error else {
+            return XCTFail("Going down must retain a final discard")
+        }
+        XCTAssertEqual(reason, "Keep one card to discard after going down")
     }
 }
 
@@ -1195,7 +1289,9 @@ final class IndependentContractTests: XCTestCase {
         p1Level: Int, p1WentDown: Bool, p1Hand: [Card], p1Total: Int,
         p2Level: Int, p2WentDown: Bool, p2Hand: [Card], p2Total: Int,
         seed: UInt64 = 42,
-        handNumber: Int = 1
+        handNumber: Int = 1,
+        dealerIndex: Int = 1,
+        currentTurnIndex: Int = 0
     ) -> GameState {
         let p1 = Player(name: "A", hand: p1Hand,
                         totalScore: p1Total,
@@ -1210,8 +1306,8 @@ final class IndependentContractTests: XCTestCase {
         return GameState(
             players: [p1, p2],
             currentRound: handNumber,
-            currentTurnIndex: 0,
-            dealerIndex: 1,
+            currentTurnIndex: currentTurnIndex,
+            dealerIndex: dealerIndex,
             stock: [], discard: [c(.clubs, .four)],
             melds: [],
             phase: .roundEnded,
@@ -1278,6 +1374,70 @@ final class IndependentContractTests: XCTestCase {
         XCTAssertFalse(next.players[0].hasGoneDownThisRound)
         XCTAssertFalse(next.players[0].laidDownThisTurn)
         XCTAssertEqual(next.players[0].buysUsedThisRound, 0)
+    }
+
+    func testOnlyNextClockwiseDealerCanStartNextHand() throws {
+        let ended = endedHand(
+            p1Level: 2,
+            p1WentDown: true,
+            p1Hand: [],
+            p1Total: 0,
+            p2Level: 2,
+            p2WentDown: false,
+            p2Hand: [c(.clubs, .four)],
+            p2Total: 0,
+            dealerIndex: 0,
+            currentTurnIndex: 0
+        )
+        let playerWhoWentOut = ended.players[0]
+        let nextDealer = ended.players[1]
+
+        let rejected = TurnEngine.apply(
+            .advanceHand(playerId: playerWhoWentOut.id),
+            to: ended
+        )
+        guard case .failure(let error) = rejected else {
+            return XCTFail("The player who went out must not control the deal")
+        }
+        XCTAssertEqual(error, .notYourTurn)
+
+        let next = try TurnEngine.apply(
+            .advanceHand(playerId: nextDealer.id),
+            to: ended
+        ).get()
+        XCTAssertEqual(next.dealerIndex, 1)
+        XCTAssertEqual(next.currentTurnIndex, 0)
+    }
+
+    func testDealerRotationDoesNotDependOnWhoWentOut() throws {
+        let firstPlayerWon = endedHand(
+            p1Level: 2,
+            p1WentDown: true,
+            p1Hand: [],
+            p1Total: 0,
+            p2Level: 2,
+            p2WentDown: false,
+            p2Hand: [c(.clubs, .four)],
+            p2Total: 0,
+            dealerIndex: 0
+        )
+        let secondPlayerWon = endedHand(
+            p1Level: 2,
+            p1WentDown: false,
+            p1Hand: [c(.clubs, .four)],
+            p1Total: 0,
+            p2Level: 2,
+            p2WentDown: true,
+            p2Hand: [],
+            p2Total: 0,
+            dealerIndex: 0,
+            currentTurnIndex: 1
+        )
+
+        let firstNext = try TurnEngine.advanceHand(state: firstPlayerWon).get()
+        let secondNext = try TurnEngine.advanceHand(state: secondPlayerWon).get()
+        XCTAssertEqual(firstNext.dealerIndex, 1)
+        XCTAssertEqual(secondNext.dealerIndex, 1)
     }
 
     func testAdvanceHandCarriesForwardLevelAndScore() {

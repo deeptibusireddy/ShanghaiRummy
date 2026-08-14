@@ -59,12 +59,14 @@ struct GameContainerView: View {
                 initialSequenceChoiceOverlay(choice)
             } else if let choice = vm.pendingSequenceEndChoice {
                 sequenceEndChoiceOverlay(choice)
-            } else if vm.isBuyDecisionActive {
-                buyDecisionOverlay
             } else if vm.isHandOver {
                 handOverOverlay
             } else if vm.isGameOver {
                 gameOverOverlay
+            } else if vm.isScorecardPresented {
+                liveScorecardOverlay
+            } else if vm.isBuyDecisionActive {
+                buyDecisionOverlay
             }
         }
     }
@@ -218,36 +220,113 @@ struct GameContainerView: View {
 
     // MARK: - Hand / game over overlays
 
+    private var liveScorecardOverlay: some View {
+        ZStack {
+            Color.black.opacity(0.42)
+                .ignoresSafeArea()
+                .contentShape(Rectangle())
+
+            VStack(spacing: 10) {
+                HStack {
+                    Text("Current Score")
+                        .font(.system(
+                            .title2,
+                            design: .rounded,
+                            weight: .bold
+                        ))
+                    Spacer()
+                    Button {
+                        vm.dismissScorecard()
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.title2)
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Close scorecard")
+                    .accessibilityIdentifier("dismiss-live-scorecard")
+                }
+
+                Text("Lowest cumulative score leads")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                HStack {
+                    Text("Player")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Text("Level")
+                        .frame(width: 54, alignment: .trailing)
+                    Text("Score")
+                        .frame(width: 64, alignment: .trailing)
+                }
+                .font(.caption.bold())
+                .foregroundStyle(.secondary)
+
+                Divider()
+
+                ForEach(vm.liveScoreboard) { row in
+                    HStack {
+                        Text(row.name)
+                            .bold()
+                            .lineLimit(1)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        Text("\(row.currentLevel)")
+                            .frame(width: 54, alignment: .trailing)
+                        Text("\(row.totalScore)")
+                            .bold()
+                            .frame(width: 64, alignment: .trailing)
+                    }
+                    .font(.body)
+                }
+            }
+            .padding(18)
+            .frame(width: 380)
+            .background(
+                .regularMaterial,
+                in: RoundedRectangle(cornerRadius: 20)
+            )
+            .shadow(color: .black.opacity(0.28), radius: 18, y: 8)
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("live-scorecard")
+        .accessibilityAddTraits(.isModal)
+    }
+
     private var buyDecisionOverlay: some View {
         ZStack {
             Color.black.opacity(0.001)
                 .ignoresSafeArea()
                 .contentShape(Rectangle())
+                .allowsHitTesting(false)
 
-            HStack(spacing: 12) {
-                if !vm.isLocalBuyDecision {
-                    ProgressView()
-                        .controlSize(.small)
+            VStack(spacing: 8) {
+                HStack(spacing: 8) {
+                    if !vm.isLocalBuyDecision {
+                        ProgressView()
+                            .controlSize(.small)
+                    }
+
+                    Text(vm.buyDecisionTitle ?? "Choose How to Draw")
+                        .font(.system(.subheadline, design: .rounded, weight: .bold))
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.8)
+                        .multilineTextAlignment(.center)
                 }
 
-                Text(vm.buyDecisionTitle ?? "Choose How to Draw")
-                    .font(.system(.headline, design: .rounded, weight: .bold))
-                    .lineLimit(1)
-
                 if vm.isLocalBuyDecision {
-                    Spacer(minLength: 12)
                     localBuyDecision
                 }
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 10)
-            .frame(maxWidth: 640)
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 9)
+            .frame(width: 192)
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
             .shadow(color: .black.opacity(0.22), radius: 12, y: 5)
-            .padding(.horizontal, 72)
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("buy-decision-panel")
         }
         .accessibilityIdentifier("buy-decision-overlay")
-        .accessibilityAddTraits(.isModal)
     }
 
     @ViewBuilder
@@ -259,18 +338,34 @@ struct GameContainerView: View {
         let passTitle = vm.isTurnPlayersFirstRefusal
             ? "Offer Clockwise"
             : "Pass"
-        HStack(spacing: 12) {
-            Button(acceptTitle) {
+        HStack(spacing: 8) {
+            Button {
                 vm.acceptBuyOffer()
+            } label: {
+                Text(acceptTitle)
+                    .font(.system(.caption, design: .rounded, weight: .semibold))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.72)
+                    .frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)
+            .controlSize(.small)
+            .frame(maxWidth: .infinity)
             .disabled(!vm.canAcceptBuyOffer || vm.isSubmittingOnlineAction)
             .accessibilityIdentifier("accept-buy-offer")
 
-            Button(passTitle) {
+            Button {
                 vm.passBuyOffer()
+            } label: {
+                Text(passTitle)
+                    .font(.system(.caption, design: .rounded, weight: .semibold))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.72)
+                    .frame(maxWidth: .infinity)
             }
             .buttonStyle(.bordered)
+            .controlSize(.small)
+            .frame(maxWidth: .infinity)
             .disabled(!vm.canPassBuyOffer || vm.isSubmittingOnlineAction)
             .accessibilityIdentifier("pass-buy-offer")
         }
@@ -292,7 +387,7 @@ struct GameContainerView: View {
                     .buttonStyle(.borderedProminent)
                     .padding(.top, 4)
             } else {
-                Text("Waiting for \(vm.currentPlayerName) to deal the next hand")
+                Text("Waiting for \(vm.nextDealerName) to deal the next hand")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                     .padding(.top, 4)

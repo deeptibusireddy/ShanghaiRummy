@@ -26,6 +26,9 @@ level 10 wins.**
 The app deals the cards, tracks scoring, enforces rules, and lets everyone
 play from their own iPhone via Game Center.
 
+For an invited online game, choose 0–4 bots before opening Game Center. Invite
+at least one other person; people and bots can fill up to six total seats.
+
 ---
 
 ## The object of the game
@@ -40,6 +43,10 @@ The **first player to empty their hand** ends the hand for everyone. Then:
 - Anyone who went down this hand advances to the next level.
 - Anyone who didn't stays put and tries the same level again next hand.
 - Everyone counts penalty points for cards left in hand (running total).
+
+The opening dealer is chosen randomly, and the player one seat clockwise goes
+first. After that, the deal moves one player clockwise every hand, regardless
+of who emptied their hand.
 
 **Winner = the first player to complete level 10.** If two people finish
 level 10 in the same hand, lowest cumulative penalty score breaks the tie.
@@ -189,8 +196,10 @@ the offers finish, the game automatically gives you the correct stock card.
   anyone else's), you can lay them on.
 - You cannot start a new meld here — that only happens when you go down.
 
-### 3. Discard (mandatory)
-Play one card face-up on the discard pile. Your turn ends.
+### 3. Discard
+Play one card face-up on the discard pile. Your turn ends. The only exception
+is when, on a later turn after going down, you lay off every card left in your
+hand and go out without a final discard.
 
 If you're able to play your **last card** as the discard, you've gone out!
 
@@ -204,6 +213,8 @@ discarding.
 
 - You must lay down your **entire contract in one turn** — no partial
   progress carried over.
+- Your contract must leave at least one card in your hand to discard. You
+  cannot go down and go out on the same turn.
 - **On the turn you go down, you can't also add extras to other people's
   melds.** Go down, discard, done. From your next turn onward, you're free
   to add to any meld on the table.

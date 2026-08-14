@@ -108,7 +108,7 @@ public enum TurnEngine {
         case .passBuyOffer(let pid):
             return passBuyOffer(playerId: pid, state: state)
         case .advanceHand(let pid):
-            guard state.currentPlayerId == pid else { return .failure(.notYourTurn) }
+            guard state.nextDealer.id == pid else { return .failure(.notYourTurn) }
             return advanceHand(state: state)
         }
     }
@@ -199,6 +199,13 @@ public enum TurnEngine {
         guard removeFromHand(allCards, playerIndex: s.currentTurnIndex, state: &s) else {
             return .failure(.cardNotInHand)
         }
+        guard !s.players[s.currentTurnIndex].hand.isEmpty else {
+            return .failure(
+                .invalidContract(
+                    reason: "Keep one card to discard after going down"
+                )
+            )
+        }
 
         // 4. Add melds to the table.
         for (meldCards, kind) in zip(contract, validatedKinds) {
@@ -240,6 +247,7 @@ public enum TurnEngine {
                 return .failure(.cardNotInHand)
             }
             s.melds[idx].cards = newCards
+            _ = endRoundIfCurrentPlayerWentOut(state: &s)
             return .success(s)
         }
     }
@@ -315,13 +323,11 @@ public enum TurnEngine {
         // A discarded 2 dies permanently for the round. The dead status
         // persists on the card so whoever later draws or buys it inherits it.
         s.discard.append(card.markedDeadIfTwo())
+        // Once the turn is over, every card left in this hand is established.
+        // Waiting buyers keep their own highlights until their official draw.
+        s.clearHighlightedCards(for: playerId)
 
-        // Round ends immediately if this player goes out (hand empty AND has gone down).
-        if s.players[s.currentTurnIndex].hand.isEmpty
-            && s.players[s.currentTurnIndex].hasGoneDownThisRound {
-            s.phase = .roundEnded
-            s.buyDecisionPlayerId = nil
-            s.buyRequestPlayerIds.removeAll()
+        if endRoundIfCurrentPlayerWentOut(state: &s) {
             return .success(s)
         }
 
@@ -434,6 +440,20 @@ public enum TurnEngine {
     }
 
     // MARK: - Helpers
+
+    private static func endRoundIfCurrentPlayerWentOut(
+        state: inout GameState
+    ) -> Bool {
+        let player = state.players[state.currentTurnIndex]
+        guard player.hand.isEmpty, player.hasGoneDownThisRound else {
+            return false
+        }
+        state.clearHighlightedCards(for: player.id)
+        state.phase = .roundEnded
+        state.buyDecisionPlayerId = nil
+        state.buyRequestPlayerIds.removeAll()
+        return true
+    }
 
     /// Removes exactly the cards in `cards` from a player's hand. Returns true
     /// only if every card was found and removed.

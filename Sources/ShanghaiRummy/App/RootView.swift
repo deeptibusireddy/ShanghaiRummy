@@ -5,6 +5,7 @@ struct RootView: View {
     @State private var activeGame: GameViewModel?
     @State private var activeTheme: VisualTheme = .gameNight
     @State private var showingSetup = false
+    @State private var showingOnlineBotOptions = false
 
     var body: some View {
         if let game = gameCenter.onlineGame {
@@ -24,6 +25,33 @@ struct RootView: View {
                         showingSetup = false
                         activeGame = vm
                     }
+                }
+                .confirmationDialog(
+                    "Add Bots",
+                    isPresented: $showingOnlineBotOptions,
+                    titleVisibility: .visible
+                ) {
+                    Button("No Bots") {
+                        gameCenter.beginMatchmaking(botCount: 0)
+                    }
+                    Button("1 Bot") {
+                        gameCenter.beginMatchmaking(botCount: 1)
+                    }
+                    Button("2 Bots") {
+                        gameCenter.beginMatchmaking(botCount: 2)
+                    }
+                    Button("3 Bots") {
+                        gameCenter.beginMatchmaking(botCount: 3)
+                    }
+                    Button("4 Bots") {
+                        gameCenter.beginMatchmaking(botCount: 4)
+                    }
+                    Button("Cancel", role: .cancel) {}
+                } message: {
+                    Text(
+                        "Choose bots first, then invite people in Game Center. "
+                            + "The table supports up to six total players."
+                    )
                 }
                 .fullScreenCover(isPresented: $gameCenter.isPresentingMatchmaker) {
                     ZStack(alignment: .bottom) {
@@ -51,6 +79,18 @@ struct RootView: View {
                 }
                 .onAppear {
                     if activeGame == nil,
+                       CommandLine.arguments.contains("--demo-six-player-status") {
+                        activeTheme = themeFromArgs()
+                        let state = GameFactory.demoSixPlayerStatus()
+                        let vm = GameViewModel(
+                            state: state,
+                            localPlayerId: state.players[0].id
+                        )
+                        if CommandLine.arguments.contains("--demo-scorecard") {
+                            vm.presentScorecard()
+                        }
+                        activeGame = vm
+                    } else if activeGame == nil,
                        CommandLine.arguments.contains("--demo-mid-game") {
                         activeTheme = themeFromArgs()
                         var state = GameFactory.demoMidGame()
@@ -59,6 +99,10 @@ struct RootView: View {
                             state.players[state.currentTurnIndex].hasGoneDownThisRound = false
                             state.players[state.currentTurnIndex].laidDownThisTurn = false
                             state.melds.removeAll { $0.ownerId == playerId }
+                        }
+                        if CommandLine.arguments.contains("--demo-buy-decision") {
+                            state.phase = .awaitingDraw
+                            state.buyDecisionPlayerId = state.currentPlayerId
                         }
                         let vm = GameViewModel(state: state)
                         if CommandLine.arguments.contains("--demo-stage-triplet") {
@@ -138,7 +182,7 @@ struct RootView: View {
 
                 VStack(spacing: 8) {
                     Button("Invite Family (Game Center)") {
-                        gameCenter.beginMatchmaking()
+                        showingOnlineBotOptions = true
                     }
                     .buttonStyle(.bordered)
 

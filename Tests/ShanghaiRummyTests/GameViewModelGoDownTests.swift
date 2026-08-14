@@ -98,13 +98,29 @@ final class GameViewModelGoDownTests: XCTestCase {
         let hand = [
             c(.hearts, .king), c(.spades, .king), c(.diamonds, .king),
             c(.hearts, .seven), c(.spades, .seven), c(.clubs, .seven),
+            c(.clubs, .three),
+        ]
+        let v = vm(hand: hand)
+        for card in hand.prefix(3) { v.toggleStaged(cardId: card.id) }
+        _ = v.saveStagedAsMeld()
+        for card in hand[3..<6] { v.toggleStaged(cardId: card.id) }
+        _ = v.saveStagedAsMeld()
+        XCTAssertTrue(v.canConfirmGoDown)
+    }
+
+    func testCannotConfirmGoDownWithoutAFinalDiscard() {
+        let hand = [
+            c(.hearts, .king), c(.spades, .king), c(.diamonds, .king),
+            c(.hearts, .seven), c(.spades, .seven), c(.clubs, .seven),
         ]
         let v = vm(hand: hand)
         for card in hand.prefix(3) { v.toggleStaged(cardId: card.id) }
         _ = v.saveStagedAsMeld()
         for card in hand.suffix(3) { v.toggleStaged(cardId: card.id) }
         _ = v.saveStagedAsMeld()
-        XCTAssertTrue(v.canConfirmGoDown)
+
+        XCTAssertFalse(v.canConfirmGoDown)
+        XCTAssertEqual(v.goDownProgressText, "Keep 1 card to discard")
     }
 
     // MARK: - Commit

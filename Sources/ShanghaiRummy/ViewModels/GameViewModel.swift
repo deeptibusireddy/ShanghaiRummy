@@ -39,14 +39,14 @@ public final class GameViewModel: ObservableObject {
     /// preview meld legality before committing (M2d-b).
     @Published public private(set) var stagedCardIds: Set<UUID> = []
 
-    /// IDs of players controlled by the CPU practice bot (M1e). Empty in
-    /// hot-seat / GameKit modes.
+    /// IDs of players controlled by the CPU, in practice or mixed online games.
     @Published public var cpuPlayerIds: Set<UUID> = []
     @Published public private(set) var isSubmittingOnlineAction = false
     @Published public private(set) var pendingSequenceEndChoice:
         PendingSequenceEndChoice? = nil
     @Published public private(set) var pendingInitialSequenceChoice:
         PendingInitialSequenceChoice? = nil
+    @Published public private(set) var isScorecardPresented = false
 
     /// Non-nil in online mode. The local hand remains at the bottom even while
     /// another participant owns the turn.
@@ -161,8 +161,12 @@ public final class GameViewModel: ObservableObject {
     public var privacyPlayerName: String {
         currentPlayer.name
     }
+    public var nextDealerName: String { state.nextDealer.name }
     public var canAdvanceHand: Bool {
-        state.phase == .roundEnded && isLocalPlayersTurn
+        guard state.phase == .roundEnded else { return false }
+        return localPlayerId == nil
+            || localPlayerId == state.nextDealer.id
+            || cpuPlayerIds.contains(state.nextDealer.id)
     }
 
     // MARK: - Action dispatch
@@ -197,6 +201,7 @@ public final class GameViewModel: ObservableObject {
             let incomingActiveId = newState.activePlayerId
             let didHandOff = outgoingActiveId != incomingActiveId
             state = newState
+            reconcileScorecardPresentation()
             lastError = nil
             if didAdvanceTurn {
                 let outgoingIsCPU = cpuPlayerIds.contains(outgoingId)
@@ -215,7 +220,9 @@ public final class GameViewModel: ObservableObject {
             }
             scheduleLocalBuyOfferTimeout()
             // Auto-pump CPU turns and CPU buy decisions.
-            if incomingIsCPU && !isRunningCPUTurns {
+            if incomingIsCPU,
+               onlineActionSubmitter == nil,
+               !isRunningCPUTurns {
                 runAllCPUTurns()
             }
             return true
@@ -238,6 +245,7 @@ public final class GameViewModel: ObservableObject {
         completesPendingAction: Bool = true
     ) {
         state = newState
+        reconcileScorecardPresentation()
         lastError = nil
         pendingSequenceEndChoice = nil
         pendingInitialSequenceChoice = nil
@@ -251,6 +259,7 @@ public final class GameViewModel: ObservableObject {
 
     public func rejectOnlineAction(message: String, state newState: GameState) {
         state = newState
+        reconcileScorecardPresentation()
         lastError = message
         pendingSequenceEndChoice = nil
         pendingInitialSequenceChoice = nil
@@ -262,6 +271,24 @@ public final class GameViewModel: ObservableObject {
 
     public func reportOnlineIssue(_ message: String) {
         lastError = message
+    }
+
+    public func presentScorecard() {
+        guard state.phase == .awaitingDraw
+                || state.phase == .awaitingMeldOrDiscard else {
+            return
+        }
+        isScorecardPresented = true
+    }
+
+    public func dismissScorecard() {
+        isScorecardPresented = false
+    }
+
+    private func reconcileScorecardPresentation() {
+        if state.phase == .roundEnded || state.phase == .gameEnded {
+            isScorecardPresented = false
+        }
     }
 
     private func reconcileDraftWithAuthoritativeHand() {
@@ -343,9 +370,13 @@ public final class GameViewModel: ObservableObject {
     }
 
     /// Trigger end-of-hand accounting: score, advance levels, deal next hand.
-    /// Fails silently (setting `lastError`) if the game isn't in `.roundEnded`.
+    /// Sets `lastError` when this device is not allowed to advance the hand.
     public func advanceHand() {
-        dispatch(.advanceHand(playerId: currentPlayer.id))
+        guard canAdvanceHand else {
+            lastError = TurnEngine.ActionError.notYourTurn.description
+            return
+        }
+        dispatch(.advanceHand(playerId: state.nextDealer.id))
     }
 
     // MARK: - Derived helpers for hand/game lifecycle
@@ -355,6 +386,30 @@ public final class GameViewModel: ObservableObject {
     public var winnerNames: [String] {
         state.gameWinnerIds.compactMap { id in
             state.players.first(where: { $0.id == id })?.name
+        }
+    }
+
+    public struct LiveScoreRow: Identifiable, Equatable {
+        public let id: UUID
+        public let name: String
+        public let currentLevel: Int
+        public let totalScore: Int
+    }
+
+    /// Current standings sorted by cumulative penalty score (lowest first).
+    public var liveScoreboard: [LiveScoreRow] {
+        state.players.map {
+            LiveScoreRow(
+                id: $0.id,
+                name: $0.name,
+                currentLevel: $0.currentLevel,
+                totalScore: $0.totalScore
+            )
+        }.sorted {
+            if $0.totalScore == $1.totalScore {
+                return $0.name < $1.name
+            }
+            return $0.totalScore < $1.totalScore
         }
     }
 
@@ -671,7 +726,9 @@ public final class GameViewModel: ObservableObject {
               !currentPlayer.hasGoneDownThisRound else {
             return false
         }
-        return draftShape == contractShape && !contractShape.isEmpty
+        return draftShape == contractShape
+            && !contractShape.isEmpty
+            && draftCardIds.count < currentPlayer.hand.count
     }
 
     /// Progress summary for the inline meld tray.
@@ -690,7 +747,11 @@ public final class GameViewModel: ObservableObject {
         for saved in draftShape {
             if let i = remaining.firstIndex(of: saved) { remaining.remove(at: i) }
         }
-        if remaining.isEmpty { return "✓ Ready to go down" }
+        if remaining.isEmpty {
+            return draftCardIds.count < currentPlayer.hand.count
+                ? "✓ Ready to go down"
+                : "Keep 1 card to discard"
+        }
         let pretty = remaining.map { key -> String in
             let parts = key.split(separator: "-")
             let n = parts.last ?? "?"

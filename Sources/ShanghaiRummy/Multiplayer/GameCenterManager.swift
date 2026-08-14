@@ -24,6 +24,9 @@ final class GameCenterManager: NSObject, ObservableObject {
     private var currentSnapshot: RealtimeGameSnapshot?
     private var pendingLocalRequestId: UUID?
     private var buyOfferTimeoutTask: Task<Void, Never>?
+    private var gameSetup: RealtimeGameSetup?
+    private var shouldBroadcastGameSetup = false
+    private var isRunningHostedBots = false
 
     func authenticate() async {
         let localPlayer = GKLocalPlayer.local
@@ -55,11 +58,18 @@ final class GameCenterManager: NSObject, ObservableObject {
         }
     }
 
-    func beginMatchmaking() {
+    func beginMatchmaking(botCount: Int = 0) {
         guard isAuthenticated else {
             lastError = "Sign in to Game Center before starting an online game"
             return
         }
+        guard (0...(RulesConfig.maxPlayers - RulesConfig.minPlayers))
+                .contains(botCount) else {
+            lastError = "Online tables support 0–4 bots"
+            return
+        }
+        gameSetup = RealtimeGameSetup(botCount: botCount)
+        shouldBroadcastGameSetup = true
         lastError = nil
         matchmakerNotice = nil
         isPresentingMatchmaker = true
@@ -72,6 +82,8 @@ final class GameCenterManager: NSObject, ObservableObject {
         }
         let searchId = UUID()
         quickPairSearchId = searchId
+        gameSetup = RealtimeGameSetup(botCount: 0)
+        shouldBroadcastGameSetup = false
         lastError = nil
         matchmakerNotice = nil
         hasActiveMatch = true
@@ -81,7 +93,7 @@ final class GameCenterManager: NSObject, ObservableObject {
         request.minPlayers = RulesConfig.minPlayers
         request.maxPlayers = RulesConfig.minPlayers
         request.defaultNumberOfPlayers = RulesConfig.minPlayers
-        request.playerGroup = RealtimeMessageCodec.protocolVersion
+        request.playerGroup = RealtimeMessageCodec.playerGroup(botCount: 0)
 
         Task { [weak self] in
             do {
@@ -112,11 +124,14 @@ final class GameCenterManager: NSObject, ObservableObject {
             pendingInvite = nil
             controller = GKMatchmakerViewController(invite: invite)
         } else {
+            let botCount = gameSetup?.botCount ?? 0
             let request = GKMatchRequest()
             request.minPlayers = RulesConfig.minPlayers
-            request.maxPlayers = RulesConfig.maxPlayers
+            request.maxPlayers = RulesConfig.maxPlayers - botCount
             request.defaultNumberOfPlayers = RulesConfig.minPlayers
-            request.playerGroup = RealtimeMessageCodec.protocolVersion
+            request.playerGroup = RealtimeMessageCodec.playerGroup(
+                botCount: botCount
+            )
             request.inviteMessage = "Join my Shanghai Rummy table"
             request.recipientResponseHandler = { [weak self] player, response in
                 Task { @MainActor in
@@ -189,6 +204,11 @@ final class GameCenterManager: NSObject, ObservableObject {
         onlineStatusMessage = match.expectedPlayerCount > 0
             ? "Waiting for \(match.expectedPlayerCount) more player(s)…"
             : "Connecting everyone…"
+        if gameSetup == nil {
+            sendToAll(.setupRequest)
+        } else {
+            broadcastGameSetupIfNeeded()
+        }
         tryStartMatchIfReady()
     }
 
@@ -202,6 +222,15 @@ final class GameCenterManager: NSObject, ObservableObject {
         let allPlayers = connectedPlayers(in: match)
         guard allPlayers.count >= RulesConfig.minPlayers else {
             onlineStatusMessage = "Waiting for players to connect…"
+            return
+        }
+        guard let gameSetup else {
+            onlineStatusMessage = "Waiting for the table options…"
+            return
+        }
+        guard allPlayers.count + gameSetup.botCount
+                <= RulesConfig.maxPlayers else {
+            failOnlineSession("The selected people and bots exceed six seats")
             return
         }
 
@@ -219,7 +248,17 @@ final class GameCenterManager: NSObject, ObservableObject {
                     return
                 }
                 if hostId == GKLocalPlayer.local.gamePlayerID {
-                    self.startHostedGame(players: players, hostGamePlayerId: hostId)
+                    guard let gameSetup = self.gameSetup else {
+                        self.failOnlineSession(
+                            "The host did not receive the table options"
+                        )
+                        return
+                    }
+                    self.startHostedGame(
+                        players: players,
+                        botCount: gameSetup.botCount,
+                        hostGamePlayerId: hostId
+                    )
                 } else {
                     self.onlineStatusMessage = "Waiting for the host to deal…"
                 }
@@ -238,34 +277,42 @@ final class GameCenterManager: NSObject, ObservableObject {
 
     private func startHostedGame(
         players: [GKPlayer],
+        botCount: Int,
         hostGamePlayerId: String
     ) {
         guard players.count >= RulesConfig.minPlayers,
-              players.count <= RulesConfig.maxPlayers else {
+              players.count + botCount <= RulesConfig.maxPlayers else {
             failOnlineSession("Online games require 2–6 connected players")
             return
         }
 
+        let botNames = (0..<botCount).map { "Bot \($0 + 1)" }
         let state = GameFactory.newGame(
-            playerNames: players.map(\.displayName),
+            playerNames: players.map(\.displayName) + botNames,
             seed: UInt64.random(in: 0...UInt64.max)
         )
-        let bindings = zip(players, state.players).map { gamePlayer, player in
+        let humanStatePlayers = state.players.prefix(players.count)
+        let bindings = zip(players, humanStatePlayers).map { gamePlayer, player in
             RealtimeParticipantBinding(
                 gamePlayerId: gamePlayer.gamePlayerID,
                 playerId: player.id,
                 displayName: gamePlayer.displayName
             )
         }
+        let botPlayerIds = state.players
+            .dropFirst(players.count)
+            .map(\.id)
         let snapshot = RealtimeGameSnapshot(
             revision: 0,
             state: state,
             participants: bindings,
+            botPlayerIds: botPlayerIds,
             hostGamePlayerId: hostGamePlayerId
         )
         authority = RealtimeGameAuthority(snapshot: snapshot)
         install(snapshot)
         sendToAll(.start(snapshot))
+        runHostedBotsIfNeeded()
     }
 
     private func install(_ snapshot: RealtimeGameSnapshot) {
@@ -283,6 +330,7 @@ final class GameCenterManager: NSObject, ObservableObject {
 
         currentSnapshot = snapshot
         if let onlineGame {
+            onlineGame.cpuPlayerIds = Set(snapshot.botPlayerIds)
             let completesPendingAction =
                 snapshot.lastAppliedRequestId == pendingLocalRequestId
                 && pendingLocalRequestId != nil
@@ -298,6 +346,7 @@ final class GameCenterManager: NSObject, ObservableObject {
                 state: snapshot.state,
                 localPlayerId: localBinding.playerId
             )
+            viewModel.cpuPlayerIds = Set(snapshot.botPlayerIds)
             viewModel.configureOnlineActionSubmitter { [weak self] action in
                 self?.submit(action) ?? false
             }
@@ -317,6 +366,7 @@ final class GameCenterManager: NSObject, ObservableObject {
                 == GKLocalPlayer.local.gamePlayerID,
               snapshot.state.phase == .awaitingDraw,
               let offeredPlayerId = snapshot.state.buyDecisionPlayerId,
+              !snapshot.botPlayerIds.contains(offeredPlayerId),
               offeredPlayerId != snapshot.state.currentPlayerId else {
             return
         }
@@ -345,12 +395,11 @@ final class GameCenterManager: NSObject, ObservableObject {
             self.authority = authority
             self.install(next)
             self.sendToAll(.snapshot(next))
+            self.runHostedBotsIfNeeded()
         }
     }
 
     private func isValid(_ snapshot: RealtimeGameSnapshot) -> Bool {
-        let participantIds = snapshot.participants.map(\.playerId)
-        let gamePlayerIds = snapshot.participants.map(\.gamePlayerId)
         let stateIds = snapshot.state.players.map(\.id)
         let decisionIsValid: Bool
         if snapshot.state.phase == .awaitingDraw {
@@ -360,13 +409,7 @@ final class GameCenterManager: NSObject, ObservableObject {
         } else {
             decisionIsValid = snapshot.state.buyDecisionPlayerId == nil
         }
-        return snapshot.participants.count == snapshot.state.players.count
-            && Set(participantIds).count == participantIds.count
-            && Set(gamePlayerIds).count == gamePlayerIds.count
-            && Set(participantIds) == Set(stateIds)
-            && snapshot.participants.contains {
-                $0.gamePlayerId == snapshot.hostGamePlayerId
-            }
+        return snapshot.hasValidPlayerIdentityLayout()
             && decisionIsValid
     }
 
@@ -423,6 +466,7 @@ final class GameCenterManager: NSObject, ObservableObject {
         case .success(let snapshot):
             install(snapshot)
             sendToAll(.snapshot(snapshot))
+            runHostedBotsIfNeeded()
             return true
         case .failure(let rejection):
             if senderId == GKLocalPlayer.local.gamePlayerID {
@@ -443,8 +487,35 @@ final class GameCenterManager: NSObject, ObservableObject {
         from sender: GKPlayer
     ) {
         switch message {
+        case .setupRequest:
+            guard currentSnapshot == nil else { return }
+            broadcastGameSetupIfNeeded()
+        case .setup(let setup):
+            guard currentSnapshot == nil else {
+                return
+            }
+            guard (0...(RulesConfig.maxPlayers - RulesConfig.minPlayers))
+                    .contains(setup.botCount) else {
+                abortOnlineSession("Players received invalid table options")
+                return
+            }
+            if let gameSetup, gameSetup != setup {
+                abortOnlineSession("Players received conflicting table options")
+                return
+            }
+            gameSetup = setup
+            tryStartMatchIfReady()
         case .start(let snapshot):
             guard sender.gamePlayerID == snapshot.hostGamePlayerId else { return }
+            if let gameSetup,
+               gameSetup.botCount != snapshot.botPlayerIds.count {
+                abortOnlineSession("The host started with different table options")
+                return
+            }
+            gameSetup = RealtimeGameSetup(
+                botCount: snapshot.botPlayerIds.count
+            )
+            shouldBroadcastGameSetup = false
             install(snapshot)
         case .action(let request):
             guard currentSnapshot?.hostGamePlayerId
@@ -523,6 +594,13 @@ final class GameCenterManager: NSObject, ObservableObject {
         }
     }
 
+    private func abortOnlineSession(_ message: String) {
+        match?.delegate = nil
+        match?.disconnect()
+        resetOnlineSession()
+        lastError = message
+    }
+
     private func resetOnlineSession() {
         match?.delegate = nil
         match = nil
@@ -532,11 +610,64 @@ final class GameCenterManager: NSObject, ObservableObject {
         buyOfferTimeoutTask?.cancel()
         buyOfferTimeoutTask = nil
         quickPairSearchId = nil
+        gameSetup = nil
+        shouldBroadcastGameSetup = false
+        isRunningHostedBots = false
         onlineGame = nil
         hasActiveMatch = false
         isChoosingHost = false
         matchmakerNotice = nil
         onlineStatusMessage = ""
+    }
+
+    private func broadcastGameSetupIfNeeded() {
+        guard shouldBroadcastGameSetup, let gameSetup else { return }
+        sendToAll(.setup(gameSetup))
+    }
+
+    private func runHostedBotsIfNeeded() {
+        guard !isRunningHostedBots,
+              var authority,
+              authority.snapshot.hostGamePlayerId
+                == GKLocalPlayer.local.gamePlayerID else {
+            return
+        }
+
+        isRunningHostedBots = true
+        defer { isRunningHostedBots = false }
+        var actionCount = 0
+
+        while actionCount < 200 {
+            let snapshot = authority.snapshot
+            guard let action = RealtimeBotDriver.nextAction(
+                in: snapshot
+            ) else {
+                break
+            }
+
+            switch authority.applyBotAction(action) {
+            case .success(let next):
+                actionCount += 1
+                self.authority = authority
+                install(next)
+                guard currentSnapshot?.revision == next.revision else {
+                    return
+                }
+                sendToAll(.snapshot(next))
+            case .failure(let error):
+                self.authority = authority
+                failOnlineSession(
+                    "A bot could not continue the game: \(error.description)"
+                )
+                return
+            }
+        }
+
+        self.authority = authority
+        if actionCount == 200,
+           RealtimeBotDriver.nextAction(in: authority.snapshot) != nil {
+            failOnlineSession("A bot took too many actions without ending its turn")
+        }
     }
 }
 
@@ -547,6 +678,8 @@ extension GameCenterManager: GKMatchmakerViewControllerDelegate {
         Task { @MainActor [weak self] in
             self?.isPresentingMatchmaker = false
             self?.matchmakerNotice = nil
+            self?.gameSetup = nil
+            self?.shouldBroadcastGameSetup = false
         }
     }
 
@@ -558,6 +691,8 @@ extension GameCenterManager: GKMatchmakerViewControllerDelegate {
             self?.isPresentingMatchmaker = false
             self?.matchmakerNotice = nil
             self?.lastError = error.localizedDescription
+            self?.gameSetup = nil
+            self?.shouldBroadcastGameSetup = false
         }
     }
 
@@ -606,6 +741,11 @@ extension GameCenterManager: GKMatchDelegate {
                     == GKLocalPlayer.local.gamePlayerID {
                     self.send(.snapshot(snapshot), toGamePlayerId: player.gamePlayerID)
                 } else {
+                    if self.gameSetup == nil {
+                        self.sendToAll(.setupRequest)
+                    } else {
+                        self.broadcastGameSetupIfNeeded()
+                    }
                     self.tryStartMatchIfReady()
                 }
             case .disconnected:
@@ -645,6 +785,8 @@ extension GameCenterManager: GKLocalPlayerListener {
         Task { @MainActor [weak self] in
             guard let self else { return }
             self.pendingInvite = invite
+            self.gameSetup = nil
+            self.shouldBroadcastGameSetup = false
             self.isPresentingMatchmaker = true
         }
     }

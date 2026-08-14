@@ -247,6 +247,27 @@ final class CPUPlayerTests: XCTestCase {
         XCTAssertEqual(contract.count, 2)
     }
 
+    func testKeepsADiscardWhenContractWouldConsumeTheWholeHand() {
+        let hand = [
+            c(.hearts, .king), c(.spades, .king), c(.diamonds, .king),
+            c(.hearts, .seven), c(.spades, .seven), c(.clubs, .seven),
+        ]
+        let (state, _) = state(
+            hand: hand,
+            phase: .awaitingMeldOrDiscard,
+            hasGoneDown: false
+        )
+
+        let action = CPUPlayer.nextAction(
+            for: state.currentPlayerId,
+            in: state
+        )
+
+        guard case .discard = action else {
+            return XCTFail("The bot must retain a card when first going down")
+        }
+    }
+
     func testLaysOffAfterGoingDown() {
         // A matching rank can extend a laid triplet even when its suit repeats.
         let ownerId = UUID()
@@ -291,10 +312,14 @@ final class CPUPlayerTests: XCTestCase {
         let built = GameFactory.newVsCPU(you: "You",
                                          cpuNames: ["Bot"],
                                          seed: 7)
-        let vm = GameViewModel(state: built.state)
+        var initial = built.state
+        initial.dealerIndex = 0
+        initial.currentTurnIndex = 1
+        initial.buyDecisionPlayerId = initial.players[1].id
+        let vm = GameViewModel(state: initial)
         vm.cpuPlayerIds = built.cpuIds
-        // newGame seats "You" at index 0 as dealer, so the Bot (index 1)
-        // is up first. A non-wild discard pauses its turn to offer You a buy.
+        // Put the Bot up first. A non-wild discard pauses its turn to offer
+        // You a buy.
         vm.runAllCPUTurns()
         if vm.state.currentPlayerId != built.state.players[0].id {
             XCTAssertEqual(

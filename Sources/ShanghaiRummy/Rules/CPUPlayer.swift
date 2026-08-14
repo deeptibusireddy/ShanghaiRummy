@@ -63,7 +63,11 @@ public enum CPUPlayer {
         // 1. Try to go down on this player's own contract.
         if !player.hasGoneDownThisRound,
            let contract = state.contract(forPlayer: player.id),
-           let melds = findContractSatisfaction(hand: player.hand, contract: contract) {
+           let melds = findContractSatisfaction(
+               hand: player.hand,
+               contract: contract
+           ),
+           melds.flatMap({ $0 }).count < player.hand.count {
             return .goDown(playerId: player.id, contract: melds)
         }
         // 2. Already down — try to lay off a hand card onto an existing meld

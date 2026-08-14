@@ -24,6 +24,7 @@ final class GameScene: SKScene {
     private let vm: GameViewModel
     private let theme: VisualTheme
     private var cancellables: Set<AnyCancellable> = []
+    private var tableSafeAreaInsets: UIEdgeInsets = .zero
 
     private let feltNode = SKShapeNode()
     private let glowNode = SKShapeNode()
@@ -44,6 +45,7 @@ final class GameScene: SKScene {
     private var dragOriginZ: CGFloat = 0
     private var dragOriginScale: CGFloat = 1
     private var draggingCardId: UUID?
+    private var dragAllowsGameplay = false
     private var discardTargetRing: SKShapeNode?
     private var stagingBacking: SKShapeNode?
     private var meldTargetNodes: [UUID: SKShapeNode] = [:]
@@ -64,6 +66,19 @@ final class GameScene: SKScene {
     }
 
     required init?(coder aDecoder: NSCoder) { fatalError() }
+
+    func updateLayout(size newSize: CGSize, safeAreaInsets newInsets: UIEdgeInsets) {
+        let sizeChanged = size != newSize
+        let insetsChanged = tableSafeAreaInsets != newInsets
+        tableSafeAreaInsets = newInsets
+
+        if sizeChanged {
+            size = newSize
+        } else if insetsChanged, view != nil {
+            buildStaticLayers()
+            rebuildDynamicLayers()
+        }
+    }
 
     override func didMove(to view: SKView) {
         buildStaticLayers()
@@ -151,6 +166,7 @@ final class GameScene: SKScene {
 
     private func rebuildDynamicLayers() {
         guard hasUsableLayoutSize else { return }
+        abandonDragForRebuild()
         buildHeader()
         shadowsLayer.removeAllChildren()
         buildPiles()
@@ -165,7 +181,10 @@ final class GameScene: SKScene {
         headerLayer.removeAllChildren()
 
         let activePlayer = vm.turnPlayer
-        let width = min(size.width - 300, 520)
+        let width = Self.turnBannerWidth(
+            sceneWidth: size.width,
+            horizontalEdgeInset: horizontalEdgeInset
+        )
         let height: CGFloat = 48
         let center = CGPoint(x: size.width / 2, y: size.height - 31)
         let panel = SKShapeNode(rectOf: CGSize(width: width, height: height),
@@ -192,9 +211,11 @@ final class GameScene: SKScene {
         ])
         activeDot.run(.repeatForever(pulse))
 
-        let turn = SKLabelNode(
-            text: "\(activePlayer.name)'s turn".uppercased()
-        )
+        let turn = SKLabelNode(text: Self.turnTitle(
+            playerName: activePlayer.name,
+            isLocalPlayersTurn: vm.isLocalPlayersTurn,
+            isCPU: vm.isCurrentPlayerCPU
+        ))
         turn.fontName = theme.titleFont
         turn.fontSize = size.width < 720 ? 14 : 17
         turn.fontColor = theme.turnGlow
@@ -216,7 +237,7 @@ final class GameScene: SKScene {
         headerLayer.addChild(phase)
 
         let handCount = SKLabelNode(
-            text: "\(activePlayer.hand.count) cards".uppercased()
+            text: Self.cardCountLabel(activePlayer.hand.count).uppercased()
         )
         handCount.fontName = theme.titleFont
         handCount.fontSize = size.width < 720 ? 11 : 13
@@ -244,10 +265,13 @@ final class GameScene: SKScene {
 
     private var phaseInstruction: String {
         if vm.isBuyDecisionActive {
-            return vm.buyDecisionInstruction ?? "Choose how to draw"
+            return "Purchase round in progress"
+        }
+        if vm.isCurrentPlayerCPU {
+            return "Playing automatically"
         }
         if vm.isOnlineGame && !vm.isLocalPlayersTurn {
-            return "\(vm.currentPlayerName) is playing"
+            return "Waiting for their move"
         }
         switch vm.state.phase {
         case .awaitingDraw:
@@ -255,11 +279,11 @@ final class GameScene: SKScene {
         case .awaitingMeldOrDiscard:
             if vm.currentPlayer.hasGoneDownThisRound {
                 if vm.currentPlayer.laidDownThisTurn {
-                    return "Contract complete — drag a card to discard"
+                    return "Contract complete — discard"
                 }
-                return "Lay off a card or drag one to discard"
+                return "Lay off or discard"
             }
-            return "Build your contract or drag a card to discard"
+            return "Build contract or discard"
         case .roundEnded:
             return "Hand complete"
         case .gameEnded:
@@ -361,7 +385,8 @@ final class GameScene: SKScene {
         let seats = SeatLayout.seats(
             playerCount: vm.state.players.count,
             youIndex: vm.displayedPlayerIndex,
-            sceneSize: size
+            sceneSize: size,
+            horizontalInset: seatLayoutHorizontalInset
         )
         for (i, player) in vm.state.players.enumerated() {
             let seat = seats[i]
@@ -375,9 +400,10 @@ final class GameScene: SKScene {
             }
 
             let bgWidth = opponentSeatWidth
-            let bgHeight: CGFloat = 42
+            let usesCompactSeat = vm.state.players.count >= 5 || bgWidth < 100
+            let bgHeight: CGFloat = usesCompactSeat ? 38 : 42
             let bg = SKShapeNode(rectOf: CGSize(width: bgWidth, height: bgHeight),
-                                 cornerRadius: 21)
+                                 cornerRadius: bgHeight / 2)
             let isActive = i == vm.state.currentTurnIndex
             if isActive {
                 addActiveTurnHalo(
@@ -396,7 +422,6 @@ final class GameScene: SKScene {
             seatsLayer.addChild(bg)
 
             let avatarColor = theme.avatarColors[i % theme.avatarColors.count]
-            let usesCompactSeat = bgWidth < 100
             let avatarRadius: CGFloat = usesCompactSeat ? 11 : 14
             let avatarInset: CGFloat = usesCompactSeat ? 5 : 7
             let avatarX = seat.anchor.x - bgWidth / 2 + avatarRadius + avatarInset
@@ -421,7 +446,7 @@ final class GameScene: SKScene {
 
             let nameX = avatarX + avatarRadius + (usesCompactSeat ? 5 : 7)
             let displayedName = usesCompactSeat
-                ? String(player.name.prefix(4))
+                ? String(player.name.prefix(bgWidth < 100 ? 4 : 7))
                 : player.name
             let title = SKLabelNode(text: displayedName)
             title.fontName = theme.titleFont
@@ -434,11 +459,9 @@ final class GameScene: SKScene {
             seatsLayer.addChild(title)
 
             let detail = SKLabelNode(
-                text: isActive
-                    ? (usesCompactSeat ? "PLAYING" : "PLAYING NOW")
-                    : (usesCompactSeat
-                        ? "\(player.hand.count) • L\(player.currentLevel)"
-                        : "\(player.hand.count) cards  •  Lv \(player.currentLevel)")
+                text: usesCompactSeat
+                    ? "\(player.hand.count) • L\(player.currentLevel)"
+                    : "\(Self.cardCountLabel(player.hand.count))  •  Lv \(player.currentLevel)"
             )
             detail.fontName = theme.bodyFont
             detail.fontSize = usesCompactSeat ? 8 : 9
@@ -489,7 +512,8 @@ final class GameScene: SKScene {
         let seats = SeatLayout.seats(
             playerCount: vm.state.players.count,
             youIndex: vm.displayedPlayerIndex,
-            sceneSize: size
+            sceneSize: size,
+            horizontalInset: seatLayoutHorizontalInset
         )
         var meldsByOwner: [UUID: [Meld]] = [:]
         for m in vm.state.melds {
@@ -763,7 +787,10 @@ final class GameScene: SKScene {
     ) {
         let seatHalfWidth = opponentSeatWidth / 2
         let seatPadding: CGFloat = 6
-        let outerSeatX = size.width * SeatLayout.topCornerXFraction
+        let outerSeatX = max(
+            size.width * SeatLayout.topCornerXFraction,
+            seatLayoutHorizontalInset + 60
+        )
         let centerX = size.width / 2
         let leftBounds = (outerSeatX + seatHalfWidth + seatPadding)...(
             centerX - seatHalfWidth - seatPadding
@@ -1237,7 +1264,7 @@ final class GameScene: SKScene {
     private var hasUsableLayoutSize: Bool {
         // SwiftUI creates the scene at 1x1 before GeometryReader supplies
         // landscape bounds; closed meld lanes are invalid at that placeholder.
-        let sideSeatCenterInset: CGFloat = 24 + 60
+        let sideSeatCenterInset = seatLayoutHorizontalInset + 60
         let sideMeldStart = sideSeatCenterInset + opponentSeatWidth / 2 + 6
         let sideMeldEnd = size.width / 2
             - Self.protectedPileCorridorHalfWidth
@@ -1250,7 +1277,30 @@ final class GameScene: SKScene {
     }
 
     private var opponentSeatWidth: CGFloat {
-        size.width < 720 ? 64 : 138
+        Self.opponentSeatWidth(
+            sceneWidth: size.width,
+            playerCount: vm.state.players.count
+        )
+    }
+
+    static func opponentSeatWidth(
+        sceneWidth: CGFloat,
+        playerCount: Int
+    ) -> CGFloat {
+        if sceneWidth < 720 {
+            return 64
+        }
+        return playerCount >= 5 ? 112 : 138
+    }
+
+    static func turnBannerWidth(
+        sceneWidth: CGFloat,
+        horizontalEdgeInset: CGFloat
+    ) -> CGFloat {
+        min(
+            520,
+            max(300, sceneWidth - horizontalEdgeInset * 2 - 304)
+        )
     }
 
     private var scaledHandCardSize: CGSize {
@@ -1265,7 +1315,32 @@ final class GameScene: SKScene {
     }
 
     private var horizontalEdgeInset: CGFloat {
-        size.width >= 780 ? 54 : 24
+        Self.tableHorizontalEdgeInset(
+            sceneWidth: size.width,
+            safeAreaInsets: tableSafeAreaInsets
+        )
+    }
+
+    private var seatLayoutHorizontalInset: CGFloat {
+        Self.seatLayoutHorizontalInset(for: tableSafeAreaInsets)
+    }
+
+    static func tableHorizontalEdgeInset(
+        sceneWidth: CGFloat,
+        safeAreaInsets: UIEdgeInsets
+    ) -> CGFloat {
+        let baseInset: CGFloat = sceneWidth >= 780 ? 54 : 24
+        let cutoutInset = max(safeAreaInsets.left, safeAreaInsets.right)
+        return max(baseInset, cutoutInset + 8)
+    }
+
+    static func seatLayoutHorizontalInset(
+        for safeAreaInsets: UIEdgeInsets
+    ) -> CGFloat {
+        let cutoutInset = max(safeAreaInsets.left, safeAreaInsets.right)
+        // SeatLayout adds 60 pt to this value; 15 keeps a 138 pt pill
+        // six points inside the device's protected edge.
+        return max(24, cutoutInset + 15)
     }
 
     private var currentPlayerHUDWidth: CGFloat {
@@ -1426,21 +1501,57 @@ final class GameScene: SKScene {
 
     private func buildContextActions() {
         actionLayer.removeAllChildren()
-        guard !vm.isCurrentPlayerCPU else { return }
-        guard !vm.isBuyDecisionActive else { return }
+        guard vm.state.phase == .awaitingDraw
+                || vm.state.phase == .awaitingMeldOrDiscard else {
+            return
+        }
 
-        let action = contextAction
-        addActionButton(title: action.title, name: action.name,
-                        enabled: action.enabled, emphasized: action.emphasized)
+        let controlSize = CGSize(width: 44, height: 40)
+        addSmallControl(
+            title: "SCORE",
+            name: "show-score",
+            at: CGPoint(
+                x: size.width - horizontalEdgeInset - 118,
+                y: size.height - 31
+            ),
+            size: controlSize,
+            to: actionLayer
+        )
 
-        addSmallControl(title: "RANK", name: "sort-rank",
-                        at: CGPoint(x: size.width - horizontalEdgeInset - 76,
-                                    y: size.height - 31),
-                        to: actionLayer)
-        addSmallControl(title: "SUIT", name: "sort-suit",
-                        at: CGPoint(x: size.width - horizontalEdgeInset - 24,
-                                    y: size.height - 31),
-                        to: actionLayer)
+        guard !vm.isCurrentPlayerCPU || vm.isOnlineGame else { return }
+
+        if !vm.isBuyDecisionActive {
+            let action = contextAction
+            if Self.shouldDisplayContextAction(
+                name: action.name,
+                enabled: action.enabled
+            ) {
+                addActionButton(title: action.title, name: action.name,
+                                enabled: action.enabled,
+                                emphasized: action.emphasized)
+            }
+        }
+
+        addSmallControl(
+            title: "RANK",
+            name: "sort-rank",
+            at: CGPoint(
+                x: size.width - horizontalEdgeInset - 70,
+                y: size.height - 31
+            ),
+            size: controlSize,
+            to: actionLayer
+        )
+        addSmallControl(
+            title: "SUIT",
+            name: "sort-suit",
+            at: CGPoint(
+                x: size.width - horizontalEdgeInset - 22,
+                y: size.height - 31
+            ),
+            size: controlSize,
+            to: actionLayer
+        )
     }
 
     private var contextAction: (title: String, name: String?, enabled: Bool,
@@ -1476,6 +1587,13 @@ final class GameScene: SKScene {
         case .gameEnded:
             return ("GAME COMPLETE", nil, false, false)
         }
+    }
+
+    static func shouldDisplayContextAction(
+        name: String?,
+        enabled: Bool
+    ) -> Bool {
+        name != nil && enabled
     }
 
     private func addActionButton(title: String, name: String?, enabled: Bool,
@@ -1555,7 +1673,8 @@ final class GameScene: SKScene {
             return vm.goDownProgressText.uppercased()
         case .some(.success(let kind)):
             let type = kind == .triplet ? "SET" : "RUN"
-            return "VALID \(type)  •  \(vm.stagedCards.count) CARDS"
+            let count = Self.cardCountLabel(vm.stagedCards.count).uppercased()
+            return "VALID \(type)  •  \(count)"
         case .some(.failure(let error)):
             return error.description.uppercased()
         }
@@ -1603,9 +1722,15 @@ final class GameScene: SKScene {
         guard !isAnimatingTurnAction, let touch = touches.first else { return }
         let point = touch.location(in: self)
 
-        if let name = interactiveName(at: point),
-           handleImmediateControl(name) {
-            return
+        if let name = interactiveName(at: point) {
+            if vm.isBuyDecisionActive {
+                if Self.isSafeUtilityControlDuringBuyDecision(name),
+                   handleImmediateControl(name) {
+                    return
+                }
+            } else if handleImmediateControl(name) {
+                return
+            }
         }
 
         if let uuid = Self.handCardId(
@@ -1618,6 +1743,8 @@ final class GameScene: SKScene {
             beginDrag(card: hit, id: uuid)
             return
         }
+
+        guard !vm.isBuyDecisionActive else { return }
 
         for node in nodes(at: point) {
             var target: SKNode? = node
@@ -1651,7 +1778,8 @@ final class GameScene: SKScene {
 
         if let id = draggingCardId,
            let card = vm.currentPlayer.hand.first(where: { $0.id == id }) {
-            if vm.isLocalPlayersTurn,
+            if dragAllowsGameplay,
+               vm.isLocalPlayersTurn,
                vm.state.phase == .awaitingMeldOrDiscard {
                 switch cardDropTarget(at: point, for: card) {
                 case .some(.discard):
@@ -1672,7 +1800,8 @@ final class GameScene: SKScene {
                 }
             }
 
-            if vm.isLocalPlayersTurn,
+            if dragAllowsGameplay,
+               vm.isLocalPlayersTurn,
                vm.state.phase == .awaitingMeldOrDiscard,
                !vm.currentPlayer.hasGoneDownThisRound,
                stagingTrayRect.contains(point) {
@@ -1686,7 +1815,8 @@ final class GameScene: SKScene {
             let dy = point.y - dragOrigin.y
             let tapThreshold: CGFloat = 10
             if abs(dx) < tapThreshold && abs(dy) < tapThreshold {
-                guard vm.isLocalPlayersTurn,
+                guard dragAllowsGameplay,
+                      vm.isLocalPlayersTurn,
                       vm.state.phase == .awaitingMeldOrDiscard else {
                     warningFeedback()
                     cancelDrag()
@@ -1770,6 +1900,10 @@ final class GameScene: SKScene {
             vm.sortHandBySuit()
             selectionFeedback()
             return true
+        case "show-score":
+            vm.presentScorecard()
+            selectionFeedback()
+            return true
         default:
             break
         }
@@ -1787,6 +1921,29 @@ final class GameScene: SKScene {
             return true
         }
         return false
+    }
+
+    static func isHandSortControl(_ name: String) -> Bool {
+        name == "sort-rank" || name == "sort-suit"
+    }
+
+    static func isSafeUtilityControlDuringBuyDecision(_ name: String) -> Bool {
+        isHandSortControl(name) || name == "show-score"
+    }
+
+    static func cardCountLabel(_ count: Int) -> String {
+        "\(count) \(count == 1 ? "card" : "cards")"
+    }
+
+    static func turnTitle(
+        playerName: String,
+        isLocalPlayersTurn: Bool,
+        isCPU: Bool
+    ) -> String {
+        if isLocalPlayersTurn && !isCPU {
+            return "YOUR TURN"
+        }
+        return "\(playerName)'s turn".uppercased()
     }
 
     private func interactiveName(at point: CGPoint) -> String? {
@@ -1956,6 +2113,16 @@ final class GameScene: SKScene {
         return nil
     }
 
+    static func allowsGameplayDrop(
+        isLocalPlayersTurn: Bool,
+        phase: GameState.Phase,
+        isBuyDecisionActive: Bool
+    ) -> Bool {
+        isLocalPlayersTurn
+            && phase == .awaitingMeldOrDiscard
+            && !isBuyDecisionActive
+    }
+
     private func reorderTargetId(forDropX x: CGFloat, draggedId: UUID) -> UUID? {
         let slots = handSlots.filter { $0.id != draggedId }
         for slot in slots where x < slot.x {
@@ -1973,6 +2140,11 @@ final class GameScene: SKScene {
         dragOriginRotation = card.zRotation
         dragOriginZ = card.zPosition
         dragOriginScale = card.xScale
+        dragAllowsGameplay = Self.allowsGameplayDrop(
+            isLocalPlayersTurn: vm.isLocalPlayersTurn,
+            phase: vm.state.phase,
+            isBuyDecisionActive: vm.isBuyDecisionActive
+        )
         card.removeAllActions()
         card.zPosition = 500
         card.zRotation = 0
@@ -2007,12 +2179,23 @@ final class GameScene: SKScene {
         }
         draggingCard = nil
         draggingCardId = nil
+        dragAllowsGameplay = false
         clearDragTargets()
     }
 
     private func completeDrag() {
         draggingCard = nil
         draggingCardId = nil
+        dragAllowsGameplay = false
+        clearDragTargets()
+    }
+
+    private func abandonDragForRebuild() {
+        guard draggingCard != nil else { return }
+        draggingCard?.removeAllActions()
+        draggingCard = nil
+        draggingCardId = nil
+        dragAllowsGameplay = false
         clearDragTargets()
     }
 
@@ -2020,6 +2203,7 @@ final class GameScene: SKScene {
         isAnimatingTurnAction = true
         draggingCard = nil
         draggingCardId = nil
+        dragAllowsGameplay = false
         clearDragTargets()
 
         node.zPosition = 600

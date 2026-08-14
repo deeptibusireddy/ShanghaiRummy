@@ -31,7 +31,8 @@ public struct GameState: Codable, Sendable, Equatable {
     /// The turn player decides first; eligible buyers then decide clockwise.
     public var buyDecisionPlayerId: UUID?
     /// Cards visually marked as newly added, tracked separately for each
-    /// private hand so purchase cards survive until that buyer's next turn.
+    /// private hand. Purchase cards survive until that buyer's official draw;
+    /// the official draw remains highlighted only for that turn.
     public var highlightedCardIdsByPlayer: [UUID: [UUID]]
 
     private enum CodingKeys: String, CodingKey {
@@ -59,6 +60,8 @@ public struct GameState: Codable, Sendable, Equatable {
     }
 
     public var currentPlayerId: UUID { players[currentTurnIndex].id }
+    public var nextDealerIndex: Int { (dealerIndex + 1) % players.count }
+    public var nextDealer: Player { players[nextDealerIndex] }
     /// Contract for the current turn player based on their own level.
     /// Independent-contract variant: each player is on their own 1-10 track.
     public var currentContract: Contract? {
@@ -124,6 +127,10 @@ public struct GameState: Codable, Sendable, Equatable {
         let existing = Set(ids)
         ids.append(contentsOf: cards.map(\.id).filter { !existing.contains($0) })
         highlightedCardIdsByPlayer[playerId] = ids
+    }
+
+    mutating func clearHighlightedCards(for playerId: UUID) {
+        highlightedCardIdsByPlayer.removeValue(forKey: playerId)
     }
 
     mutating func removeHighlightedCards(

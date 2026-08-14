@@ -78,6 +78,38 @@ final class GameViewModelHandSummaryTests: XCTestCase {
         XCTAssertEqual(youAfter, youLevelBefore + 1, "You went down — level should advance")
     }
 
+    // MARK: - liveScoreboard
+
+    func testLiveScoreboardShowsLevelAndCumulativeScoreLowestFirst() {
+        let v = vm(state: GameFactory.demoMidGame())
+
+        XCTAssertEqual(
+            v.liveScoreboard.map(\.name),
+            ["Jordan", "You", "Alex", "Sam"]
+        )
+        XCTAssertEqual(v.liveScoreboard.map(\.currentLevel), [3, 2, 2, 2])
+        XCTAssertEqual(v.liveScoreboard.map(\.totalScore), [30, 45, 120, 180])
+    }
+
+    func testScorecardPresentationIsUIOnlyAndClosesWhenHandEnds() {
+        let v = vm(state: GameFactory.demoMidGame())
+        let originalState = v.state
+
+        v.presentScorecard()
+        XCTAssertTrue(v.isScorecardPresented)
+        XCTAssertEqual(v.state, originalState)
+
+        v.dismissScorecard()
+        XCTAssertFalse(v.isScorecardPresented)
+
+        v.presentScorecard()
+        v.receiveAuthoritativeState(GameFactory.demoHandOver())
+        XCTAssertFalse(v.isScorecardPresented)
+
+        v.presentScorecard()
+        XCTAssertFalse(v.isScorecardPresented)
+    }
+
     // MARK: - finalScoreboard
 
     func testFinalScoreboardNilWhileGameLive() {

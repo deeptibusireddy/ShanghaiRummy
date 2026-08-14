@@ -30,7 +30,8 @@ enum SeatLayout {
         playerCount: Int,
         youIndex: Int,
         sceneSize: CGSize,
-        insets: CGFloat = 24
+        insets: CGFloat = 24,
+        horizontalInset: CGFloat? = nil
     ) -> [Seat] {
         precondition(playerCount >= 2 && playerCount <= 6, "Only 2-6 seats supported")
         precondition(youIndex >= 0 && youIndex < playerCount, "youIndex out of range")
@@ -40,13 +41,14 @@ enum SeatLayout {
         let w = sceneSize.width
         let h = sceneSize.height
         let midX = w / 2
-        let leftX = insets + 60
-        let rightX = w - insets - 60
+        let horizontalInset = horizontalInset ?? insets
+        let leftX = horizontalInset + 60
+        let rightX = w - horizontalInset - 60
         // Leave room for the 48pt turn ribbon and the device safe area.
         let topY = h - insets - 60
         let botY = insets + 60
-        let quarterLeft = w * topCornerXFraction
-        let quarterRight = w * (1 - topCornerXFraction)
+        let quarterLeft = max(w * topCornerXFraction, leftX)
+        let quarterRight = min(w * (1 - topCornerXFraction), rightX)
 
         switch playerCount {
         case 2:

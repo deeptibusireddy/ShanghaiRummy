@@ -1,5 +1,6 @@
 import SwiftUI
 import SpriteKit
+import UIKit
 
 /// SwiftUI wrapper for `GameScene`. Owns the scene instance and forwards
 /// `GameViewModel` into it. Used by `GameContainerView`.
@@ -23,10 +24,28 @@ struct GameSceneView: View {
             SpriteView(scene: scene,
                        options: [.allowsTransparency])
                 .ignoresSafeArea()
-                .onAppear { scene.size = geo.size }
-                .onChange(of: geo.size) { _, newSize in
-                    scene.size = newSize
+                .onAppear {
+                    updateSceneLayout(using: geo)
+                }
+                .onChange(of: geo.size) { _, _ in
+                    updateSceneLayout(using: geo)
+                }
+                .onChange(of: geo.safeAreaInsets) { _, _ in
+                    updateSceneLayout(using: geo)
                 }
         }
+    }
+
+    private func updateSceneLayout(using geometry: GeometryProxy) {
+        let safeArea = geometry.safeAreaInsets
+        scene.updateLayout(
+            size: geometry.size,
+            safeAreaInsets: UIEdgeInsets(
+                top: safeArea.top,
+                left: safeArea.leading,
+                bottom: safeArea.bottom,
+                right: safeArea.trailing
+            )
+        )
     }
 }

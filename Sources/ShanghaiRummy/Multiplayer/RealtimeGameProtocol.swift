@@ -6,10 +6,15 @@ struct RealtimeParticipantBinding: Codable, Equatable, Sendable {
     let displayName: String
 }
 
+struct RealtimeGameSetup: Codable, Equatable, Sendable {
+    let botCount: Int
+}
+
 struct RealtimeGameSnapshot: Codable, Equatable, Sendable {
     let revision: Int
     let state: GameState
     let participants: [RealtimeParticipantBinding]
+    let botPlayerIds: [UUID]
     let hostGamePlayerId: String
     let lastAppliedRequestId: UUID?
 
@@ -17,18 +22,43 @@ struct RealtimeGameSnapshot: Codable, Equatable, Sendable {
         revision: Int,
         state: GameState,
         participants: [RealtimeParticipantBinding],
+        botPlayerIds: [UUID] = [],
         hostGamePlayerId: String,
         lastAppliedRequestId: UUID? = nil
     ) {
         self.revision = revision
         self.state = state
         self.participants = participants
+        self.botPlayerIds = botPlayerIds
         self.hostGamePlayerId = hostGamePlayerId
         self.lastAppliedRequestId = lastAppliedRequestId
     }
 
     func binding(forGamePlayerId id: String) -> RealtimeParticipantBinding? {
         participants.first(where: { $0.gamePlayerId == id })
+    }
+
+    func hasValidPlayerIdentityLayout() -> Bool {
+        let participantIds = participants.map(\.playerId)
+        let gamePlayerIds = participants.map(\.gamePlayerId)
+        let stateIds = state.players.map(\.id)
+        let participantIdSet = Set(participantIds)
+        let botIdSet = Set(botPlayerIds)
+
+        return participants.count >= RulesConfig.minPlayers
+            && state.players.count >= RulesConfig.minPlayers
+            && state.players.count <= RulesConfig.maxPlayers
+            && botPlayerIds.count
+                <= RulesConfig.maxPlayers - RulesConfig.minPlayers
+            && participantIdSet.count == participantIds.count
+            && Set(gamePlayerIds).count == gamePlayerIds.count
+            && botIdSet.count == botPlayerIds.count
+            && Set(stateIds).count == stateIds.count
+            && participantIdSet.isDisjoint(with: botIdSet)
+            && participantIdSet.union(botIdSet) == Set(stateIds)
+            && participants.contains {
+                $0.gamePlayerId == hostGamePlayerId
+            }
     }
 }
 
@@ -63,6 +93,8 @@ struct RealtimeActionRejection: Codable, Equatable, Error, Sendable {
 }
 
 enum RealtimeGameMessage: Codable, Equatable, Sendable {
+    case setupRequest
+    case setup(RealtimeGameSetup)
     case start(RealtimeGameSnapshot)
     case action(RealtimeActionRequest)
     case snapshot(RealtimeGameSnapshot)
@@ -70,7 +102,11 @@ enum RealtimeGameMessage: Codable, Equatable, Sendable {
 }
 
 enum RealtimeMessageCodec {
-    static let protocolVersion = 2
+    static let protocolVersion = 3
+
+    static func playerGroup(botCount: Int) -> Int {
+        protocolVersion * 10 + botCount
+    }
 
     private struct Envelope: Codable {
         let protocolVersion: Int
@@ -98,6 +134,38 @@ enum RealtimeMessageCodec {
     }
 }
 
+enum RealtimeBotActionError: Error, Equatable, CustomStringConvertible {
+    case actorIsNotBot
+    case illegalAction(TurnEngine.ActionError)
+
+    var description: String {
+        switch self {
+        case .actorIsNotBot:
+            return "The requested player is not a bot"
+        case .illegalAction(let error):
+            return error.description
+        }
+    }
+}
+
+enum RealtimeBotDriver {
+    static func nextAction(
+        in snapshot: RealtimeGameSnapshot
+    ) -> TurnEngine.Action? {
+        guard snapshot.state.phase == .awaitingDraw
+                || snapshot.state.phase == .awaitingMeldOrDiscard,
+              snapshot.botPlayerIds.contains(
+                snapshot.state.activePlayerId
+              ) else {
+            return nil
+        }
+        return CPUPlayer.nextAction(
+            for: snapshot.state.activePlayerId,
+            in: snapshot.state
+        )
+    }
+}
+
 struct RealtimeGameAuthority {
     private(set) var snapshot: RealtimeGameSnapshot
 
@@ -118,7 +186,8 @@ struct RealtimeGameAuthority {
                 )
             )
         }
-        guard binding.playerId == request.action.actorPlayerId else {
+        let ownsAction = binding.playerId == request.action.actorPlayerId
+        guard ownsAction || canRequestBotDealerAdvance(request.action) else {
             return .failure(
                 rejection(
                     request,
@@ -155,6 +224,23 @@ struct RealtimeGameAuthority {
         }
     }
 
+    mutating func applyBotAction(
+        _ action: TurnEngine.Action
+    ) -> Result<RealtimeGameSnapshot, RealtimeBotActionError> {
+        guard snapshot.botPlayerIds.contains(action.actorPlayerId) else {
+            return .failure(.actorIsNotBot)
+        }
+
+        switch TurnEngine.apply(action, to: snapshot.state) {
+        case .failure(let error):
+            return .failure(.illegalAction(error))
+        case .success(let state):
+            return .success(
+                advance(to: state, lastAppliedRequestId: nil)
+            )
+        }
+    }
+
     mutating func passTimedOutBuyOffer(
         playerId: UUID,
         expectedRevision: Int
@@ -180,6 +266,7 @@ struct RealtimeGameAuthority {
             revision: snapshot.revision + 1,
             state: state,
             participants: snapshot.participants,
+            botPlayerIds: snapshot.botPlayerIds,
             hostGamePlayerId: snapshot.hostGamePlayerId,
             lastAppliedRequestId: lastAppliedRequestId
         )
@@ -198,5 +285,17 @@ struct RealtimeGameAuthority {
             message: message,
             currentSnapshot: snapshot
         )
+    }
+
+    private func canRequestBotDealerAdvance(
+        _ action: TurnEngine.Action
+    ) -> Bool {
+        guard snapshot.state.phase == .roundEnded,
+              snapshot.botPlayerIds.contains(action.actorPlayerId),
+              snapshot.state.nextDealer.id == action.actorPlayerId,
+              case .advanceHand(let playerId) = action else {
+            return false
+        }
+        return playerId == action.actorPlayerId
     }
 }

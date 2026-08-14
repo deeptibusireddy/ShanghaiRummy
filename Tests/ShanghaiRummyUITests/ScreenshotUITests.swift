@@ -58,6 +58,42 @@ final class ScreenshotUITests: XCTestCase {
         snapshot(named: "04-mid-game-game-night")
     }
 
+    func testCaptureFourPlayerBuyDecision() throws {
+        app.launchArguments += ["--demo-mid-game", "--demo-buy-decision"]
+        app.launch()
+
+        XCTAssertTrue(app.staticTexts["Your Draw"].waitForExistence(timeout: 5))
+        let panel = app.descendants(matching: .any)["buy-decision-panel"]
+        XCTAssertTrue(panel.waitForExistence(timeout: 5))
+        XCTAssertLessThanOrEqual(panel.frame.width, 200)
+        Thread.sleep(forTimeInterval: 0.7)
+        snapshot(named: "04-four-player-buy-decision")
+    }
+
+    func testCaptureSixPlayerStatusLayout() throws {
+        app.launchArguments += ["--demo-six-player-status"]
+        app.launch()
+
+        XCTAssertTrue(app.buttons["quit-game"].waitForExistence(timeout: 5))
+        Thread.sleep(forTimeInterval: 0.7)
+        snapshot(named: "04-six-player-status")
+    }
+
+    func testCaptureSixPlayerScorecard() throws {
+        app.launchArguments += [
+            "--demo-six-player-status",
+            "--demo-scorecard",
+        ]
+        app.launch()
+
+        let scorecard = app.descendants(matching: .any)["live-scorecard"]
+        XCTAssertTrue(scorecard.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Current Score"].exists)
+        XCTAssertTrue(app.staticTexts["Morgan"].exists)
+        Thread.sleep(forTimeInterval: 0.5)
+        snapshot(named: "04-six-player-scorecard")
+    }
+
     func testCaptureMidGameCasinoFelt() throws {
         app.launchArguments += ["--demo-mid-game", "--theme-felt"]
         app.launch()

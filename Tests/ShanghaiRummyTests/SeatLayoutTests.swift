@@ -30,6 +30,49 @@ final class SeatLayoutTests: XCTestCase {
         XCTAssertEqual(edges, [.bottom, .left, .top, .right])
     }
 
+    func testCameraSafeInsetKeepsSideAndCornerSeatsVisible() {
+        let targetSize = CGSize(width: 852, height: 393)
+        let cameraSafeInset: CGFloat = 59
+        let seatInset = cameraSafeInset + 15
+        let seatHalfWidth: CGFloat = 138 / 2
+        let minimumVisibleX = cameraSafeInset + 6
+        let maximumVisibleX = targetSize.width - minimumVisibleX
+
+        let fourPlayerSeats = SeatLayout.seats(
+            playerCount: 4,
+            youIndex: 0,
+            sceneSize: targetSize,
+            horizontalInset: seatInset
+        )
+        let left = fourPlayerSeats.first { $0.edge == .left }!
+        let right = fourPlayerSeats.first { $0.edge == .right }!
+        XCTAssertGreaterThanOrEqual(
+            left.anchor.x - seatHalfWidth,
+            minimumVisibleX
+        )
+        XCTAssertLessThanOrEqual(
+            right.anchor.x + seatHalfWidth,
+            maximumVisibleX
+        )
+
+        let sixPlayerSeats = SeatLayout.seats(
+            playerCount: 6,
+            youIndex: 0,
+            sceneSize: targetSize,
+            horizontalInset: seatInset
+        )
+        let topLeft = sixPlayerSeats.first { $0.edge == .topLeft }!
+        let topRight = sixPlayerSeats.first { $0.edge == .topRight }!
+        XCTAssertGreaterThanOrEqual(
+            topLeft.anchor.x - seatHalfWidth,
+            minimumVisibleX
+        )
+        XCTAssertLessThanOrEqual(
+            topRight.anchor.x + seatHalfWidth,
+            maximumVisibleX
+        )
+    }
+
     func testSixPlayerFillsAllTemplates() {
         let seats = SeatLayout.seats(playerCount: 6, youIndex: 0, sceneSize: sceneSize)
         XCTAssertEqual(seats.count, 6)
