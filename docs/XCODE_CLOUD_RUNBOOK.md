@@ -100,7 +100,8 @@ When the build lands in TestFlight, it may show "Missing Compliance."
 3. Answer **"No"** to "does your app use encryption not exempt from export".
 4. Save.
 
-We already have `ITSAppUsesNonExemptEncryption=false` in Info.plist, so subsequent builds shouldn't need this.
+We declare `ITSAppUsesNonExemptEncryption=false` in both `project.yml` and
+`Info.plist`, so subsequent generated builds shouldn't need this.
 
 ### Step 6 — Install on your iPhone
 
@@ -150,7 +151,7 @@ Same App Store Connect → TestFlight → **External Testing** → **Create Grou
 | Build fails at "Detecting schemes" | `ci_post_clone.sh` didn't run. Check it's executable (`git ls-files --stage` shows `100755`). Currently ✅. |
 | Build fails at Archive | Usually first-time signing. In workflow config, ensure "Managed by Apple" is selected for signing. |
 | No TestFlight notification | Check spam. Or open TestFlight app manually — build should appear silently. |
-| "Missing compliance" nag every build | Confirm `ITSAppUsesNonExemptEncryption=false` is in `Info.plist` (it is ✅). |
+| "Missing compliance" nag every build | Confirm `ITSAppUsesNonExemptEncryption=false` is in both `project.yml` and `Info.plist` (it is ✅). |
 | Homebrew missing in ci_post_clone | Xcode Cloud runners have Homebrew pre-installed; if it fails, the script installs it. |
 
 ---
