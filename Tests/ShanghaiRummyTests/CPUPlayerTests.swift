@@ -19,10 +19,12 @@ final class CPUPlayerTests: XCTestCase {
                                              count: 20),
                        hasGoneDown: Bool = false,
                        laidDownThisTurn: Bool = false,
+                       buysUsed: Int = 0,
                        level: Int = 1) -> (GameState, Player) {
         let me = Player(
             name: "Bot",
             hand: hand,
+            buysUsedThisRound: buysUsed,
             hasGoneDownThisRound: hasGoneDown,
             laidDownThisTurn: laidDownThisTurn,
             currentLevel: level
@@ -86,6 +88,45 @@ final class CPUPlayerTests: XCTestCase {
         XCTAssertEqual(src, .stock)
     }
 
+    func testTakesDiscardThatCompletesRequiredTriplet() {
+        let hand = [
+            c(.hearts, .king),
+            c(.spades, .king),
+            c(.hearts, .three),
+        ]
+        let (s, me) = state(
+            hand: hand,
+            discard: [c(.diamonds, .king)]
+        )
+
+        let action = CPUPlayer.nextAction(for: me.id, in: s)
+
+        guard case .draw(_, let source) = action else {
+            return XCTFail("Expected .draw, got \(action)")
+        }
+        XCTAssertEqual(source, .discard)
+    }
+
+    func testTakesDiscardThatCompletesRequiredSequence() {
+        let hand = [
+            c(.hearts, .four),
+            c(.hearts, .five),
+            c(.hearts, .six),
+        ]
+        let (s, me) = state(
+            hand: hand,
+            discard: [c(.hearts, .seven)],
+            level: 3
+        )
+
+        let action = CPUPlayer.nextAction(for: me.id, in: s)
+
+        guard case .draw(_, let source) = action else {
+            return XCTFail("Expected .draw, got \(action)")
+        }
+        XCTAssertEqual(source, .discard)
+    }
+
     func testAcceptsWildDiscardWhenOfferedABuy() {
         var (s, me) = state(
             hand: [c(.hearts, .three)],
@@ -114,6 +155,73 @@ final class CPUPlayerTests: XCTestCase {
         )
     }
 
+    func testBuysUsefulNonWildDiscard() {
+        var (s, me) = state(
+            hand: [c(.hearts, .king), c(.spades, .king)],
+            discard: [c(.diamonds, .king)]
+        )
+        s.currentTurnIndex = 1
+        s.buyDecisionPlayerId = me.id
+
+        XCTAssertEqual(
+            CPUPlayer.nextAction(for: me.id, in: s),
+            .acceptBuyOffer(playerId: me.id)
+        )
+    }
+
+    func testConservesEarlyBuyAfterUsingStrategicBudget() {
+        var (s, me) = state(
+            hand: [c(.hearts, .king), c(.spades, .king)],
+            discard: [c(.diamonds, .king)],
+            buysUsed: 1
+        )
+        s.currentTurnIndex = 1
+        s.buyDecisionPlayerId = me.id
+
+        XCTAssertEqual(
+            CPUPlayer.nextAction(for: me.id, in: s),
+            .passBuyOffer(playerId: me.id)
+        )
+    }
+
+    func testUsesMoreBuyBudgetForLateLevelSequenceProgress() {
+        var (s, me) = state(
+            hand: [c(.hearts, .four), c(.hearts, .five)],
+            discard: [c(.hearts, .six)],
+            buysUsed: 1,
+            level: 8
+        )
+        s.currentTurnIndex = 1
+        s.buyDecisionPlayerId = me.id
+
+        XCTAssertEqual(
+            CPUPlayer.nextAction(for: me.id, in: s),
+            .acceptBuyOffer(playerId: me.id)
+        )
+    }
+
+    func testBuysDiscardThatCompletesExactSizeContract() {
+        let hand = [
+            c(.hearts, .king),
+            c(.spades, .king),
+            c(.diamonds, .king),
+            c(.hearts, .seven),
+            c(.spades, .seven),
+        ]
+        var (s, me) = state(
+            hand: hand,
+            discard: [c(.diamonds, .seven)],
+            buysUsed: 1
+        )
+        s.currentTurnIndex = 1
+        s.buyDecisionPlayerId = me.id
+
+        XCTAssertEqual(
+            CPUPlayer.nextAction(for: me.id, in: s),
+            .acceptBuyOffer(playerId: me.id)
+        )
+    }
+
     // MARK: - Discard selection
 
     func testDiscardsHighestPenaltyNonWild() {
@@ -137,6 +245,61 @@ final class CPUPlayerTests: XCTestCase {
         }
         XCTAssertFalse(card.isWild)
         XCTAssertEqual(card.rank, .three)
+    }
+
+    func testPreservesContractPairsInsteadOfDiscardingHighestPoints() {
+        let hand = [
+            c(.hearts, .ace),
+            c(.spades, .ace),
+            c(.hearts, .king),
+            c(.spades, .king),
+            c(.hearts, .queen),
+            c(.diamonds, .three),
+            c(.clubs, .four),
+        ]
+        let (s, me) = state(
+            hand: hand,
+            phase: .awaitingMeldOrDiscard
+        )
+
+        let action = CPUPlayer.nextAction(for: me.id, in: s)
+
+        guard case .discard(_, let card) = action else {
+            return XCTFail("Expected .discard, got \(action)")
+        }
+        XCTAssertEqual(card.rank, .queen)
+    }
+
+    func testAvoidsDiscardThatExtendsPublicMeldWhenAlternativesTie() {
+        let publicQueens = Meld(
+            kind: .triplet,
+            cards: [
+                c(.clubs, .queen),
+                c(.diamonds, .queen),
+                c(.spades, .queen),
+            ],
+            ownerId: UUID()
+        )
+        let hand = [
+            c(.hearts, .ace),
+            c(.spades, .ace),
+            c(.hearts, .king),
+            c(.spades, .king),
+            c(.hearts, .queen),
+            c(.clubs, .jack),
+        ]
+        let (s, me) = state(
+            hand: hand,
+            phase: .awaitingMeldOrDiscard,
+            melds: [publicQueens]
+        )
+
+        let action = CPUPlayer.nextAction(for: me.id, in: s)
+
+        guard case .discard(_, let card) = action else {
+            return XCTFail("Expected .discard, got \(action)")
+        }
+        XCTAssertEqual(card.rank, .jack)
     }
 
     // MARK: - Contract search
@@ -229,6 +392,36 @@ final class CPUPlayerTests: XCTestCase {
         }
     }
 
+    func testFindsAceHighSequencesForRound3() {
+        let hand = [
+            c(.hearts, .jack),
+            c(.hearts, .queen),
+            c(.hearts, .king),
+            c(.hearts, .ace),
+            c(.spades, .jack),
+            c(.spades, .queen),
+            c(.spades, .king),
+            c(.spades, .ace),
+        ]
+
+        let melds = CPUPlayer.findContractSatisfaction(
+            hand: hand,
+            contract: RoundSchedule.contract(forRound: 3)!
+        )
+
+        XCTAssertEqual(melds?.count, 2)
+        for meld in melds ?? [] {
+            XCTAssertEqual(
+                meld.compactMap(\.rank),
+                [.jack, .queen, .king, .ace]
+            )
+            if case .failure(let error) =
+                MeldValidator.validateSequence(meld) {
+                XCTFail("Invalid Ace-high sequence: \(error)")
+            }
+        }
+    }
+
     // MARK: - End-to-end action selection
 
     func testGoesDownWhenContractSatisfied() {
@@ -293,6 +486,85 @@ final class CPUPlayerTests: XCTestCase {
         XCTAssertEqual(added.first?.id, repeatedSuit.id)
     }
 
+    func testLaysOffHighestPenaltyPlayableCardFirst() {
+        let ownerId = UUID()
+        let aceMeld = Meld(
+            kind: .triplet,
+            cards: [
+                c(.hearts, .ace),
+                c(.spades, .ace),
+                c(.diamonds, .ace),
+            ],
+            ownerId: ownerId
+        )
+        let kingMeld = Meld(
+            kind: .triplet,
+            cards: [
+                c(.hearts, .king),
+                c(.spades, .king),
+                c(.diamonds, .king),
+            ],
+            ownerId: ownerId
+        )
+        let ace = c(.clubs, .ace)
+        let king = c(.clubs, .king)
+        let (s, me) = state(
+            hand: [king, ace, c(.clubs, .three)],
+            phase: .awaitingMeldOrDiscard,
+            melds: [kingMeld, aceMeld],
+            hasGoneDown: true
+        )
+
+        let action = CPUPlayer.nextAction(for: me.id, in: s)
+
+        guard case .addToMeld(_, _, let atStart, let atEnd) = action else {
+            return XCTFail("Expected .addToMeld, got \(action)")
+        }
+        XCTAssertEqual((atStart + atEnd).first?.id, ace.id)
+    }
+
+    func testRedeemsWildWhenItCanBeImmediatelyReplayed() throws {
+        let wild = joker()
+        let replacement = c(.clubs, .seven)
+        let sequence = Meld(
+            kind: .sequence,
+            cards: [
+                c(.clubs, .five),
+                c(.clubs, .six),
+                wild,
+                c(.clubs, .eight),
+            ],
+            ownerId: UUID()
+        )
+        let (s, me) = state(
+            hand: [replacement, c(.diamonds, .three)],
+            phase: .awaitingMeldOrDiscard,
+            melds: [sequence],
+            hasGoneDown: true
+        )
+
+        let redemption = CPUPlayer.nextAction(for: me.id, in: s)
+
+        guard case .redeemWild(
+            _,
+            let meldId,
+            let wildCardId,
+            let replacementCard
+        ) = redemption else {
+            return XCTFail("Expected .redeemWild, got \(redemption)")
+        }
+        XCTAssertEqual(meldId, sequence.id)
+        XCTAssertEqual(wildCardId, wild.id)
+        XCTAssertEqual(replacementCard.id, replacement.id)
+
+        let redeemedState = try TurnEngine.apply(redemption, to: s).get()
+        let replay = CPUPlayer.nextAction(for: me.id, in: redeemedState)
+        guard case .addToMeld(_, _, let atStart, let atEnd) = replay else {
+            return XCTFail("Expected immediate wild layoff, got \(replay)")
+        }
+        XCTAssertEqual((atStart + atEnd).first?.id, wild.id)
+    }
+
     func testDiscardsWhenGoneDownAndNoLayoff() {
         let hand = [c(.diamonds, .three), c(.diamonds, .four)]
         let (s, me) = state(hand: hand,
@@ -354,6 +626,41 @@ final class CPUPlayerTests: XCTestCase {
         XCTAssertEqual(vm.state.players[0].hand.count, humanHandCount + 1)
         XCTAssertEqual(vm.state.players[1].hand.count, botHandCount + 2)
         XCTAssertEqual(vm.state.players[1].buysUsedThisRound, 1)
+    }
+
+    @MainActor
+    func testHumanPassLetsBotBuyUsefulNonWildDiscard() {
+        var state = GameFactory.newGame(
+            playerNames: ["You", "Bot"],
+            seed: 73
+        )
+        state.currentTurnIndex = 0
+        state.buyDecisionPlayerId = state.players[0].id
+        state.players[1].hand = [
+            c(.hearts, .king),
+            c(.spades, .king),
+        ]
+        state.discard = [c(.diamonds, .king)]
+        let humanId = state.players[0].id
+        let botId = state.players[1].id
+        let humanHandCount = state.players[0].hand.count
+        let botHandCount = state.players[1].hand.count
+        let vm = GameViewModel(state: state, localPlayerId: humanId)
+        vm.cpuPlayerIds = [botId]
+
+        vm.passBuyOffer()
+
+        XCTAssertEqual(vm.state.currentPlayerId, humanId)
+        XCTAssertEqual(vm.state.phase, .awaitingMeldOrDiscard)
+        XCTAssertNil(vm.state.buyDecisionPlayerId)
+        XCTAssertEqual(vm.state.players[0].hand.count, humanHandCount + 1)
+        XCTAssertEqual(vm.state.players[1].hand.count, botHandCount + 2)
+        XCTAssertEqual(vm.state.players[1].buysUsedThisRound, 1)
+        XCTAssertTrue(
+            vm.state.players[1].hand.contains {
+                $0.suit == .diamonds && $0.rank == .king
+            }
+        )
     }
 
     @MainActor
