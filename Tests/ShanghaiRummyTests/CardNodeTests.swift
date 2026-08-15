@@ -20,7 +20,16 @@ final class CardNodeTests: XCTestCase {
         node.setNewCardHighlighted(true)
         let highlight = node.childNode(withName: "new-card-highlight")
         XCTAssertNotNil(highlight)
-        XCTAssertNotNil(highlight?.childNode(withName: "new-card-tab"))
+        let badge = highlight?.childNode(
+            withName: "new-card-badge"
+        )
+        XCTAssertNotNil(badge)
+        XCTAssertEqual(
+            (badge?.childNode(
+                withName: "new-card-badge-label"
+            ) as? SKLabelNode)?.text,
+            "NEW"
+        )
         XCTAssertNil(
             highlight?.childNode(withName: "new-card-arrival-glow")
         )
@@ -35,7 +44,9 @@ final class CardNodeTests: XCTestCase {
         node.setNewCardHighlighted(true, animateArrival: true)
 
         let highlight = node.childNode(withName: "new-card-highlight")
-        XCTAssertNotNil(highlight?.childNode(withName: "new-card-tab"))
+        XCTAssertNotNil(
+            highlight?.childNode(withName: "new-card-badge")
+        )
         XCTAssertNotNil(
             highlight?.childNode(withName: "new-card-arrival-glow")
         )

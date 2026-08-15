@@ -436,18 +436,26 @@ final class CardNode: SKNode {
         container.name = "new-card-highlight"
         container.zPosition = 8
 
-        let tab = SKShapeNode(
-            rectOf: CGSize(width: 15, height: 6),
-            cornerRadius: 3
+        let badge = SKShapeNode(
+            rectOf: CGSize(width: 27, height: 14),
+            cornerRadius: 7
         )
-        tab.name = "new-card-tab"
-        tab.fillColor = theme.turnGlow
-        tab.strokeColor = .clear
-        tab.position = CGPoint(
-            x: -Self.size.width / 2 + 10,
-            y: Self.size.height / 2 - 4
-        )
-        container.addChild(tab)
+        badge.name = "new-card-badge"
+        badge.fillColor = theme.turnGlow
+        badge.strokeColor = UIColor.white.withAlphaComponent(0.65)
+        badge.lineWidth = 0.8
+        badge.position = CGPoint(x: -16, y: -39)
+        container.addChild(badge)
+
+        let label = SKLabelNode(text: "NEW")
+        label.name = "new-card-badge-label"
+        label.fontName = theme.titleFont
+        label.fontSize = 7
+        label.fontColor = theme.blackSuit
+        label.horizontalAlignmentMode = .center
+        label.verticalAlignmentMode = .center
+        label.position = CGPoint(x: 0, y: -0.5)
+        badge.addChild(label)
 
         if animateArrival {
             let rect = CGRect(
