@@ -29,17 +29,25 @@ final class ScreenshotUITests: XCTestCase {
 
         snapshot(named: "01-home-menu")
 
-        // Home → New Game setup
-        let hotSeat = app.buttons["Hot-Seat (Pass & Play)"]
-        XCTAssertTrue(hotSeat.waitForExistence(timeout: 5), "Home menu should show hot-seat button")
-        hotSeat.tap()
+        let createTable = app.buttons["create-table"]
+        XCTAssertTrue(
+            createTable.waitForExistence(timeout: 5),
+            "Home menu should show the unified Create Table button"
+        )
+        XCTAssertFalse(app.buttons["Hot-Seat (Pass & Play)"].exists)
+        XCTAssertFalse(app.buttons["Quick Pair (2-Player Beta Test)"].exists)
+        createTable.tap()
 
-        // Setup sheet appears
-        _ = app.navigationBars["New Game"].waitForExistence(timeout: 5)
-        snapshot(named: "02-new-game-setup")
+        XCTAssertTrue(
+            app.navigationBars["Create Table"].waitForExistence(timeout: 5)
+        )
+        snapshot(named: "02-create-table-setup")
 
-        // Start the game with the default 2 players.
-        app.buttons["Start"].tap()
+        app.buttons["add-family-bot"].tap()
+        let start = app.buttons["start-family-table"]
+        XCTAssertTrue(start.waitForExistence(timeout: 2))
+        XCTAssertTrue(start.isEnabled)
+        start.tap()
 
         XCTAssertTrue(app.buttons["quit-game"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["Your Draw"].waitForExistence(timeout: 5))

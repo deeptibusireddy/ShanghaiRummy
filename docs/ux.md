@@ -312,14 +312,15 @@ Haptics (M4):
   text grows to 24 pt.
 - VoiceOver rotor: "Piles", "My hand", "My melds", "Opponents' melds".
 
-## Hot-seat vs online
+## Local bot tables vs online
 
-- Hot-seat: the whole scene renders as-is, but the "your seat" rotates
-  each turn. The pass-and-play interstitial hides the previous player's
-  hand before the next one takes the device.
+- Local bot table: your seat stays anchored at the bottom and every bot action,
+  including draw and buy decisions, runs automatically.
 - Online: scene stays anchored to *you* (your seat always bottom); opponent
   hands stay hidden, and the turn banner shows whose turn or buy decision is
   active.
+- The home screen exposes one primary **Create Table** action. Legacy Hot-Seat
+  and Quick Pair choices are not shown.
 - **Create Table** opens one roster for 2–6 seats. The local player is fixed;
   the roster starts with only You, and every added seat can switch between
   Human and Bot or be removed. Start stays disabled until at least one seat is

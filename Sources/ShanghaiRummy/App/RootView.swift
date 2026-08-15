@@ -4,7 +4,6 @@ struct RootView: View {
     @EnvironmentObject var gameCenter: GameCenterManager
     @State private var activeGame: GameViewModel?
     @State private var activeTheme: VisualTheme = .gameNight
-    @State private var showingSetup = false
     @State private var showingFamilyTableSetup = false
     @State private var pendingFamilyTable: FamilyTableConfiguration?
 
@@ -21,12 +20,6 @@ struct RootView: View {
             }
         } else {
             homeMenu
-                .sheet(isPresented: $showingSetup) {
-                    NewGameSetupView { vm in
-                        showingSetup = false
-                        activeGame = vm
-                    }
-                }
                 .sheet(
                     isPresented: $showingFamilyTableSetup,
                     onDismiss: startPendingFamilyTable
@@ -187,29 +180,23 @@ struct RootView: View {
                     Text("Signed in as \(gameCenter.displayName)")
                         .foregroundStyle(.secondary)
                 } else {
-                    Text("Sign in to Game Center to play with family")
+                    Text(
+                        "Play with bots now, or sign in to Game Center "
+                            + "to invite people."
+                    )
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
                 }
 
-                Button("Hot-Seat (Pass & Play)") {
-                    showingSetup = true
-                }
-                .buttonStyle(.borderedProminent)
-
                 VStack(spacing: 8) {
-                    Button("Create Table (People & Bots)") {
+                    Button("Create Table") {
                         showingFamilyTableSetup = true
                     }
-                    .buttonStyle(.bordered)
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
+                    .accessibilityIdentifier("create-table")
 
-                    Button("Quick Pair (2-Player Beta Test)") {
-                        gameCenter.beginQuickPair()
-                    }
-                    .buttonStyle(.bordered)
-                    .disabled(!gameCenter.isAuthenticated)
-
-                    Text("For Quick Pair, tap it on both phones at the same time.")
+                    Text("Choose people, bots, or both.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
