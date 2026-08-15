@@ -66,3 +66,5 @@ preview/
 
 artifacts_*/
 
+# Copilot CLI local checkpoints and generated handoffs
+.copilot-local/
