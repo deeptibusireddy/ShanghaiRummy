@@ -1,6 +1,6 @@
 # Shanghai Rummy Project State
 
-Last updated: 2026-08-14 19:17 PDT
+Last updated: 2026-08-15 01:10 PDT
 
 ## Resume first
 
@@ -14,46 +14,60 @@ Last updated: 2026-08-14 19:17 PDT
 ## Released state
 
 - Released branch: `main`
-- Released commit: `17878d3` (`Release Build 29`)
+- Released commit: `24c3559` (`Release Build 31`)
 - Marketing version: `1.0`
-- Project build number: `29`
-- Pull request: https://github.com/deeptibusireddy/ShanghaiRummy/pull/1
+- Project build number: `31`
+- Pull request: https://github.com/deeptibusireddy/ShanghaiRummy/pull/3
 - Main GitHub Actions run:
-  https://github.com/deeptibusireddy/ShanghaiRummy/actions/runs/31854365524
+  https://github.com/deeptibusireddy/ShanghaiRummy/actions/runs/31871973244
 - Xcode Cloud archive:
-  https://appstoreconnect.apple.com/teams/35852cea-059f-4cb5-95f1-c9cecb6cb122/apps/6798119446/ci/builds/2fffa5ed-e533-4ab1-966c-4396f24be482/action/75ae163f-69ef-4bf0-a1f5-b52ebc7e2f14
-- The Xcode Cloud archive succeeded and uploaded Build 29 to App Store Connect.
-  TestFlight processing or device availability has not been independently
-  confirmed.
+  https://appstoreconnect.apple.com/teams/35852cea-059f-4cb5-95f1-c9cecb6cb122/apps/6798119446/ci/builds/0b8ff90c-355c-48c1-8b54-b2bb130768b3/action/8638d84d-f6bc-4043-a2db-7b2274fc6831
+- The Xcode Cloud archive succeeded and uploaded Build 31 to App Store Connect
+  for TestFlight processing.
 
 ## Current task
 
-Persistence and recovery infrastructure is being added on branch
-`chore/persistent-agent-context`.
+Build 31 is released. The user is about to test it on their phone and asked
+that all progress and context be persisted before the laptop sleeps.
 
-Completed locally:
+Build 31 completed:
 
-- Explicit Copilot CLI session syncing: `remoteExport: true`.
-- Explicit Copilot Memory preference: `memory: true`.
-- User-level hooks mirror session checkpoints on `agentStop`, `sessionEnd`, and
+- Fixed the stock-exhaustion hang with deterministic discard recycling.
+- Retains the top discard on the first recycle.
+- Ends and scores the hand on the second stock exhaustion.
+- Added a persistent local-player `BUYS LEFT` counter from 3 to 0.
+- Repeats the remaining-buy count in actual non-turn buy prompts.
+- Uses a fixed-size, high-contrast rank/suit chip in the Buy/Take button while
+  keeping the purchase panel 216 points wide.
+- Final feature commits: `23388cf`, `a072bda`, and `d60dc8b`.
+- Release commit: `24c3559`.
+- PR #3, release-SHA validation, main GitHub Actions, and Xcode Cloud all
+  succeeded.
+
+Persistence state:
+
+- Explicit Copilot CLI session syncing remains enabled with
+  `remoteExport: true`.
+- User-level hooks mirror checkpoints on `agentStop`, `sessionEnd`, and
   `errorOccurred`.
-- A credential-free backup of the active session and safe Copilot configuration
-  is written to `%USERPROFILE%\.copilot-safe-backup`.
-- Repository-wide continuity and release-safety instructions are defined in
-  `.github/copilot-instructions.md`.
-- `.copilot-local/` is ignored repository-wide.
+- Current session checkpoint:
+  `.copilot-local/checkpoints/5bafc69c-36a7-4854-a3b0-d55684515da2/002-build-31-released.md`
+- Release handoff:
+  `.copilot-local/artifacts/release-handoff/build-31.md`
+- Credential-free backup:
+  `%USERPROFILE%\.copilot-safe-backup`
+- Source code and release history are pushed to GitHub.
 
 ## Pending
 
-- Select a **Usage billed to** entity in GitHub Copilot settings so Copilot
-  Memory can store durable facts. The local `memory: true` preference is already
-  set, but server-side memory writes remain blocked until billing is selected.
-- Restart or resume Copilot CLI after this setup so the updated hooks and
-  instructions are loaded.
-- Include `chore/persistent-agent-context` in the next requested app release.
-  Do not merge it into `main` by itself because every `main` push triggers an
-  Xcode Cloud/TestFlight archive.
-- Install and test Build 29 when it becomes available in TestFlight.
+- Install and test Build 1.0 (31) from TestFlight.
+- Record the next batch of phone feedback before changing code.
+- Start future work on `feedback/build-32` from `main` at `24c3559`.
+- Select a **Usage billed to** entity in GitHub Copilot settings if durable
+  Copilot Memory is still desired. Local checkpointing and GitHub source
+  persistence are already active.
+- Do not merge this continuity-only branch into `main` by itself because every
+  `main` push triggers an Xcode Cloud/TestFlight archive.
 
 ## Established release process
 
