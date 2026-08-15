@@ -341,6 +341,10 @@ struct GameContainerView: View {
     @ViewBuilder
     private var localBuyDecision: some View {
         let discard = vm.state.discard.last
+        let acceptDisabled =
+            !vm.canAcceptBuyOffer || vm.isSubmittingOnlineAction
+        let passDisabled =
+            !vm.canPassBuyOffer || vm.isSubmittingOnlineAction
         VStack(spacing: 7) {
             if !vm.isTurnPlayersFirstRefusal {
                 Text("BUYS LEFT: \(vm.currentPlayerBuysRemaining)")
@@ -358,13 +362,15 @@ struct GameContainerView: View {
                     vm.acceptBuyOffer()
                 } label: {
                     buyActionLabel(discard: discard)
+                        .background(
+                            Color(theme.turnGlow),
+                            in: RoundedRectangle(cornerRadius: 12)
+                        )
                 }
-                .buttonStyle(.borderedProminent)
-                .buttonBorderShape(.roundedRectangle(radius: 12))
-                .controlSize(.regular)
-                .tint(Color(theme.turnGlow))
+                .buttonStyle(.plain)
                 .frame(maxWidth: .infinity)
-                .disabled(!vm.canAcceptBuyOffer || vm.isSubmittingOnlineAction)
+                .opacity(acceptDisabled ? 0.45 : 1)
+                .disabled(acceptDisabled)
                 .accessibilityLabel(
                     acceptBuyOfferAccessibilityLabel(for: discard)
                 )
@@ -381,13 +387,23 @@ struct GameContainerView: View {
                         ))
                         .lineLimit(1)
                         .frame(maxWidth: .infinity, minHeight: 42)
+                        .foregroundStyle(Color(theme.bannerText))
+                        .background(
+                            Color(theme.scoreChipBg),
+                            in: RoundedRectangle(cornerRadius: 12)
+                        )
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(
+                                    Color(theme.bannerText).opacity(0.75),
+                                    lineWidth: 1
+                                )
+                        }
                 }
-                .buttonStyle(.bordered)
-                .buttonBorderShape(.roundedRectangle(radius: 12))
-                .controlSize(.regular)
-                .tint(Color(theme.bannerText))
+                .buttonStyle(.plain)
                 .frame(width: 64)
-                .disabled(!vm.canPassBuyOffer || vm.isSubmittingOnlineAction)
+                .opacity(passDisabled ? 0.45 : 1)
+                .disabled(passDisabled)
                 .accessibilityIdentifier("pass-buy-offer")
             }
         }
