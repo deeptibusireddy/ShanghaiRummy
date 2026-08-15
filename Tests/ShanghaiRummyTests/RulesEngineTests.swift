@@ -773,6 +773,138 @@ final class TurnEngineTests: XCTestCase {
         XCTAssertEqual(g.phase, .awaitingMeldOrDiscard)
     }
 
+    func testLastStockDrawRecyclesDiscardAfterTurnDeterministically() {
+        var g = makeGame()
+        let recycledCards = [
+            c(.clubs, .three),
+            c(.diamonds, .four),
+        ]
+        g.stock = [c(.spades, .ace)]
+        g.discard = recycledCards
+        g = passPurchaseRound(in: g)
+        XCTAssertTrue(g.stock.isEmpty)
+
+        let playerId = g.currentPlayerId
+        let discardedCard = g.players[g.currentTurnIndex].hand[0]
+        let first = try! TurnEngine.apply(
+            .discard(playerId: playerId, card: discardedCard),
+            to: g
+        ).get()
+        let repeated = try! TurnEngine.apply(
+            .discard(playerId: playerId, card: discardedCard),
+            to: g
+        ).get()
+
+        XCTAssertEqual(first.phase, .awaitingDraw)
+        XCTAssertEqual(first.stockReshufflesUsed, 1)
+        XCTAssertEqual(first.discard.map(\.id), [discardedCard.id])
+        XCTAssertEqual(
+            Set(first.stock.map(\.id)),
+            Set(recycledCards.map(\.id))
+        )
+        XCTAssertEqual(first.stock.map(\.id), repeated.stock.map(\.id))
+    }
+
+    func testEmptyStockRecyclesBeforePurchaseOffersContinue() {
+        var g = makeGame()
+        let recycledCards = [
+            c(.clubs, .three),
+            c(.diamonds, .four),
+        ]
+        let topDiscard = c(.hearts, .five)
+        g.stock = []
+        g.discard = recycledCards + [topDiscard]
+
+        g = try! TurnEngine.apply(
+            .passBuyOffer(playerId: g.currentPlayerId),
+            to: g
+        ).get()
+
+        let nextBuyerIndex = (g.currentTurnIndex + 1) % g.players.count
+        XCTAssertEqual(g.stockReshufflesUsed, 1)
+        XCTAssertEqual(g.discard.map(\.id), [topDiscard.id])
+        XCTAssertEqual(
+            Set(g.stock.map(\.id)),
+            Set(recycledCards.map(\.id))
+        )
+        XCTAssertEqual(g.buyDecisionPlayerId, g.players[nextBuyerIndex].id)
+        XCTAssertEqual(g.phase, .awaitingDraw)
+    }
+
+    func testPurchaseUsingLastStockCardsRecyclesAfterTurnDiscard() {
+        var g = makeGame()
+        let turnIndex = g.currentTurnIndex
+        let buyerIndex = (turnIndex + 1) % g.players.count
+        let buyerId = g.players[buyerIndex].id
+        let recycledCard = c(.clubs, .three)
+        let offeredCard = c(.hearts, .five)
+        g.stock = [
+            c(.diamonds, .seven),
+            c(.spades, .nine),
+        ]
+        g.discard = [recycledCard, offeredCard]
+
+        g = try! TurnEngine.apply(
+            .passBuyOffer(playerId: g.currentPlayerId),
+            to: g
+        ).get()
+        g = try! TurnEngine.apply(
+            .acceptBuyOffer(playerId: buyerId),
+            to: g
+        ).get()
+        XCTAssertTrue(g.stock.isEmpty)
+
+        let turnPlayerId = g.currentPlayerId
+        let discardedCard = g.players[turnIndex].hand[0]
+        g = try! TurnEngine.apply(
+            .discard(playerId: turnPlayerId, card: discardedCard),
+            to: g
+        ).get()
+
+        XCTAssertEqual(g.stockReshufflesUsed, 1)
+        XCTAssertEqual(g.stock.map(\.id), [recycledCard.id])
+        XCTAssertEqual(g.discard.map(\.id), [discardedCard.id])
+        XCTAssertEqual(g.phase, .awaitingDraw)
+    }
+
+    func testSecondStockExhaustionEndsRoundAndScoresEveryHand() {
+        var g = passPurchaseRound(in: makeGame())
+        let playerId = g.currentPlayerId
+        let discardedCard = g.players[g.currentTurnIndex].hand[0]
+        g.stock = []
+        g.stockReshufflesUsed = 1
+
+        let ended = try! TurnEngine.apply(
+            .discard(playerId: playerId, card: discardedCard),
+            to: g
+        ).get()
+
+        XCTAssertEqual(ended.phase, .roundEnded)
+        XCTAssertNil(ended.buyDecisionPlayerId)
+        let next = try! TurnEngine.advanceHand(state: ended).get()
+        for player in ended.players {
+            let nextPlayer = next.players.first { $0.id == player.id }!
+            XCTAssertEqual(
+                nextPlayer.totalScore,
+                player.totalScore + Scoring.penalty(for: player.hand)
+            )
+        }
+    }
+
+    func testPassOnEmptyStockEndsRoundAfterSecondExhaustion() {
+        var g = makeGame()
+        g.stock = []
+        g.stockReshufflesUsed = 1
+
+        g = try! TurnEngine.apply(
+            .passBuyOffer(playerId: g.currentPlayerId),
+            to: g
+        ).get()
+
+        XCTAssertEqual(g.phase, .roundEnded)
+        XCTAssertNil(g.buyDecisionPlayerId)
+    }
+
     func testGoingDownRound1Succeeds() {
         // Manufacture a state where player has a valid contract for round 1
         // (two triplets). Bind cards to variables so the contract

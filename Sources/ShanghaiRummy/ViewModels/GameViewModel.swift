@@ -117,7 +117,6 @@ public final class GameViewModel: ObservableObject {
     public var canDrawFromStock: Bool {
         isLocalBuyDecision
             && isTurnPlayersFirstRefusal
-            && !state.stock.isEmpty
     }
     public var isBuyDecisionActive: Bool {
         state.phase == .awaitingDraw && state.buyDecisionPlayerId != nil
@@ -160,7 +159,7 @@ public final class GameViewModel: ObservableObject {
             || state.isEligibleBuyer(currentPlayer)
     }
     public var canPassBuyOffer: Bool {
-        isLocalBuyDecision && !state.stock.isEmpty
+        isLocalBuyDecision
     }
     public var privacyPlayerName: String {
         currentPlayer.name

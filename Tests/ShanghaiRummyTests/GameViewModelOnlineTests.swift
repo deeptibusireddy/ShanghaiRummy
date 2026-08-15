@@ -124,6 +124,23 @@ final class GameViewModelOnlineTests: XCTestCase {
         )
     }
 
+    func testLocalPlayerCanPassWhenStockIsEmpty() {
+        var state = GameFactory.newGame(
+            playerNames: ["Local", "Remote"],
+            seed: 114
+        )
+        let localId = state.currentPlayerId
+        state.stock = []
+        state.stockReshufflesUsed = 1
+        let viewModel = GameViewModel(
+            state: state,
+            localPlayerId: localId
+        )
+
+        XCTAssertTrue(viewModel.canDrawFromStock)
+        XCTAssertTrue(viewModel.canPassBuyOffer)
+    }
+
     func testOnlineBuyerCanRespondOnlyAfterOfferReachesThem() {
         var state = GameFactory.newGame(
             playerNames: ["Local", "Remote"],
