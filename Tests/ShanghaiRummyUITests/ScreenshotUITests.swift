@@ -168,6 +168,14 @@ final class ScreenshotUITests: XCTestCase {
         snapshot(named: "07-staging-tray-triplet")
     }
 
+    func testCaptureCrowdedNewCardMarkers() throws {
+        app.launchArguments += ["--demo-crowded-new-cards"]
+        app.launch()
+        XCTAssertTrue(app.buttons["quit-game"].waitForExistence(timeout: 5))
+        Thread.sleep(forTimeInterval: 0.9)
+        snapshot(named: "07-crowded-new-card-markers")
+    }
+
     func testCaptureHandOver() throws {
         app.launchArguments += ["--demo-hand-over"]
         app.launch()

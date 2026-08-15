@@ -74,6 +74,14 @@ struct RootView: View {
                         }
                         activeGame = vm
                     } else if activeGame == nil,
+                              CommandLine.arguments.contains(
+                                "--demo-crowded-new-cards"
+                              ) {
+                        activeTheme = themeFromArgs()
+                        activeGame = GameViewModel(
+                            state: GameFactory.demoCrowdedHighlightedHand()
+                        )
+                    } else if activeGame == nil,
                        CommandLine.arguments.contains("--demo-mid-game") {
                         activeTheme = themeFromArgs()
                         var state = GameFactory.demoMidGame()

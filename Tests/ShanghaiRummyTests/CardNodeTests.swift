@@ -18,9 +18,26 @@ final class CardNodeTests: XCTestCase {
         let node = CardNode(card: Card(suit: .hearts, rank: .ace))
 
         node.setNewCardHighlighted(true)
-        XCTAssertNotNil(node.childNode(withName: "new-card-highlight"))
+        let highlight = node.childNode(withName: "new-card-highlight")
+        XCTAssertNotNil(highlight)
+        XCTAssertNotNil(highlight?.childNode(withName: "new-card-tab"))
+        XCTAssertNil(
+            highlight?.childNode(withName: "new-card-arrival-glow")
+        )
 
         node.setNewCardHighlighted(false)
         XCTAssertNil(node.childNode(withName: "new-card-highlight"))
+    }
+
+    func testNewCardArrivalAddsTemporaryGlow() {
+        let node = CardNode(card: Card(suit: .clubs, rank: .queen))
+
+        node.setNewCardHighlighted(true, animateArrival: true)
+
+        let highlight = node.childNode(withName: "new-card-highlight")
+        XCTAssertNotNil(highlight?.childNode(withName: "new-card-tab"))
+        XCTAssertNotNil(
+            highlight?.childNode(withName: "new-card-arrival-glow")
+        )
     }
 }

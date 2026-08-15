@@ -202,6 +202,30 @@ public enum GameFactory {
         )
     }
 
+    /// Seventeen-card hand with several persistent new-card markers. Used to
+    /// keep the crowded-hand treatment readable in CI screenshots.
+    public static func demoCrowdedHighlightedHand() -> GameState {
+        func c(_ suit: Suit, _ rank: Rank) -> Card {
+            Card(suit: suit, rank: rank)
+        }
+
+        var state = demoMidGame()
+        let addedCards = [
+            c(.clubs, .ace), c(.diamonds, .four),
+            c(.hearts, .five), c(.spades, .seven),
+            c(.clubs, .nine), c(.diamonds, .ten),
+            c(.hearts, .jack), c(.clubs, .queen),
+        ]
+        state.players[state.currentTurnIndex].hand.append(
+            contentsOf: addedCards
+        )
+        let playerId = state.currentPlayerId
+        state.highlightedCardIdsByPlayer[playerId] = addedCards.suffix(3).map(
+            \.id
+        )
+        return state
+    }
+
     /// Six-player online-style status fixture for crowded-layout screenshots.
     /// "You" stays at the bottom while Sam is active at the center-top seat.
     public static func demoSixPlayerStatus() -> GameState {

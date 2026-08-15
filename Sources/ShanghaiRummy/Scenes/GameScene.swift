@@ -1250,10 +1250,13 @@ final class GameScene: SKScene {
             let lift = maxLift * (1 - norm * norm)
             let x = startX + CGFloat(i) * step
             let isHighlighted = highlightedIds.contains(card.id)
-            let y = baseY + lift + (isHighlighted ? 5 : 0)
+            let y = baseY + lift + (isHighlighted ? 4 : 0)
             let angle = -norm * maxAngle
             let pos = CGPoint(x: x, y: y)
-            node.setNewCardHighlighted(isHighlighted)
+            node.setNewCardHighlighted(
+                isHighlighted,
+                animateArrival: newlyDrawnIds.contains(card.id)
+            )
             node.zPosition = 4 + CGFloat(i) * 0.01
             if newlyDrawnIds.contains(card.id) {
                 node.position = SeatLayout.pileCenter(sceneSize: size)
