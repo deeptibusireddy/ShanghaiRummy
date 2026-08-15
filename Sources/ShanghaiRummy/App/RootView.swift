@@ -109,8 +109,6 @@ struct RootView: View {
                         )
                         let vm = GameViewModel(state: built.state)
                         vm.cpuPlayerIds = built.cpuIds
-                        // If it's already a CPU's first turn, let them play.
-                        vm.runAllCPUTurns()
                         activeGame = vm
                     } else if activeGame == nil,
                               CommandLine.arguments.contains("--demo-hand-over") {
@@ -176,7 +174,6 @@ struct RootView: View {
             localPlayerId: built.state.players[0].id
         )
         viewModel.cpuPlayerIds = built.cpuIds
-        viewModel.runAllCPUTurns()
         activeGame = viewModel
     }
 

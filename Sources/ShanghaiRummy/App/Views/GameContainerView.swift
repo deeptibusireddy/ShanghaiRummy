@@ -300,17 +300,19 @@ struct GameContainerView: View {
                 .contentShape(Rectangle())
                 .allowsHitTesting(false)
 
-            VStack(spacing: 8) {
-                HStack(spacing: 8) {
+            VStack(spacing: 12) {
+                HStack(spacing: 10) {
                     if !vm.isLocalBuyDecision {
                         ProgressView()
-                            .controlSize(.small)
+                            .controlSize(.regular)
+                            .tint(Color(theme.turnGlow))
                     }
 
                     Text(vm.buyDecisionTitle ?? "Choose How to Draw")
-                        .font(.system(.subheadline, design: .rounded, weight: .bold))
+                        .font(.system(.headline, design: .rounded, weight: .bold))
+                        .foregroundStyle(Color(theme.bannerText))
                         .lineLimit(2)
-                        .minimumScaleFactor(0.8)
+                        .minimumScaleFactor(0.85)
                         .multilineTextAlignment(.center)
                 }
 
@@ -318,11 +320,18 @@ struct GameContainerView: View {
                     localBuyDecision
                 }
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 9)
-            .frame(width: 192)
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
-            .shadow(color: .black.opacity(0.22), radius: 12, y: 5)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
+            .frame(width: 216)
+            .background(
+                Color(theme.scoreChipBg),
+                in: RoundedRectangle(cornerRadius: 18)
+            )
+            .overlay {
+                RoundedRectangle(cornerRadius: 18)
+                    .stroke(Color(theme.turnGlow).opacity(0.9), lineWidth: 2)
+            }
+            .shadow(color: .black.opacity(0.42), radius: 16, y: 7)
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier("buy-decision-panel")
         }
@@ -335,21 +344,21 @@ struct GameContainerView: View {
         let acceptTitle = vm.isTurnPlayersFirstRefusal
             ? "Take \(discardName)"
             : "Buy \(discardName) + 1"
-        let passTitle = vm.isTurnPlayersFirstRefusal
-            ? "Offer Clockwise"
-            : "Pass"
-        HStack(spacing: 8) {
+        HStack(spacing: 10) {
             Button {
                 vm.acceptBuyOffer()
             } label: {
                 Text(acceptTitle)
-                    .font(.system(.caption, design: .rounded, weight: .semibold))
+                    .font(.system(.subheadline, design: .rounded, weight: .bold))
+                    .foregroundStyle(.black.opacity(0.84))
                     .lineLimit(1)
-                    .minimumScaleFactor(0.72)
-                    .frame(maxWidth: .infinity)
+                    .minimumScaleFactor(0.78)
+                    .frame(maxWidth: .infinity, minHeight: 42)
             }
             .buttonStyle(.borderedProminent)
-            .controlSize(.small)
+            .buttonBorderShape(.roundedRectangle(radius: 12))
+            .controlSize(.regular)
+            .tint(Color(theme.turnGlow))
             .frame(maxWidth: .infinity)
             .disabled(!vm.canAcceptBuyOffer || vm.isSubmittingOnlineAction)
             .accessibilityIdentifier("accept-buy-offer")
@@ -357,14 +366,15 @@ struct GameContainerView: View {
             Button {
                 vm.passBuyOffer()
             } label: {
-                Text(passTitle)
-                    .font(.system(.caption, design: .rounded, weight: .semibold))
+                Text("Pass")
+                    .font(.system(.subheadline, design: .rounded, weight: .bold))
                     .lineLimit(1)
-                    .minimumScaleFactor(0.72)
-                    .frame(maxWidth: .infinity)
+                    .frame(maxWidth: .infinity, minHeight: 42)
             }
             .buttonStyle(.bordered)
-            .controlSize(.small)
+            .buttonBorderShape(.roundedRectangle(radius: 12))
+            .controlSize(.regular)
+            .tint(Color(theme.bannerText))
             .frame(maxWidth: .infinity)
             .disabled(!vm.canPassBuyOffer || vm.isSubmittingOnlineAction)
             .accessibilityIdentifier("pass-buy-offer")

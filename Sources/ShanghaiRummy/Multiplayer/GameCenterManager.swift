@@ -372,10 +372,10 @@ final class GameCenterManager: NSObject, ObservableObject {
                 state: snapshot.state,
                 localPlayerId: localBinding.playerId
             )
-            viewModel.cpuPlayerIds = Set(snapshot.botPlayerIds)
             viewModel.configureOnlineActionSubmitter { [weak self] action in
                 self?.submit(action) ?? false
             }
+            viewModel.cpuPlayerIds = Set(snapshot.botPlayerIds)
             onlineGame = viewModel
         }
         onlineStatusMessage = "Connected"

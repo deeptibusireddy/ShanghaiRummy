@@ -33,7 +33,7 @@ final class GameViewModelOnlineTests: XCTestCase {
         XCTAssertEqual(viewModel.buyDecisionTitle, "Waiting for Remote")
         XCTAssertEqual(
             viewModel.buyDecisionInstruction,
-            "Remote is choosing the discard or offering it clockwise"
+            "Remote is choosing the discard or passing"
         )
     }
 
@@ -120,7 +120,7 @@ final class GameViewModelOnlineTests: XCTestCase {
         XCTAssertEqual(viewModel.buyDecisionTitle, "Your Draw")
         XCTAssertEqual(
             viewModel.buyDecisionInstruction,
-            "Choose the discard or offer it clockwise"
+            "Take the discard or pass"
         )
     }
 

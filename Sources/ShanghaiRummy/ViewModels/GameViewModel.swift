@@ -40,7 +40,11 @@ public final class GameViewModel: ObservableObject {
     @Published public private(set) var stagedCardIds: Set<UUID> = []
 
     /// IDs of players controlled by the CPU, in practice or mixed online games.
-    @Published public var cpuPlayerIds: Set<UUID> = []
+    @Published public var cpuPlayerIds: Set<UUID> = [] {
+        didSet {
+            runLocalCPUActionsIfNeeded()
+        }
+    }
     @Published public private(set) var isSubmittingOnlineAction = false
     @Published public private(set) var pendingSequenceEndChoice:
         PendingSequenceEndChoice? = nil
@@ -142,12 +146,12 @@ public final class GameViewModel: ObservableObject {
         guard isBuyDecisionActive else { return nil }
         if isLocalBuyDecision {
             return isTurnPlayersFirstRefusal
-                ? "Choose the discard or offer it clockwise"
+                ? "Take the discard or pass"
                 : "Buy the discard or pass"
         }
         let name = buyDecisionPlayerName ?? "Another player"
         return isTurnPlayersFirstRefusal
-            ? "\(name) is choosing the discard or offering it clockwise"
+            ? "\(name) is choosing the discard or passing"
             : "\(name) is deciding whether to buy the discard"
     }
     public var canAcceptBuyOffer: Bool {
@@ -956,9 +960,20 @@ public final class GameViewModel: ObservableObject {
 
     // MARK: - CPU practice bot (M1e)
 
-    /// True when the player whose turn it is right now is a CPU.
+    /// True when the player currently drawing, buying, or acting is a CPU.
     public var isCurrentPlayerCPU: Bool {
         cpuPlayerIds.contains(state.activePlayerId)
+    }
+
+    private func runLocalCPUActionsIfNeeded() {
+        guard onlineActionSubmitter == nil,
+              !isRunningCPUTurns,
+              isCurrentPlayerCPU,
+              (state.phase == .awaitingDraw
+                || state.phase == .awaitingMeldOrDiscard) else {
+            return
+        }
+        runAllCPUTurns()
     }
 
     /// If the current player is a CPU and the round is still live, run a

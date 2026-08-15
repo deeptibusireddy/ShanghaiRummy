@@ -308,6 +308,55 @@ final class CPUPlayerTests: XCTestCase {
     // MARK: - VM integration
 
     @MainActor
+    func testAssigningCPUPlayersImmediatelyResolvesPendingBotBuyOffer() {
+        var state = GameFactory.newGame(
+            playerNames: ["You", "Bot"],
+            seed: 71
+        )
+        state.currentTurnIndex = 0
+        state.buyDecisionPlayerId = state.players[1].id
+        state.discard = [c(.hearts, .five)]
+        let humanId = state.players[0].id
+        let botId = state.players[1].id
+        let humanHandCount = state.players[0].hand.count
+        let vm = GameViewModel(state: state, localPlayerId: humanId)
+
+        vm.cpuPlayerIds = [botId]
+
+        XCTAssertEqual(vm.state.currentPlayerId, humanId)
+        XCTAssertEqual(vm.state.phase, .awaitingMeldOrDiscard)
+        XCTAssertNil(vm.state.buyDecisionPlayerId)
+        XCTAssertEqual(vm.state.players[0].hand.count, humanHandCount + 1)
+        XCTAssertEqual(vm.state.players[1].buysUsedThisRound, 0)
+    }
+
+    @MainActor
+    func testHumanPassLetsBotMakeItsOwnBuyDecision() {
+        var state = GameFactory.newGame(
+            playerNames: ["You", "Bot"],
+            seed: 72
+        )
+        state.currentTurnIndex = 0
+        state.buyDecisionPlayerId = state.players[0].id
+        state.discard = [joker()]
+        let humanId = state.players[0].id
+        let botId = state.players[1].id
+        let humanHandCount = state.players[0].hand.count
+        let botHandCount = state.players[1].hand.count
+        let vm = GameViewModel(state: state, localPlayerId: humanId)
+        vm.cpuPlayerIds = [botId]
+
+        vm.passBuyOffer()
+
+        XCTAssertEqual(vm.state.currentPlayerId, humanId)
+        XCTAssertEqual(vm.state.phase, .awaitingMeldOrDiscard)
+        XCTAssertNil(vm.state.buyDecisionPlayerId)
+        XCTAssertEqual(vm.state.players[0].hand.count, humanHandCount + 1)
+        XCTAssertEqual(vm.state.players[1].hand.count, botHandCount + 2)
+        XCTAssertEqual(vm.state.players[1].buysUsedThisRound, 1)
+    }
+
+    @MainActor
     func testViewModelStepPumpsCPUTurn() {
         let built = GameFactory.newVsCPU(you: "You",
                                          cpuNames: ["Bot"],

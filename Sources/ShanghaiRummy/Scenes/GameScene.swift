@@ -1506,12 +1506,18 @@ final class GameScene: SKScene {
             return
         }
 
-        let controlSize = CGSize(width: 44, height: 40)
+        let controlSize = CGSize(width: 44, height: 42)
+        let controlGap: CGFloat = 4
+        let suitControlX = size.width
+            - horizontalEdgeInset
+            - controlSize.width / 2
+        let rankControlX = suitControlX - controlSize.width - controlGap
+        let scoreControlX = rankControlX - controlSize.width - controlGap
         addSmallControl(
             title: "SCORE",
             name: "show-score",
             at: CGPoint(
-                x: size.width - horizontalEdgeInset - 118,
+                x: scoreControlX,
                 y: size.height - 31
             ),
             size: controlSize,
@@ -1536,7 +1542,7 @@ final class GameScene: SKScene {
             title: "RANK",
             name: "sort-rank",
             at: CGPoint(
-                x: size.width - horizontalEdgeInset - 70,
+                x: rankControlX,
                 y: size.height - 31
             ),
             size: controlSize,
@@ -1546,7 +1552,7 @@ final class GameScene: SKScene {
             title: "SUIT",
             name: "sort-suit",
             at: CGPoint(
-                x: size.width - horizontalEdgeInset - 22,
+                x: suitControlX,
                 y: size.height - 31
             ),
             size: controlSize,
@@ -1645,9 +1651,9 @@ final class GameScene: SKScene {
     ) {
         let button = SKShapeNode(rectOf: controlSize,
                                  cornerRadius: controlSize.height / 2)
-        button.fillColor = theme.contractPillBg
-        button.strokeColor = theme.feltStroke.withAlphaComponent(0.8)
-        button.lineWidth = 1
+        button.fillColor = theme.scoreChipBg
+        button.strokeColor = theme.turnGlow.withAlphaComponent(0.78)
+        button.lineWidth = 1.5
         button.position = position
         button.zPosition = 25
         button.name = name
@@ -1655,8 +1661,8 @@ final class GameScene: SKScene {
 
         let label = SKLabelNode(text: title)
         label.fontName = theme.titleFont
-        label.fontSize = controlSize.height < 30 ? 7 : 8
-        label.fontColor = theme.seatSub
+        label.fontSize = controlSize.height < 30 ? 8 : 10
+        label.fontColor = theme.bannerText
         label.horizontalAlignmentMode = .center
         label.verticalAlignmentMode = .center
         label.position = position

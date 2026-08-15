@@ -168,11 +168,12 @@ touch, the nearest visual target wins and an exact tie favors the meld.
 
 - A blocking, role-specific purchase overlay pauses table interaction.
 - The turn player sees **Your Draw** and explicitly chooses **Take [card]** or
-  **Offer Clockwise**.
+  **Pass**. Passing still starts the clockwise buyer offers.
 - A non-turn player whose offer is active sees **Buy Opportunity**. Everyone
   else sees **Waiting for [name]**.
-- These choices appear in a narrow center panel confined to the protected stock
-  and discard corridor. It does not dim or cover any player's melds, including
+- These choices appear in a compact, high-contrast center panel confined to the
+  protected stock and discard corridor. It uses larger text and controls without
+  dimming or covering any player's melds, including
   the left and right tableau lanes in four-player games. The full table remains
   visible. The local player can still reorder their hand, use Rank/Suit, or
   inspect Score while waiting; draw, discard, staging, and meld actions remain
@@ -328,6 +329,8 @@ Haptics (M4):
   the reserved bot count visible.
 - Bot identities are shared with every device, but only the authoritative host
   runs their decisions. Humans cannot submit normal turn actions for bots.
+- Bot draw and buy decisions resolve automatically; a human is never asked to
+  accept or pass on a bot's behalf.
 - When clockwise dealer rotation assigns the next deal to a bot, any human may
   tap **Deal Next Hand** after reviewing the scorecard; the host validates and
   performs that one delegated bot action.
