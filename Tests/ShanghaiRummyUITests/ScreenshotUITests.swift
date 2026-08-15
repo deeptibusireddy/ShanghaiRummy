@@ -94,15 +94,27 @@ final class ScreenshotUITests: XCTestCase {
         app.launchArguments += ["--demo-mid-game", "--demo-buy-decision"]
         app.launch()
 
-        let title = app.staticTexts["Your Draw"]
+        let title = app.staticTexts["Buy Opportunity"]
+        let buysLeft = app.staticTexts["BUYS LEFT: 2"]
         let accept = app.buttons["accept-buy-offer"]
         let pass = app.buttons["pass-buy-offer"]
         XCTAssertTrue(title.waitForExistence(timeout: 5))
+        XCTAssertTrue(buysLeft.waitForExistence(timeout: 5))
         XCTAssertTrue(accept.waitForExistence(timeout: 5))
         XCTAssertTrue(pass.waitForExistence(timeout: 5))
+        XCTAssertEqual(
+            accept.label,
+            "Buy king of hearts plus 1 penalty card"
+        )
         XCTAssertEqual(pass.label, "Pass")
-        let contentMinX = min(title.frame.minX, min(accept.frame.minX, pass.frame.minX))
-        let contentMaxX = max(title.frame.maxX, max(accept.frame.maxX, pass.frame.maxX))
+        let contentMinX = min(
+            title.frame.minX,
+            min(buysLeft.frame.minX, min(accept.frame.minX, pass.frame.minX))
+        )
+        let contentMaxX = max(
+            title.frame.maxX,
+            max(buysLeft.frame.maxX, max(accept.frame.maxX, pass.frame.maxX))
+        )
         XCTAssertLessThanOrEqual(contentMaxX - contentMinX + 28, 228)
         Thread.sleep(forTimeInterval: 0.7)
         snapshot(named: "04-four-player-buy-decision")

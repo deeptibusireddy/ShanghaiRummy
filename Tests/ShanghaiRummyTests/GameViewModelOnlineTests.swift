@@ -141,6 +141,32 @@ final class GameViewModelOnlineTests: XCTestCase {
         XCTAssertTrue(viewModel.canPassBuyOffer)
     }
 
+    func testBuysRemainingTracksUsageAndGoingDown() {
+        var state = GameFactory.newGame(
+            playerNames: ["Local", "Remote"],
+            seed: 115
+        )
+        let localId = state.players[0].id
+        let remoteId = state.players[1].id
+        state.players[0].buysUsedThisRound = 1
+        state.players[1].buysUsedThisRound =
+            RulesConfig.maxBuysPerRound + 1
+
+        var viewModel = GameViewModel(
+            state: state,
+            localPlayerId: localId
+        )
+        XCTAssertEqual(viewModel.currentPlayerBuysRemaining, 2)
+        XCTAssertEqual(viewModel.buysRemaining(for: remoteId), 0)
+
+        state.players[0].hasGoneDownThisRound = true
+        viewModel = GameViewModel(
+            state: state,
+            localPlayerId: localId
+        )
+        XCTAssertEqual(viewModel.currentPlayerBuysRemaining, 0)
+    }
+
     func testOnlineBuyerCanRespondOnlyAfterOfferReachesThem() {
         var state = GameFactory.newGame(
             playerNames: ["Local", "Remote"],

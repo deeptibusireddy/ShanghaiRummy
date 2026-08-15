@@ -87,6 +87,19 @@ public final class GameViewModel: ObservableObject {
         return local
     }
     public var currentPlayerName: String { turnPlayer.name }
+    public func buysRemaining(for playerId: UUID) -> Int {
+        guard let player = state.players.first(where: { $0.id == playerId }),
+              !player.hasGoneDownThisRound else {
+            return 0
+        }
+        return max(
+            0,
+            RulesConfig.maxBuysPerRound - player.buysUsedThisRound
+        )
+    }
+    public var currentPlayerBuysRemaining: Int {
+        buysRemaining(for: currentPlayer.id)
+    }
     public var displayedPlayerIndex: Int {
         guard let localPlayerId,
               let index = state.players.firstIndex(where: { $0.id == localPlayerId }) else {

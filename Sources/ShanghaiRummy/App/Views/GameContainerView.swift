@@ -300,7 +300,7 @@ struct GameContainerView: View {
                 .contentShape(Rectangle())
                 .allowsHitTesting(false)
 
-            VStack(spacing: 12) {
+            VStack(spacing: 8) {
                 HStack(spacing: 10) {
                     if !vm.isLocalBuyDecision {
                         ProgressView()
@@ -321,7 +321,7 @@ struct GameContainerView: View {
                 }
             }
             .padding(.horizontal, 16)
-            .padding(.vertical, 14)
+            .padding(.vertical, 12)
             .frame(width: 216)
             .background(
                 Color(theme.scoreChipBg),
@@ -340,45 +340,165 @@ struct GameContainerView: View {
 
     @ViewBuilder
     private var localBuyDecision: some View {
-        let discardName = vm.state.discard.last.map(CardNode.shortName) ?? "discard"
-        let acceptTitle = vm.isTurnPlayersFirstRefusal
-            ? "Take \(discardName)"
-            : "Buy \(discardName) + 1"
-        HStack(spacing: 10) {
-            Button {
-                vm.acceptBuyOffer()
-            } label: {
-                Text(acceptTitle)
-                    .font(.system(.subheadline, design: .rounded, weight: .bold))
-                    .foregroundStyle(.black.opacity(0.84))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.78)
-                    .frame(maxWidth: .infinity, minHeight: 42)
+        let discard = vm.state.discard.last
+        VStack(spacing: 7) {
+            if !vm.isTurnPlayersFirstRefusal {
+                Text("BUYS LEFT: \(vm.currentPlayerBuysRemaining)")
+                    .font(.system(
+                        .caption,
+                        design: .rounded,
+                        weight: .bold
+                    ))
+                    .foregroundStyle(Color(theme.turnGlow))
+                    .accessibilityIdentifier("buy-count")
             }
-            .buttonStyle(.borderedProminent)
-            .buttonBorderShape(.roundedRectangle(radius: 12))
-            .controlSize(.regular)
-            .tint(Color(theme.turnGlow))
-            .frame(maxWidth: .infinity)
-            .disabled(!vm.canAcceptBuyOffer || vm.isSubmittingOnlineAction)
-            .accessibilityIdentifier("accept-buy-offer")
 
-            Button {
-                vm.passBuyOffer()
-            } label: {
-                Text("Pass")
-                    .font(.system(.subheadline, design: .rounded, weight: .bold))
-                    .lineLimit(1)
-                    .frame(maxWidth: .infinity, minHeight: 42)
+            HStack(spacing: 8) {
+                Button {
+                    vm.acceptBuyOffer()
+                } label: {
+                    buyActionLabel(discard: discard)
+                }
+                .buttonStyle(.borderedProminent)
+                .buttonBorderShape(.roundedRectangle(radius: 12))
+                .controlSize(.regular)
+                .tint(Color(theme.turnGlow))
+                .frame(maxWidth: .infinity)
+                .disabled(!vm.canAcceptBuyOffer || vm.isSubmittingOnlineAction)
+                .accessibilityLabel(
+                    acceptBuyOfferAccessibilityLabel(for: discard)
+                )
+                .accessibilityIdentifier("accept-buy-offer")
+
+                Button {
+                    vm.passBuyOffer()
+                } label: {
+                    Text("Pass")
+                        .font(.system(
+                            .subheadline,
+                            design: .rounded,
+                            weight: .bold
+                        ))
+                        .lineLimit(1)
+                        .frame(maxWidth: .infinity, minHeight: 42)
+                }
+                .buttonStyle(.bordered)
+                .buttonBorderShape(.roundedRectangle(radius: 12))
+                .controlSize(.regular)
+                .tint(Color(theme.bannerText))
+                .frame(width: 64)
+                .disabled(!vm.canPassBuyOffer || vm.isSubmittingOnlineAction)
+                .accessibilityIdentifier("pass-buy-offer")
             }
-            .buttonStyle(.bordered)
-            .buttonBorderShape(.roundedRectangle(radius: 12))
-            .controlSize(.regular)
-            .tint(Color(theme.bannerText))
-            .frame(maxWidth: .infinity)
-            .disabled(!vm.canPassBuyOffer || vm.isSubmittingOnlineAction)
-            .accessibilityIdentifier("pass-buy-offer")
         }
+    }
+
+    private func buyActionLabel(discard: Card?) -> some View {
+        HStack(spacing: 3) {
+            Text(vm.isTurnPlayersFirstRefusal ? "Take" : "Buy")
+                .font(.system(size: 12, weight: .bold, design: .rounded))
+
+            if let discard {
+                compactCardChip(discard)
+            } else {
+                Text("discard")
+                    .font(.system(size: 11, weight: .bold, design: .rounded))
+            }
+
+            if !vm.isTurnPlayersFirstRefusal {
+                Text("+1")
+                    .font(.system(size: 12, weight: .bold, design: .rounded))
+            }
+        }
+        .foregroundStyle(.black.opacity(0.84))
+        .lineLimit(1)
+        .frame(maxWidth: .infinity, minHeight: 42)
+    }
+
+    private func compactCardChip(_ card: Card) -> some View {
+        HStack(spacing: 2) {
+            if card.isPrintedJoker {
+                Text("J")
+                    .font(.system(size: 15, weight: .black, design: .rounded))
+                    .foregroundStyle(Color(theme.blackSuit))
+                Image(systemName: "star.fill")
+                    .font(.system(size: 17, weight: .black))
+                    .foregroundStyle(Color(theme.jokerAccent))
+            } else if let rank = card.rank, let suit = card.suit {
+                Text(rankGlyph(rank))
+                    .font(.system(size: 15, weight: .black, design: .rounded))
+                    .foregroundStyle(Color(theme.blackSuit))
+                Image(systemName: suitSystemImageName(suit))
+                    .font(.system(size: 20, weight: .black))
+                    .foregroundStyle(suitColor(suit))
+            }
+        }
+        .padding(.horizontal, 4)
+        .frame(height: 28)
+        .background(
+            Color(theme.cardFace),
+            in: RoundedRectangle(cornerRadius: 6)
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: 6)
+                .stroke(Color(theme.cardStroke), lineWidth: 1)
+        }
+        .fixedSize(horizontal: true, vertical: false)
+    }
+
+    private func rankGlyph(_ rank: Rank) -> String {
+        switch rank {
+        case .ace: return "A"
+        case .jack: return "J"
+        case .queen: return "Q"
+        case .king: return "K"
+        default: return "\(rank.rawValue)"
+        }
+    }
+
+    private func suitSystemImageName(_ suit: Suit) -> String {
+        switch suit {
+        case .clubs: return "suit.club.fill"
+        case .diamonds: return "suit.diamond.fill"
+        case .hearts: return "suit.heart.fill"
+        case .spades: return "suit.spade.fill"
+        }
+    }
+
+    private func suitColor(_ suit: Suit) -> Color {
+        switch suit {
+        case .diamonds, .hearts:
+            return Color(theme.redSuit)
+        case .clubs, .spades:
+            return Color(theme.blackSuit)
+        }
+    }
+
+    private func acceptBuyOfferAccessibilityLabel(
+        for discard: Card?
+    ) -> String {
+        let action = vm.isTurnPlayersFirstRefusal ? "Take" : "Buy"
+        let cardName = discard.map(accessibilityName) ?? "discard"
+        if vm.isTurnPlayersFirstRefusal {
+            return "\(action) \(cardName)"
+        }
+        return "\(action) \(cardName) plus 1 penalty card"
+    }
+
+    private func accessibilityName(_ card: Card) -> String {
+        if card.isPrintedJoker { return "joker" }
+        guard let rank = card.rank, let suit = card.suit else {
+            return "discard"
+        }
+        let rankName: String
+        switch rank {
+        case .ace: rankName = "ace"
+        case .jack: rankName = "jack"
+        case .queen: rankName = "queen"
+        case .king: rankName = "king"
+        default: rankName = "\(rank.rawValue)"
+        }
+        return "\(rankName) of \(suit.rawValue)"
     }
 
     private var handOverOverlay: some View {

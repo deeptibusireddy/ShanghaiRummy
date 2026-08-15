@@ -1080,10 +1080,13 @@ final class GameScene: SKScene {
         colorIndex: Int,
         isActive: Bool
     ) {
-        let panelSize = CGSize(width: currentPlayerHUDWidth, height: 46)
+        let panelSize = CGSize(width: currentPlayerHUDWidth, height: 62)
         let center = CGPoint(x: horizontalEdgeInset + panelSize.width / 2,
-                             y: stagingTrayY)
-        let panel = SKShapeNode(rectOf: panelSize, cornerRadius: 23)
+                             y: stagingTrayY + 8)
+        let panel = SKShapeNode(
+            rectOf: panelSize,
+            cornerRadius: panelSize.height / 2
+        )
         if isActive {
             addActiveTurnHalo(at: center, size: panelSize, to: seatsLayer)
         }
@@ -1098,7 +1101,7 @@ final class GameScene: SKScene {
 
         let avatarRadius: CGFloat = 15
         let avatarPosition = CGPoint(x: center.x - panelSize.width / 2 + 24,
-                                     y: center.y)
+                                     y: center.y + 3)
         let avatarColor = theme.avatarColors[colorIndex % theme.avatarColors.count]
         let avatar = SKShapeNode(circleOfRadius: avatarRadius)
         avatar.fillColor = avatarColor
@@ -1126,7 +1129,7 @@ final class GameScene: SKScene {
         name.fontColor = isActive ? theme.turnGlow : theme.seatTitle
         name.horizontalAlignmentMode = .left
         name.verticalAlignmentMode = .center
-        name.position = CGPoint(x: textX, y: center.y + 8)
+        name.position = CGPoint(x: textX, y: center.y + 16)
         name.zPosition = 3
         seatsLayer.addChild(name)
 
@@ -1138,7 +1141,7 @@ final class GameScene: SKScene {
         score.verticalAlignmentMode = .center
         score.position = CGPoint(
             x: center.x + panelSize.width / 2 - 12,
-            y: center.y + 8
+            y: center.y + 16
         )
         score.zPosition = 3
         seatsLayer.addChild(score)
@@ -1152,9 +1155,60 @@ final class GameScene: SKScene {
         detail.fontColor = isActive ? theme.turnGlow : theme.seatSub
         detail.horizontalAlignmentMode = .left
         detail.verticalAlignmentMode = .center
-        detail.position = CGPoint(x: textX, y: center.y - 9)
+        detail.position = CGPoint(x: textX, y: center.y)
         detail.zPosition = 3
         seatsLayer.addChild(detail)
+
+        let buysRemaining = vm.buysRemaining(for: player.id)
+        let counterSize = CGSize(width: 94, height: 20)
+        let counterCenter = CGPoint(
+            x: center.x + panelSize.width / 2 - counterSize.width / 2 - 10,
+            y: center.y - 20
+        )
+        let counter = SKShapeNode(
+            rectOf: counterSize,
+            cornerRadius: counterSize.height / 2
+        )
+        counter.fillColor = buysRemaining > 0
+            ? theme.contractPillBg
+            : theme.scoreChipBg
+        counter.strokeColor = buysRemaining > 0
+            ? theme.turnGlow.withAlphaComponent(0.9)
+            : theme.feltStroke.withAlphaComponent(0.8)
+        counter.lineWidth = 1.5
+        counter.position = counterCenter
+        counter.zPosition = 3
+        seatsLayer.addChild(counter)
+
+        let buysLabel = SKLabelNode(text: "BUYS LEFT")
+        buysLabel.fontName = theme.titleFont
+        buysLabel.fontSize = 7.5
+        buysLabel.fontColor = buysRemaining > 0
+            ? theme.contractPillText
+            : theme.scoreChipText
+        buysLabel.horizontalAlignmentMode = .center
+        buysLabel.verticalAlignmentMode = .center
+        buysLabel.position = CGPoint(
+            x: counterCenter.x - 13,
+            y: counterCenter.y
+        )
+        buysLabel.zPosition = 4
+        seatsLayer.addChild(buysLabel)
+
+        let buysCount = SKLabelNode(text: "\(buysRemaining)")
+        buysCount.fontName = theme.titleFont
+        buysCount.fontSize = 13
+        buysCount.fontColor = buysRemaining > 0
+            ? theme.turnGlow
+            : theme.scoreChipText
+        buysCount.horizontalAlignmentMode = .center
+        buysCount.verticalAlignmentMode = .center
+        buysCount.position = CGPoint(
+            x: counterCenter.x + 34,
+            y: counterCenter.y
+        )
+        buysCount.zPosition = 4
+        seatsLayer.addChild(buysCount)
     }
 
     private func buildHand() {

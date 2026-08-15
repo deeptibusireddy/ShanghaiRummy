@@ -77,6 +77,7 @@ struct RootView: View {
                        CommandLine.arguments.contains("--demo-mid-game") {
                         activeTheme = themeFromArgs()
                         var state = GameFactory.demoMidGame()
+                        var localPlayerId: UUID?
                         if CommandLine.arguments.contains("--demo-stage-triplet") {
                             let playerId = state.currentPlayerId
                             state.players[state.currentTurnIndex].hasGoneDownThisRound = false
@@ -85,9 +86,19 @@ struct RootView: View {
                         }
                         if CommandLine.arguments.contains("--demo-buy-decision") {
                             state.phase = .awaitingDraw
-                            state.buyDecisionPlayerId = state.currentPlayerId
+                            let youId = state.players[0].id
+                            state.currentTurnIndex = 1
+                            state.players[0].buysUsedThisRound = 1
+                            state.players[0].hasGoneDownThisRound = false
+                            state.players[0].laidDownThisTurn = false
+                            state.melds.removeAll { $0.ownerId == youId }
+                            state.buyDecisionPlayerId = youId
+                            localPlayerId = youId
                         }
-                        let vm = GameViewModel(state: state)
+                        let vm = GameViewModel(
+                            state: state,
+                            localPlayerId: localPlayerId
+                        )
                         if CommandLine.arguments.contains("--demo-stage-triplet") {
                             stageFirstTriplet(in: vm)
                         }
