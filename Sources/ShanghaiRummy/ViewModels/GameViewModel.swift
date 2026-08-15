@@ -25,6 +25,11 @@ public final class GameViewModel: ObservableObject {
         let options: [[Card]]
     }
 
+    public enum ContractReadyPrompt: Equatable {
+        case readyToPutDown
+        case confirmDiscard(Card)
+    }
+
     // MARK: - Published state
 
     @Published public private(set) var state: GameState
@@ -50,6 +55,8 @@ public final class GameViewModel: ObservableObject {
         PendingSequenceEndChoice? = nil
     @Published public private(set) var pendingInitialSequenceChoice:
         PendingInitialSequenceChoice? = nil
+    @Published public private(set) var contractReadyPrompt:
+        ContractReadyPrompt? = nil
     @Published public private(set) var isScorecardPresented = false
 
     /// Non-nil in online mode. The local hand remains at the bottom even while
@@ -60,6 +67,7 @@ public final class GameViewModel: ObservableObject {
     private var isRunningCPUTurns: Bool = false
     private var onlineActionSubmitter: ((TurnEngine.Action) -> Bool)?
     private var localBuyOfferTimeoutTask: Task<Void, Never>?
+    private var hasPresentedContractReadyPrompt = false
 
     // MARK: - Init
 
@@ -224,9 +232,12 @@ public final class GameViewModel: ObservableObject {
                 stagedCardIds.removeAll()
                 contractDraft.removeAll()
                 pendingInitialSequenceChoice = nil
+                resetContractReadyPresentation()
                 if outgoingIsCPU {
                     isBetweenTurns = false
                 }
+            } else if !canConfirmGoDown {
+                resetContractReadyPresentation()
             }
             let incomingIsCPU = cpuPlayerIds.contains(incomingActiveId)
             let outgoingActiveIsCPU = cpuPlayerIds.contains(outgoingActiveId)
@@ -261,6 +272,7 @@ public final class GameViewModel: ObservableObject {
         completesPendingAction: Bool = true
     ) {
         state = newState
+        resetContractReadyPresentation()
         reconcileScorecardPresentation()
         lastError = nil
         pendingSequenceEndChoice = nil
@@ -275,6 +287,7 @@ public final class GameViewModel: ObservableObject {
 
     public func rejectOnlineAction(message: String, state newState: GameState) {
         state = newState
+        resetContractReadyPresentation()
         reconcileScorecardPresentation()
         lastError = message
         pendingSequenceEndChoice = nil
@@ -325,7 +338,10 @@ public final class GameViewModel: ObservableObject {
     // Convenience wrappers for common actions.
     public func drawFromStock() { dispatch(.draw(playerId: currentPlayer.id, source: .stock)) }
     public func drawFromDiscard() { dispatch(.draw(playerId: currentPlayer.id, source: .discard)) }
-    public func discard(_ card: Card) { dispatch(.discard(playerId: currentPlayer.id, card: card)) }
+    public func discard(_ card: Card) {
+        guard requestDiscard(card) else { return }
+        dispatch(.discard(playerId: currentPlayer.id, card: card))
+    }
     public func goDown(contract: [[Card]]) {
         dispatch(.goDown(playerId: currentPlayer.id, contract: contract))
     }
@@ -701,6 +717,7 @@ public final class GameViewModel: ObservableObject {
         contractDraft.append(cards)
         stagedCardIds.removeAll()
         pendingInitialSequenceChoice = nil
+        presentContractReadyPromptIfNeeded()
     }
 
     /// Undo one saved draft meld: cards return to the hand's un-staged pool.
@@ -708,10 +725,14 @@ public final class GameViewModel: ObservableObject {
     public func removeDraftMeld(at index: Int) {
         guard contractDraft.indices.contains(index) else { return }
         contractDraft.remove(at: index)
+        if !canConfirmGoDown {
+            resetContractReadyPresentation()
+        }
     }
 
     public func clearContractDraft() {
         contractDraft.removeAll()
+        resetContractReadyPresentation()
     }
 
     /// The draft's shape (kind + size for each meld), sorted for order-
@@ -779,17 +800,75 @@ public final class GameViewModel: ObservableObject {
         return "Still need: \(pretty)"
     }
 
+    /// Return `true` when the discard may proceed immediately. A completed
+    /// draft is intercepted for a human confirmation before the scene starts
+    /// its discard animation.
+    @discardableResult
+    public func requestDiscard(_ card: Card) -> Bool {
+        guard isLocalPlayersTurn,
+              state.phase == .awaitingMeldOrDiscard,
+              currentPlayer.hand.contains(where: { $0.id == card.id }) else {
+            return false
+        }
+        guard canConfirmGoDown,
+              !cpuPlayerIds.contains(currentPlayer.id) else {
+            return true
+        }
+        contractReadyPrompt = .confirmDiscard(card)
+        hasPresentedContractReadyPrompt = true
+        return false
+    }
+
+    public func reviewContractMelds() {
+        contractReadyPrompt = nil
+    }
+
+    /// Discard the card retained by the warning without re-triggering it.
+    @discardableResult
+    public func discardAnyway() -> Bool {
+        guard case .some(.confirmDiscard(let card)) =
+                contractReadyPrompt else {
+            return false
+        }
+        let ok = dispatch(
+            .discard(playerId: currentPlayer.id, card: card)
+        )
+        if ok {
+            contractReadyPrompt = nil
+        }
+        return ok
+    }
+
     /// Commit the draft as `.goDown`. Returns whether the dispatch succeeded.
     @discardableResult
     public func confirmGoDown() -> Bool {
         guard canConfirmGoDown else { return false }
         let draft = contractDraft
         let ok = dispatch(.goDown(playerId: currentPlayer.id, contract: draft))
-        if ok && !isOnlineGame {
-            contractDraft.removeAll()
-            stagedCardIds.removeAll()
+        if ok {
+            contractReadyPrompt = nil
+            if !isOnlineGame {
+                contractDraft.removeAll()
+                stagedCardIds.removeAll()
+                hasPresentedContractReadyPrompt = false
+            }
         }
         return ok
+    }
+
+    private func presentContractReadyPromptIfNeeded() {
+        guard canConfirmGoDown,
+              !hasPresentedContractReadyPrompt,
+              !cpuPlayerIds.contains(currentPlayer.id) else {
+            return
+        }
+        hasPresentedContractReadyPrompt = true
+        contractReadyPrompt = .readyToPutDown
+    }
+
+    private func resetContractReadyPresentation() {
+        contractReadyPrompt = nil
+        hasPresentedContractReadyPrompt = false
     }
 
     // MARK: - Table card play (M2d-c)

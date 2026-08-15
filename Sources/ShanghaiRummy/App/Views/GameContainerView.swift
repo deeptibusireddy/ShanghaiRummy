@@ -63,11 +63,85 @@ struct GameContainerView: View {
                 handOverOverlay
             } else if vm.isGameOver {
                 gameOverOverlay
+            } else if let prompt = vm.contractReadyPrompt {
+                contractReadyOverlay(prompt)
             } else if vm.isScorecardPresented {
                 liveScorecardOverlay
             } else if vm.isBuyDecisionActive {
                 buyDecisionOverlay
             }
+        }
+    }
+
+    private func contractReadyOverlay(
+        _ prompt: GameViewModel.ContractReadyPrompt
+    ) -> some View {
+        ZStack {
+            Color.black.opacity(0.48)
+                .ignoresSafeArea()
+                .contentShape(Rectangle())
+
+            VStack(spacing: 14) {
+                Text(contractReadyTitle(for: prompt))
+                    .font(.system(.title2, design: .rounded, weight: .bold))
+                    .multilineTextAlignment(.center)
+
+                Text(contractReadyMessage(for: prompt))
+                    .font(.system(.body, design: .rounded))
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+
+                Button("PUT DOWN NOW") {
+                    vm.confirmGoDown()
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+                .accessibilityIdentifier("contract-ready-put-down")
+
+                switch prompt {
+                case .readyToPutDown:
+                    Button("REVIEW MELDS") {
+                        vm.reviewContractMelds()
+                    }
+                    .buttonStyle(.bordered)
+                    .accessibilityIdentifier("contract-ready-review")
+                case .confirmDiscard:
+                    Button("DISCARD ANYWAY") {
+                        vm.discardAnyway()
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(.red)
+                    .accessibilityIdentifier("contract-ready-discard-anyway")
+                }
+            }
+            .padding(22)
+            .frame(maxWidth: 440)
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 22))
+            .padding(28)
+        }
+        .accessibilityIdentifier("contract-ready-overlay")
+        .accessibilityAddTraits(.isModal)
+    }
+
+    private func contractReadyTitle(
+        for prompt: GameViewModel.ContractReadyPrompt
+    ) -> String {
+        switch prompt {
+        case .readyToPutDown:
+            return "Contract Ready"
+        case .confirmDiscard:
+            return "Put Down First?"
+        }
+    }
+
+    private func contractReadyMessage(
+        for prompt: GameViewModel.ContractReadyPrompt
+    ) -> String {
+        switch prompt {
+        case .readyToPutDown:
+            return "Your saved melds complete this round's contract. Would you like to put them down now?"
+        case .confirmDiscard(let card):
+            return "Your contract is ready. Put it down before discarding \(CardNode.shortName(card))?"
         }
     }
 

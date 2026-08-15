@@ -11,8 +11,11 @@ final class GameViewModelStagingTests: XCTestCase {
         GameViewModel.newHotSeat(playerNames: ["A", "B"], seed: 42)
     }
 
-    private func makeVM(hand: [Card]) -> GameViewModel {
-        let players = [Player(name: "A", hand: hand), Player(name: "B")]
+    private func makeVM(hand: [Card], level: Int = 1) -> GameViewModel {
+        let players = [
+            Player(name: "A", hand: hand, currentLevel: level),
+            Player(name: "B", currentLevel: level),
+        ]
         let state = GameState(
             players: players,
             currentRound: 1,
@@ -166,5 +169,39 @@ final class GameViewModelStagingTests: XCTestCase {
         XCTAssertEqual(vm.contractDraft.count, 1)
         XCTAssertEqual(vm.contractDraft[0].first?.id, joker.id)
         XCTAssertTrue(vm.stagedCardIds.isEmpty)
+    }
+
+    func testFinalAmbiguousSequenceChoicePresentsContractReadyPrompt() throws {
+        let triplet = [
+            Card(suit: .hearts, rank: .king),
+            Card(suit: .spades, rank: .king),
+            Card(suit: .diamonds, rank: .king),
+        ]
+        let sequence = [
+            Card(suit: .diamonds, rank: .nine),
+            Card(suit: .diamonds, rank: .ten),
+            Card(suit: .diamonds, rank: .jack),
+            Card.joker(),
+        ]
+        let leftover = Card(suit: .clubs, rank: .three)
+        let vm = makeVM(
+            hand: triplet + sequence + [leftover],
+            level: 2
+        )
+        for card in triplet {
+            vm.toggleStaged(cardId: card.id)
+        }
+        XCTAssertTrue(vm.saveStagedAsMeld())
+        XCTAssertNil(vm.contractReadyPrompt)
+        for card in sequence {
+            vm.toggleStaged(cardId: card.id)
+        }
+
+        XCTAssertTrue(vm.saveStagedAsMeld())
+        XCTAssertNil(vm.contractReadyPrompt)
+        let options = try XCTUnwrap(vm.pendingInitialSequenceChoice?.options)
+
+        XCTAssertTrue(vm.chooseInitialSequenceArrangement(at: options.startIndex))
+        XCTAssertEqual(vm.contractReadyPrompt, .readyToPutDown)
     }
 }

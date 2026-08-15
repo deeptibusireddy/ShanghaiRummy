@@ -1630,7 +1630,7 @@ final class GameScene: SKScene {
                 return ("TAP OR DRAG TO MELD", nil, false, false)
             }
             if vm.canConfirmGoDown {
-                return ("GO DOWN", "go-down", true, true)
+                return ("PUT DOWN CONTRACT", "go-down", true, true)
             }
             if case .some(.success(_)) = vm.stagedValidation {
                 return ("SAVE MELD", "save-meld", true, true)
@@ -1844,6 +1844,10 @@ final class GameScene: SKScene {
                 switch cardDropTarget(at: point, for: card) {
                 case .some(.discard):
                     guard let node = draggingCard else { return }
+                    guard vm.requestDiscard(card) else {
+                        cancelDrag()
+                        return
+                    }
                     animateDiscard(card, node: node)
                     return
                 case .some(.meld(let meldId)):
