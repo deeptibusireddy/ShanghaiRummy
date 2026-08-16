@@ -39,11 +39,22 @@ struct FamilyTableConfiguration: Equatable {
     var invitedHumanCount: Int {
         seats.filter { $0.kind == .human }.count
     }
+    var humanCount: Int { invitedHumanCount + 1 }
     var botCount: Int {
         seats.filter { $0.kind == .bot }.count
     }
     var gameCenterPlayerCount: Int { invitedHumanCount + 1 }
     var canAddSeat: Bool { totalPlayerCount < RulesConfig.maxPlayers }
+    var openSeatCount: Int {
+        RulesConfig.maxPlayers - totalPlayerCount
+    }
+    var estimatedDurationMinutes: Int {
+        switch totalPlayerCount {
+        case ...2: return 45
+        case ...4: return 75
+        default: return 90
+        }
+    }
 
     var actionTitle: String {
         guard !seats.isEmpty else { return "Start Game" }
@@ -51,7 +62,7 @@ struct FamilyTableConfiguration: Equatable {
             return "Play with \(botCount) \(botCount == 1 ? "Bot" : "Bots")"
         }
         return "Invite \(invitedHumanCount) "
-            + (invitedHumanCount == 1 ? "Person" : "People")
+            + (invitedHumanCount == 1 ? "Guest" : "Guests")
     }
 
     func actionTitle(isGameCenterAuthenticated: Bool) -> String {

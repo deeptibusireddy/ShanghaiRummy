@@ -255,36 +255,34 @@ struct MidnightDecoTableView: View {
 
                 HStack(spacing: 28) {
                     VStack(alignment: .leading, spacing: 0) {
-                        Text("PRIVATE TABLE")
+                        Text("TONIGHT'S DOSSIER")
                             .font(.system(size: 14, weight: .black))
                             .tracking(3.8)
                             .foregroundStyle(palette.gold)
 
-                        Text("RESERVE\nTHE NIGHT")
+                        Text("YOUR TABLE\nIS TAKING\nSHAPE")
                             .font(.system(
-                                size: 48,
+                                size: 41,
                                 weight: .black,
                                 design: .rounded
                             ))
-                            .tracking(-1.8)
+                            .tracking(-1.5)
                             .foregroundStyle(palette.text)
-                            .lineSpacing(-8)
+                            .lineSpacing(-7)
                             .padding(.top, 16)
 
                         Text(
-                            "Choose the seats now. Game Center opens when "
-                                + "you send the invitations."
+                            "Every place is reserved from the start, so the "
+                                + "room stays calm while the guest list changes."
                         )
                         .font(.body.weight(.medium))
                         .foregroundStyle(palette.muted)
                         .lineSpacing(4)
                         .padding(.top, 20)
 
-                        Spacer()
-
-                        HStack {
+                        HStack(spacing: 8) {
                             EntryCountMetric(
-                                value: configuration.invitedHumanCount + 1,
+                                value: configuration.humanCount,
                                 label: "Humans",
                                 palette: palette
                             )
@@ -293,7 +291,37 @@ struct MidnightDecoTableView: View {
                                 label: "Bots",
                                 palette: palette
                             )
+                            EntryCountMetric(
+                                value: configuration.totalPlayerCount,
+                                label: "Players",
+                                palette: palette
+                            )
                         }
+                        .padding(.top, 24)
+
+                        EntryDossierDetail(
+                            label: "Evening forecast",
+                            value: "About "
+                                + "\(configuration.estimatedDurationMinutes) "
+                                + "minutes",
+                            detail: "10 levels",
+                            palette: palette
+                        )
+                        .padding(.top, 18)
+
+                        EntryDossierDetail(
+                            label: "Table policy",
+                            value: "Up to 3 buys each hand",
+                            detail: "Classic rules",
+                            palette: palette
+                        )
+
+                        Spacer(minLength: 12)
+
+                        EntryOccupancyDots(
+                            occupiedCount: configuration.totalPlayerCount,
+                            palette: palette
+                        )
                     }
                     .padding(30)
                     .frame(width: 310)
@@ -686,7 +714,7 @@ private struct EntryRosterPanel: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Tonight's players")
                         .font(.title3.weight(.bold))
-                    Text("Choose people, bots, or both.")
+                    Text("People, house players, or a little of both.")
                         .font(.subheadline)
                         .foregroundStyle(palette.muted)
                 }
@@ -710,6 +738,17 @@ private struct EntryRosterPanel: View {
                     ) {
                         configuration.removeSeat(id: seat.id)
                     }
+                }
+
+                ForEach(
+                    0..<configuration.openSeatCount,
+                    id: \.self
+                ) { offset in
+                    EntryReservedSeatCard(
+                        seatNumber:
+                            configuration.totalPlayerCount + offset + 1,
+                        palette: palette
+                    )
                 }
             }
             .frame(height: 240, alignment: .top)
@@ -774,33 +813,47 @@ private struct EntryRosterPanel: View {
 
     private var invitationSummary: String {
         if configuration.seats.isEmpty {
-            return "Add at least one player to begin"
+            return "Your table is waiting for company"
         }
         if configuration.invitedHumanCount > 0,
            !isGameCenterAuthenticated {
-            return "Sign in to send "
-                + "\(configuration.invitedHumanCount) Game Center "
+            return "Sign in to invite "
+                + "\(configuration.invitedHumanCount) "
                 + (configuration.invitedHumanCount == 1
-                    ? "invitation"
-                    : "invitations")
+                    ? "guest"
+                    : "guests")
         }
         if configuration.invitedHumanCount == 0 {
-            return "\(configuration.botCount) bot "
-                + (configuration.botCount == 1 ? "seat" : "seats")
-                + " ready immediately"
+            return "\(configuration.botCount) house "
+                + (configuration.botCount == 1 ? "player is" : "players are")
+                + " ready"
         }
-        return "\(configuration.invitedHumanCount) Game Center "
+        return "\(configuration.invitedHumanCount) "
             + (configuration.invitedHumanCount == 1
-                ? "invitation"
-                : "invitations")
+                ? "invitation is"
+                : "invitations are")
+            + " ready to send"
     }
 
     private var supportingMessage: String {
+        if configuration.seats.isEmpty {
+            return "Add a person or a house player to continue."
+        }
         if configuration.invitedHumanCount > 0,
            !isGameCenterAuthenticated {
-            return "Authentication opens before the invitation picker."
+            if configuration.botCount > 0 {
+                return "\(configuration.botCount) house "
+                    + (configuration.botCount == 1
+                        ? "player is"
+                        : "players are")
+                    + " ready immediately."
+            }
+            return "Game Center opens after the table is confirmed."
         }
-        return "Every player with the app can create and host a table."
+        if configuration.invitedHumanCount == 0 {
+            return "No sign-in is required for a bot-only table."
+        }
+        return "Game Center opens for exactly the selected guests."
     }
 }
 
@@ -928,7 +981,52 @@ private struct EntryConfigurableSeatCard: View {
                     RoundedRectangle(cornerRadius: 15)
                         .stroke(palette.muted.opacity(0.22), lineWidth: 1)
                 )
+                .overlay(alignment: .leading) {
+                    RoundedRectangle(cornerRadius: 2)
+                        .fill(
+                            seat.kind == .human
+                                ? palette.accent
+                                : palette.gold
+                        )
+                        .frame(width: 3)
+                        .padding(.vertical, 12)
+                }
         )
+    }
+}
+
+private struct EntryReservedSeatCard: View {
+    let seatNumber: Int
+    let palette: EntryFinalistPalette
+
+    var body: some View {
+        VStack(spacing: 4) {
+            Text("RESERVED SEAT \(seatNumber)")
+                .font(.caption2.weight(.black))
+                .tracking(1.2)
+                .foregroundStyle(palette.muted)
+            Text("Waiting at the table")
+                .font(.caption2)
+                .foregroundStyle(palette.muted.opacity(0.76))
+        }
+        .frame(maxWidth: .infinity, minHeight: 72)
+        .background(
+            RoundedRectangle(cornerRadius: 15)
+                .fill(palette.panelStrong.opacity(0.16))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 15)
+                        .stroke(
+                            palette.muted.opacity(0.24),
+                            style: StrokeStyle(
+                                lineWidth: 1,
+                                dash: [5, 5]
+                            )
+                        )
+                )
+        )
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Reserved seat \(seatNumber), empty")
+        .accessibilityIdentifier("reserved-family-seat-\(seatNumber)")
     }
 }
 
@@ -998,14 +1096,91 @@ private struct EntryCountMetric: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             Text("\(value)")
-                .font(.title2.weight(.black))
+                .font(.title3.weight(.black))
                 .foregroundStyle(palette.gold)
             Text(label.uppercased())
                 .font(.caption2.weight(.black))
-                .tracking(1.2)
+                .tracking(0.8)
                 .foregroundStyle(palette.muted)
         }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 11)
         .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 10)
+                .fill(palette.panel.opacity(0.62))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10)
+                        .stroke(palette.muted.opacity(0.20), lineWidth: 1)
+                )
+        )
+    }
+}
+
+private struct EntryDossierDetail: View {
+    let label: String
+    let value: String
+    let detail: String
+    let palette: EntryFinalistPalette
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            Text(label.uppercased())
+                .font(.caption2.weight(.black))
+                .tracking(1.1)
+                .foregroundStyle(palette.muted)
+
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(value)
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(palette.text)
+                    .lineLimit(1)
+                Spacer(minLength: 4)
+                Text(detail)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(palette.muted)
+                    .lineLimit(1)
+            }
+        }
+        .padding(.vertical, 13)
+        .overlay(alignment: .top) {
+            Rectangle()
+                .fill(palette.muted.opacity(0.20))
+                .frame(height: 1)
+        }
+    }
+}
+
+private struct EntryOccupancyDots: View {
+    let occupiedCount: Int
+    let palette: EntryFinalistPalette
+
+    var body: some View {
+        HStack(spacing: 7) {
+            ForEach(0..<RulesConfig.maxPlayers, id: \.self) { index in
+                Circle()
+                    .fill(
+                        index < occupiedCount
+                            ? palette.accent
+                            : palette.panelStrong
+                    )
+                    .overlay(
+                        Circle()
+                            .stroke(
+                                index < occupiedCount
+                                    ? palette.accent
+                                    : palette.muted.opacity(0.52),
+                                lineWidth: 1
+                            )
+                    )
+                    .frame(width: 9, height: 9)
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(
+            "\(occupiedCount) of \(RulesConfig.maxPlayers) seats occupied"
+        )
+        .accessibilityIdentifier("family-table-occupancy")
     }
 }
 

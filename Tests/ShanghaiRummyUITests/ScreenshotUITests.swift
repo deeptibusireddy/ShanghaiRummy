@@ -68,6 +68,13 @@ final class ScreenshotUITests: XCTestCase {
         )
         XCTAssertTrue(app.staticTexts["You"].exists)
         XCTAssertFalse(app.staticTexts["Bot 1"].exists)
+        for seatNumber in 2...6 {
+            XCTAssertTrue(
+                app.descendants(matching: .any)[
+                    "reserved-family-seat-\(seatNumber)"
+                ].exists
+            )
+        }
         let start = app.buttons["start-family-table"]
         XCTAssertTrue(start.exists)
         XCTAssertFalse(start.isEnabled)
@@ -83,12 +90,18 @@ final class ScreenshotUITests: XCTestCase {
         addHuman.tap()
         XCTAssertTrue(app.staticTexts["Human 1"].waitForExistence(timeout: 2))
         XCTAssertTrue(app.staticTexts["2 of 6 seated"].exists)
+        XCTAssertFalse(
+            app.descendants(matching: .any)["reserved-family-seat-2"].exists
+        )
+        XCTAssertTrue(
+            app.descendants(matching: .any)["reserved-family-seat-3"].exists
+        )
         XCTAssertEqual(addHuman.frame.midX, initialHumanFrame.midX, accuracy: 1)
         XCTAssertEqual(addHuman.frame.midY, initialHumanFrame.midY, accuracy: 1)
         XCTAssertEqual(addBot.frame.midX, initialBotFrame.midX, accuracy: 1)
         XCTAssertEqual(addBot.frame.midY, initialBotFrame.midY, accuracy: 1)
         XCTAssertTrue(start.isEnabled)
-        XCTAssertEqual(start.label, "Sign In & Invite 1 Person")
+        XCTAssertEqual(start.label, "Sign In & Invite 1 Guest")
         snapshot(named: "02-family-table-one-human")
         app.buttons["Remove Human 1"].tap()
         XCTAssertFalse(start.isEnabled)
@@ -105,6 +118,13 @@ final class ScreenshotUITests: XCTestCase {
             )
         }
         XCTAssertTrue(app.staticTexts["6 of 6 seated"].exists)
+        for seatNumber in 2...6 {
+            XCTAssertFalse(
+                app.descendants(matching: .any)[
+                    "reserved-family-seat-\(seatNumber)"
+                ].exists
+            )
+        }
         XCTAssertFalse(addHuman.isEnabled)
         XCTAssertFalse(addBot.isEnabled)
         XCTAssertEqual(addHuman.frame.midX, initialHumanFrame.midX, accuracy: 1)

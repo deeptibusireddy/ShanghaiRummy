@@ -6,8 +6,11 @@ final class FamilyTableConfigurationTests: XCTestCase {
         let configuration = FamilyTableConfiguration()
 
         XCTAssertEqual(configuration.totalPlayerCount, 1)
+        XCTAssertEqual(configuration.humanCount, 1)
         XCTAssertEqual(configuration.botCount, 0)
         XCTAssertEqual(configuration.invitedHumanCount, 0)
+        XCTAssertEqual(configuration.openSeatCount, 5)
+        XCTAssertEqual(configuration.estimatedDurationMinutes, 45)
         XCTAssertEqual(configuration.actionTitle, "Start Game")
         XCTAssertFalse(configuration.canStart)
     }
@@ -21,6 +24,8 @@ final class FamilyTableConfigurationTests: XCTestCase {
 
         XCTAssertEqual(configuration.totalPlayerCount, 6)
         XCTAssertEqual(configuration.botCount, 5)
+        XCTAssertEqual(configuration.openSeatCount, 0)
+        XCTAssertEqual(configuration.estimatedDurationMinutes, 90)
         XCTAssertFalse(configuration.canAddSeat)
         XCTAssertFalse(configuration.addSeat(kind: .bot))
         XCTAssertEqual(configuration.actionTitle, "Play with 5 Bots")
@@ -31,16 +36,17 @@ final class FamilyTableConfigurationTests: XCTestCase {
         configuration.addSeat(kind: .human)
 
         XCTAssertEqual(configuration.invitedHumanCount, 1)
+        XCTAssertEqual(configuration.humanCount, 2)
         XCTAssertEqual(configuration.gameCenterPlayerCount, 2)
-        XCTAssertEqual(configuration.actionTitle, "Invite 1 Person")
+        XCTAssertEqual(configuration.actionTitle, "Invite 1 Guest")
         XCTAssertEqual(
             configuration.actionTitle(isGameCenterAuthenticated: false),
-            "Sign In & Invite 1 Person"
+            "Sign In & Invite 1 Guest"
         )
         XCTAssertTrue(configuration.canStart)
         XCTAssertEqual(
             configuration.actionTitle(isGameCenterAuthenticated: true),
-            "Invite 1 Person"
+            "Invite 1 Guest"
         )
     }
 
@@ -66,6 +72,7 @@ final class FamilyTableConfigurationTests: XCTestCase {
             configuration.seats.map { configuration.label(for: $0.id) },
             ["Bot 1", "Human 1", "Bot 2", "Human 2"]
         )
+        XCTAssertEqual(configuration.estimatedDurationMinutes, 90)
     }
 
     func testLastOpponentCanBeRemoved() {

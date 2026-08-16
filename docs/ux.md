@@ -29,13 +29,18 @@ file first, then the scene.
   shimmer, restrained city-light motion, and the full Shanghai Rummy Nights
   wordmark.
 - **Create Table:** The setup flow opens full-screen in the Midnight Deco
-  treatment so roster controls have the full iPad canvas.
+  Dossier treatment so roster controls and the live session summary have the
+  full iPad canvas.
 - **Starting state:** Only the local host is seated initially. The host adds
   Human and Bot seats explicitly, up to six total players.
-- **Stable roster controls:** Seat cards populate a reserved two-column area.
-  Add Human and Add Bot stay anchored in the lower-center position while the
-  seated count updates, and remain visible but disabled when all six seats
-  are filled.
+- **Reserved table:** All six places remain visible in a fixed two-column
+  grid. Empty places are low-emphasis ghost placards that fill in as Human or
+  Bot seats are added.
+- **Live dossier:** Human, Bot, and total-player counts update alongside the
+  expected duration, table policy, and six-dot occupancy indicator.
+- **Stable roster controls:** Add Human and Add Bot stay anchored in the
+  lower-center position while the seated count updates, and remain visible
+  but disabled when all six seats are filled.
 - **Starting play:** Bot-only tables begin immediately. Tables with Human
   seats authenticate with Game Center when needed, then request exactly the
   selected number of remote players.
