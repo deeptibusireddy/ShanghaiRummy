@@ -151,7 +151,7 @@ final class GameSceneHitTestingTests: XCTestCase {
         )
     }
 
-    func testTopCenterMeldsStayBelowTurnBanner() {
+    func testSixPlayerTopMeldLanesStaySeparated() {
         let sceneSize = CGSize(width: 1366, height: 1024)
         let horizontalEdgeInset: CGFloat = 24
         let seatY = sceneSize.height - 24 - 60
@@ -167,11 +167,27 @@ final class GameSceneHitTestingTests: XCTestCase {
             sceneSize: sceneSize,
             horizontalEdgeInset: horizontalEdgeInset
         ).minY
+        let cornerRowY = GameScene.topCornerMeldRowY(
+            sceneSize: sceneSize,
+            seatY: seatY,
+            horizontalEdgeInset: horizontalEdgeInset,
+            playerCount: 6,
+            cornerMeldScale: scale,
+            centerMeldScale: scale
+        )
+        let centerMeldBottom = rowY - CardNode.size.height * scale / 2
+        let cornerMeldTop = cornerRowY
+            + CardNode.size.height * scale / 2
 
         XCTAssertLessThan(rowY, seatY)
         XCTAssertEqual(
             bannerBottom - meldTop,
             GameScene.topMeldBannerGap,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            centerMeldBottom - cornerMeldTop,
+            GameScene.topMeldLaneGap,
             accuracy: 0.001
         )
     }

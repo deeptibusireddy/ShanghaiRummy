@@ -585,7 +585,6 @@ final class GameScene: SKScene {
 
     private func drawMelds(_ melds: [Meld], near seat: SeatLayout.Seat) {
         let seatHalfWidth = opponentSeatWidth / 2
-        let seatHalfHeight: CGFloat = 42 / 2
         let seatPadding: CGFloat = 6
         let edgeMargin: CGFloat = 24
         let meldGap = melds.count > 2
@@ -661,8 +660,14 @@ final class GameScene: SKScene {
                 meldGap: meldGap,
                 availableWidth: max(0, bounds.upperBound - bounds.lowerBound)
             )
-            let rowY = seat.anchor.y - seatHalfHeight - seatPadding
-                - CardNode.size.height * rowScale / 2
+            let rowY = Self.topCornerMeldRowY(
+                sceneSize: size,
+                seatY: seat.anchor.y,
+                horizontalEdgeInset: horizontalEdgeInset,
+                playerCount: vm.state.players.count,
+                cornerMeldScale: rowScale,
+                centerMeldScale: desiredScale
+            )
             drawFittedMeldRow(
                 melds,
                 bounds: bounds,
@@ -796,7 +801,17 @@ final class GameScene: SKScene {
         var maximumCenter = CGFloat.greatestFiniteMagnitude
         if vm.state.players.count >= 5 {
             let topSeatY = size.height - 24 - 60
-            let topCornerMeldBottom = topSeatY - 21 - 6 - cardHeight
+            let topCornerScale = preferredOpponentMeldScaleForLayout
+            let topCornerRowY = Self.topCornerMeldRowY(
+                sceneSize: size,
+                seatY: topSeatY,
+                horizontalEdgeInset: horizontalEdgeInset,
+                playerCount: vm.state.players.count,
+                cornerMeldScale: topCornerScale,
+                centerMeldScale: topCornerScale
+            )
+            let topCornerMeldBottom = topCornerRowY
+                - CardNode.size.height * topCornerScale / 2
             maximumCenter = topCornerMeldBottom - cardHeight / 2 - 2
             spacing = min(spacing, max(0, maximumCenter - minimumCenter))
         }
@@ -1377,6 +1392,7 @@ final class GameScene: SKScene {
     static let turnBannerHeight: CGFloat = 48
     static let turnBannerTopInset: CGFloat = 7
     static let topMeldBannerGap: CGFloat = 8
+    static let topMeldLaneGap: CGFloat = 12
 
     static func usesExpandedIPadLayout(sceneHeight: CGFloat) -> Bool {
         sceneHeight >= expandedIPadLayoutMinimumHeight
@@ -1512,6 +1528,33 @@ final class GameScene: SKScene {
             - topMeldBannerGap
             - CardNode.size.height * meldScale / 2
         return min(seatY, highestSafeCenter)
+    }
+
+    static func topCornerMeldRowY(
+        sceneSize: CGSize,
+        seatY: CGFloat,
+        horizontalEdgeInset: CGFloat,
+        playerCount: Int,
+        cornerMeldScale: CGFloat,
+        centerMeldScale: CGFloat
+    ) -> CGFloat {
+        let cornerCardHalfHeight = CardNode.size.height
+            * cornerMeldScale / 2
+        let rowBelowSeat = seatY - 21 - 6 - cornerCardHalfHeight
+        guard playerCount >= 6 else { return rowBelowSeat }
+
+        let centerRowY = centerTopMeldRowY(
+            sceneSize: sceneSize,
+            seatY: seatY,
+            horizontalEdgeInset: horizontalEdgeInset,
+            meldScale: centerMeldScale
+        )
+        let centerMeldBottom = centerRowY
+            - CardNode.size.height * centerMeldScale / 2
+        let rowBelowCenterMelds = centerMeldBottom
+            - topMeldLaneGap
+            - cornerCardHalfHeight
+        return min(rowBelowSeat, rowBelowCenterMelds)
     }
 
     private var scaledHandCardSize: CGSize {

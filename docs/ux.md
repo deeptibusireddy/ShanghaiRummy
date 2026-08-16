@@ -148,6 +148,7 @@ previous 62%/68% laid-down preferences.
 Horizontal gaps, overlap fractions, seat anchors, and table zones do not
 change; local melds grow upward while retaining the same gap above the hand.
 Top-center meld wings retain an 8-point clearance below the turn banner.
+Six-player center and corner melds use separate vertical lanes.
 Crowded side-seat melds retain a 34% card-scale floor, and at least 25% of each
 card remains exposed. Five/six-player and compact-width layouts use smaller,
 avatar-first opponent pills to reserve that space. All opponent layouts
