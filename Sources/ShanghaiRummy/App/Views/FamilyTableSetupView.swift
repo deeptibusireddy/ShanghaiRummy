@@ -54,10 +54,16 @@ struct FamilyTableConfiguration: Equatable {
             + (invitedHumanCount == 1 ? "Person" : "People")
     }
 
-    func canStart(isGameCenterAuthenticated: Bool) -> Bool {
+    func actionTitle(isGameCenterAuthenticated: Bool) -> String {
+        if invitedHumanCount > 0, !isGameCenterAuthenticated {
+            return "Sign In & \(actionTitle)"
+        }
+        return actionTitle
+    }
+
+    var canStart: Bool {
         totalPlayerCount >= RulesConfig.minPlayers
             && totalPlayerCount <= RulesConfig.maxPlayers
-            && (invitedHumanCount == 0 || isGameCenterAuthenticated)
     }
 
     @discardableResult
@@ -165,16 +171,17 @@ struct FamilyTableSetupView: View {
                     Button {
                         onStart(configuration)
                     } label: {
-                        Text(configuration.actionTitle)
+                        Text(
+                            configuration.actionTitle(
+                                isGameCenterAuthenticated:
+                                    isGameCenterAuthenticated
+                            )
+                        )
                             .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.large)
-                    .disabled(
-                        !configuration.canStart(
-                            isGameCenterAuthenticated: isGameCenterAuthenticated
-                        )
-                    )
+                    .disabled(!configuration.canStart)
                     .accessibilityIdentifier("start-family-table")
                 }
             }
@@ -216,8 +223,8 @@ struct FamilyTableSetupView: View {
         }
         if configuration.invitedHumanCount > 0,
            !isGameCenterAuthenticated {
-            return "Sign in to Game Center to invite people, or change every "
-                + "added seat to Bot."
+            return "Tap Sign In & Invite to connect this device to Game "
+                + "Center. Every player with the app can create a table."
         }
         if configuration.invitedHumanCount == 0 {
             return "Bot-only games start immediately on this device. "

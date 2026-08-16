@@ -50,7 +50,12 @@ struct RootView: View {
                     }
                     .ignoresSafeArea()
                 }
-                .sheet(isPresented: $gameCenter.isPresentingAuthentication) {
+                .sheet(
+                    isPresented: $gameCenter.isPresentingAuthentication,
+                    onDismiss: {
+                        gameCenter.authenticationDidDismiss()
+                    }
+                ) {
                     if let controller = gameCenter.authenticationViewController {
                         GameCenterAuthenticationView(viewController: controller)
                             .ignoresSafeArea()
@@ -205,6 +210,14 @@ struct RootView: View {
                     )
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
+
+                    Button("Sign In to Game Center") {
+                        Task {
+                            await gameCenter.authenticate()
+                        }
+                    }
+                    .buttonStyle(.bordered)
+                    .accessibilityIdentifier("sign-in-game-center")
                 }
 
                 VStack(spacing: 8) {

@@ -34,6 +34,7 @@ final class ScreenshotUITests: XCTestCase {
             createTable.waitForExistence(timeout: 5),
             "Home menu should show the unified Create Table button"
         )
+        XCTAssertTrue(app.buttons["sign-in-game-center"].exists)
         XCTAssertFalse(app.buttons["Hot-Seat (Pass & Play)"].exists)
         XCTAssertFalse(app.buttons["Quick Pair (2-Player Beta Test)"].exists)
         createTable.tap()
@@ -69,6 +70,15 @@ final class ScreenshotUITests: XCTestCase {
         XCTAssertTrue(start.exists)
         XCTAssertFalse(start.isEnabled)
         snapshot(named: "02-family-table-setup")
+
+        let addHuman = app.buttons["add-family-human"]
+        XCTAssertTrue(addHuman.exists)
+        addHuman.tap()
+        XCTAssertTrue(app.staticTexts["Human 1"].waitForExistence(timeout: 2))
+        XCTAssertTrue(start.isEnabled)
+        XCTAssertEqual(start.label, "Sign In & Invite 1 Person")
+        app.buttons["Remove Human 1"].tap()
+        XCTAssertFalse(start.isEnabled)
 
         let addBot = app.buttons["add-family-bot"]
         XCTAssertTrue(addBot.exists)

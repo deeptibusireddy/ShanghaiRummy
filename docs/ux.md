@@ -325,6 +325,10 @@ Haptics (M4):
   the roster starts with only You, and every added seat can switch between
   Human and Bot or be removed. Start stays disabled until at least one seat is
   added, and bot-only tables start locally without Game Center.
+- Every device exposes an explicit Game Center sign-in action. If an
+  unauthenticated player selects human seats, the start action launches sign-in
+  and resumes that same table request afterward; hosting is not restricted to
+  the original developer account.
 - Mixed tables reserve their bot seats and open Apple's matchmaker only for the
   exact selected human count. A noninteractive notice over Apple's screen keeps
   the reserved bot count visible.
