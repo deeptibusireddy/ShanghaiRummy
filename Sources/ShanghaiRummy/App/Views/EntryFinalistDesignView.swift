@@ -293,7 +293,7 @@ struct MidnightDecoTableView: View {
                             )
                             EntryCountMetric(
                                 value: configuration.totalPlayerCount,
-                                label: "Players",
+                                label: "Total",
                                 palette: palette
                             )
                         }
