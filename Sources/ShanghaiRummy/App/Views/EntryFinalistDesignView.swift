@@ -1328,25 +1328,36 @@ private struct BundRiver: View {
 }
 
 private struct EntryPrimaryButtonStyle: ButtonStyle {
+    @Environment(\.isEnabled) private var isEnabled
     let fill: Color
     let foreground: Color
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.headline.weight(.black))
-            .foregroundStyle(foreground)
+            .foregroundStyle(
+                foreground.opacity(isEnabled ? 1 : 0.48)
+            )
             .padding(.horizontal, 24)
             .frame(minHeight: 54)
             .background(
                 RoundedRectangle(cornerRadius: 15)
-                    .fill(fill.opacity(configuration.isPressed ? 0.78 : 1))
+                    .fill(
+                        fill.opacity(
+                            isEnabled
+                                ? (configuration.isPressed ? 0.78 : 1)
+                                : 0.24
+                        )
+                    )
                     .shadow(
-                        color: fill.opacity(0.30),
-                        radius: configuration.isPressed ? 4 : 11,
+                        color: fill.opacity(isEnabled ? 0.30 : 0),
+                        radius: configuration.isPressed && isEnabled ? 4 : 11,
                         y: 5
                     )
             )
-            .scaleEffect(configuration.isPressed ? 0.98 : 1)
+            .scaleEffect(
+                configuration.isPressed && isEnabled ? 0.98 : 1
+            )
     }
 }
 
