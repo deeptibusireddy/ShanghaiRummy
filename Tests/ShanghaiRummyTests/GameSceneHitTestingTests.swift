@@ -365,6 +365,35 @@ final class GameSceneHitTestingTests: XCTestCase {
         )
     }
 
+    func testIPadMeldCardsGrowWithoutChangingLayoutSpacing() {
+        XCTAssertEqual(GameScene.preferredOpponentMeldScale, 0.62)
+        XCTAssertEqual(GameScene.preferredOwnMeldScale, 0.68)
+        XCTAssertEqual(GameScene.minimumMeldScale, 0.34)
+
+        XCTAssertEqual(GameScene.ownMeldGap, 14)
+        XCTAssertEqual(GameScene.ownMeldHandGap, 12)
+        XCTAssertEqual(GameScene.standardOpponentMeldGap, 12)
+        XCTAssertEqual(GameScene.crowdedOpponentMeldGap, 8)
+        XCTAssertEqual(GameScene.meldCardStepFraction, 0.50)
+        XCTAssertEqual(GameScene.minimumMeldStepFraction, 0.25)
+
+        let handRowY: CGFloat = 150
+        let handCardHeight: CGFloat = 96
+        let meldRowY = GameScene.ownMeldRowY(
+            handRowY: handRowY,
+            handCardHeight: handCardHeight,
+            meldScale: GameScene.preferredOwnMeldScale
+        )
+        let handTop = handRowY + handCardHeight / 2
+        let meldBottom = meldRowY
+            - CardNode.size.height * GameScene.preferredOwnMeldScale / 2
+        XCTAssertEqual(
+            meldBottom - handTop,
+            GameScene.ownMeldHandGap,
+            accuracy: 0.001
+        )
+    }
+
     func testOverlappingHandFanAssignsEveryExposedSliceToItsCard() {
         let diamondFour = UUID()
         let clubFour = UUID()
