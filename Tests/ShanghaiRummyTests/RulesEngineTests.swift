@@ -25,6 +25,26 @@ final class MeldValidatorTripletTests: XCTestCase {
         XCTAssertNoThrow(try MeldValidator.validateTriplet(cards).get())
     }
 
+    func testValidTripletOfThreeNaturalTwos() {
+        let cards = [w(.spades), w(.hearts), w(.diamonds)]
+        XCTAssertNoThrow(try MeldValidator.validateTriplet(cards).get())
+    }
+
+    func testValidTripletOfTwoNaturalTwosAndJoker() {
+        let cards = [w(.clubs), w(.hearts), j()]
+        XCTAssertNoThrow(try MeldValidator.validateTriplet(cards).get())
+    }
+
+    func testTripletOfTwosStillRequiresDistinctNaturalSuits() {
+        let cards = [w(.clubs), w(.clubs), j()]
+        if case .failure(let error) =
+            MeldValidator.validateTriplet(cards) {
+            XCTAssertEqual(error, .tripletDuplicateSuits)
+        } else {
+            XCTFail("expected tripletDuplicateSuits")
+        }
+    }
+
     func testTripletTooFewCards() {
         let cards = [c(.spades, .seven), c(.hearts, .seven)]
         if case .failure(let e) = MeldValidator.validateTriplet(cards) {
@@ -116,6 +136,26 @@ final class MeldValidatorTripletTests: XCTestCase {
 
         XCTAssertEqual(updated.count, 5)
         XCTAssertEqual(updated.filter(\.isWild).count, 3)
+    }
+
+    func testTripletOfTwosKeepsItsRankWhenExtended() {
+        let existing = Meld(
+            kind: .triplet,
+            cards: [w(.spades), w(.hearts), w(.diamonds)],
+            ownerId: UUID()
+        )
+        let wrongRank = c(.clubs, .seven)
+
+        if case .failure(let error) = MeldValidator.validateAddition(
+            addingCards: [wrongRank],
+            atStart: [],
+            atEnd: [wrongRank],
+            to: existing
+        ) {
+            XCTAssertEqual(error, .tripletMixedRanks)
+        } else {
+            XCTFail("A laid triplet of 2s must remain rank 2")
+        }
     }
 }
 
@@ -938,6 +978,44 @@ final class TurnEngineTests: XCTestCase {
         XCTAssertTrue(newState.players[0].hasGoneDownThisRound)
         XCTAssertEqual(newState.melds.count, 2)
         XCTAssertEqual(newState.players[0].hand.count, 11 - 6)
+    }
+
+    func testGoingDownRound1WithTripletOfTwosSucceeds() {
+        let c2 = w(.clubs)
+        let h2 = w(.hearts)
+        let s2 = w(.spades)
+        let cK = c(.clubs, .king)
+        let hK = c(.hearts, .king)
+        let sK = c(.spades, .king)
+        let discardCard = c(.diamonds, .three)
+        let player = Player(
+            name: "A",
+            hand: [c2, h2, s2, cK, hK, sK, discardCard]
+        )
+        let opponent = Player(name: "B")
+        let state = GameState(
+            players: [player, opponent],
+            currentRound: 1,
+            currentTurnIndex: 0,
+            dealerIndex: 1,
+            stock: [c(.clubs, .nine)],
+            discard: [c(.clubs, .ten)],
+            melds: [],
+            phase: .awaitingMeldOrDiscard,
+            stockReshufflesUsed: 0,
+            randomSeed: 0
+        )
+
+        let next = try! TurnEngine.apply(
+            .goDown(
+                playerId: player.id,
+                contract: [[c2, h2, s2], [cK, hK, sK]]
+            ),
+            to: state
+        ).get()
+
+        XCTAssertTrue(next.players[0].hasGoneDownThisRound)
+        XCTAssertEqual(next.players[0].hand.map(\.id), [discardCard.id])
     }
 
     func testGoingDownRejectsTripletWithRepeatedNaturalSuit() {

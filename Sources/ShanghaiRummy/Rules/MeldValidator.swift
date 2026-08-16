@@ -54,27 +54,107 @@ public enum MeldValidator {
         requiresDistinctNaturalSuits: Bool,
         enforcesWildLimit: Bool
     ) -> Result<Void, ValidationError> {
+        validateTripletRank(
+            cards,
+            requiresDistinctNaturalSuits: requiresDistinctNaturalSuits,
+            enforcesWildLimit: enforcesWildLimit
+        ).map { _ in () }
+    }
+
+    private static func validateTripletRank(
+        _ cards: [Card],
+        requiresDistinctNaturalSuits: Bool,
+        enforcesWildLimit: Bool
+    ) -> Result<Rank, ValidationError> {
         guard !cards.isEmpty else { return .failure(.emptyMeld) }
         guard cards.count >= RulesConfig.minTripletSize else {
             return .failure(.tooFewCards(min: RulesConfig.minTripletSize, got: cards.count))
         }
-        if enforcesWildLimit {
-            let maxWilds = RulesConfig.maxWilds(inMeldOfSize: cards.count)
-            let wilds = cards.filter(\.isWild).count
-            if wilds > maxWilds {
-                return .failure(.tooManyWilds(max: maxWilds, got: wilds))
-            }
+        let candidateRanks = Rank.allCases.filter { rank in
+            cards.contains { $0.isNatural(inTripletOf: rank) }
         }
-
-        let naturalRanks = cards.compactMap { $0.isWild ? nil : $0.rank }
-        guard let first = naturalRanks.first else {
+        guard !candidateRanks.isEmpty else {
+            if enforcesWildLimit {
+                let maxWilds = RulesConfig.maxWilds(
+                    inMeldOfSize: cards.count
+                )
+                let wildCount = cards.filter(\.isWild).count
+                if wildCount > maxWilds {
+                    return .failure(
+                        .tooManyWilds(max: maxWilds, got: wildCount)
+                    )
+                }
+            }
             return .failure(.cannotDetermineNaturalRank)
         }
-        guard naturalRanks.allSatisfy({ $0 == first }) else {
-            return .failure(.tripletMixedRanks)
+
+        var deferredError: ValidationError = .tripletMixedRanks
+        for rank in candidateRanks {
+            var naturals: [Card] = []
+            var wildCount = 0
+            var containsWrongNatural = false
+
+            for card in cards {
+                if card.isNatural(inTripletOf: rank) {
+                    naturals.append(card)
+                } else if card.isWild {
+                    wildCount += 1
+                } else {
+                    containsWrongNatural = true
+                    break
+                }
+            }
+            if containsWrongNatural { continue }
+
+            if enforcesWildLimit {
+                let maxWilds = RulesConfig.maxWilds(
+                    inMeldOfSize: cards.count
+                )
+                if wildCount > maxWilds {
+                    deferredError = .tooManyWilds(
+                        max: maxWilds,
+                        got: wildCount
+                    )
+                    continue
+                }
+            }
+            if requiresDistinctNaturalSuits {
+                let naturalSuits = naturals.compactMap(\.suit)
+                if Set(naturalSuits).count != naturalSuits.count {
+                    deferredError = .tripletDuplicateSuits
+                    continue
+                }
+            }
+            return .success(rank)
+        }
+        return .failure(deferredError)
+    }
+
+    private static func validateTriplet(
+        _ cards: [Card],
+        as rank: Rank,
+        requiresDistinctNaturalSuits: Bool,
+        enforcesWildLimit: Bool
+    ) -> Result<Void, ValidationError> {
+        var naturals: [Card] = []
+        var wildCount = 0
+        for card in cards {
+            if card.isNatural(inTripletOf: rank) {
+                naturals.append(card)
+            } else if card.isWild {
+                wildCount += 1
+            } else {
+                return .failure(.tripletMixedRanks)
+            }
+        }
+        if enforcesWildLimit {
+            let maxWilds = RulesConfig.maxWilds(inMeldOfSize: cards.count)
+            if wildCount > maxWilds {
+                return .failure(.tooManyWilds(max: maxWilds, got: wildCount))
+            }
         }
         if requiresDistinctNaturalSuits {
-            let naturalSuits = cards.compactMap { $0.isWild ? nil : $0.suit }
+            let naturalSuits = naturals.compactMap(\.suit)
             guard Set(naturalSuits).count == naturalSuits.count else {
                 return .failure(.tripletDuplicateSuits)
             }
@@ -239,11 +319,18 @@ public enum MeldValidator {
         case .triplet:
             // Initial-contract suit and wild limits do not apply to table play.
             let allAdded = meld.cards + addingCards
-            return validateTriplet(
-                allAdded,
+            return validateTripletRank(
+                meld.cards,
                 requiresDistinctNaturalSuits: false,
                 enforcesWildLimit: false
-            ).map { allAdded }
+            ).flatMap { rank in
+                validateTriplet(
+                    allAdded,
+                    as: rank,
+                    requiresDistinctNaturalSuits: false,
+                    enforcesWildLimit: false
+                )
+            }.map { allAdded }
         case .sequence:
             return validateSequence(
                 proposed,
