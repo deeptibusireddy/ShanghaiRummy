@@ -9,7 +9,7 @@ macOS runners, so you can develop from Windows and still ship to the App Store.
 | ------------------------------ | ------------------------- | -------------------- |
 | Unit tests + build validation  | GitHub Actions (`ios.yml`) | No (already set up) |
 | Beta distribution (family)     | Xcode Cloud → TestFlight  | ~1 hour one-time    |
-| Manual debugging on device     | Xcode + physical iPhone   | Yes (rent a Mac)    |
+| Manual debugging on device     | Xcode + physical iPad     | Yes (rent a Mac)    |
 | App Store submission           | Xcode Cloud or Transporter | ~1 hour one-time    |
 
 ## Tier 1 — GitHub Actions (active now)
@@ -64,7 +64,7 @@ After that, every push to `main` auto-delivers to your family testers.
 If a bug shows up only on real hardware, you have two paths:
 
 **a) Rent a cloud Mac + connect over VNC**
-Runs Xcode, deploys to a locally connected iPhone via
+Runs Xcode, deploys to a locally connected iPad via
 [Sidecar-style relay](https://developer.apple.com/documentation/xcode/running-your-app-in-a-simulator-or-device)
 — tricky, latency-sensitive, but doable for occasional debugging.
 

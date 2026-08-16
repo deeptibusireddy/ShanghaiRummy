@@ -1,6 +1,6 @@
-# TestFlight Runbook (Windows → MacinCloud → your iPhone)
+# TestFlight Runbook (Windows → MacinCloud → your iPad)
 
-**Goal:** Get Shanghai Rummy running on your own iPhone via TestFlight in a single ~30-minute paid Mac session.
+**Goal:** Get Shanghai Rummy running on your own iPad via TestFlight in a single ~30-minute paid Mac session.
 
 **Cost:** $1–$3 for the MacinCloud hour, plus your existing $99/yr Apple Developer membership. TestFlight itself is free.
 
@@ -29,9 +29,9 @@ Sign in at https://appstoreconnect.apple.com/ and do these once:
    - SKU: `shanghai-rummy-001` (any unique string)
    - User Access: Full Access
 
-### 2. Verify Apple ID is on your iPhone
+### 2. Verify Apple ID is on your iPad
 
-On your iPhone: Settings → App Store → make sure you're signed in with the same Apple ID that owns the developer account. Install the **TestFlight** app from the App Store.
+On your iPad: Settings → App Store → make sure you're signed in with the same Apple ID that owns the developer account. Install the **TestFlight** app from the App Store.
 
 ---
 
@@ -125,11 +125,11 @@ Still in App Store Connect → TestFlight tab:
 1. **Internal Testing** left sidebar → "+" next to Internal Group (or "App Store Connect Users").
 2. Add your own Apple ID email.
 3. Assign the build.
-4. You'll get a TestFlight email/notification on your phone within a minute.
+4. You'll get a TestFlight email/notification on your iPad within a minute.
 
-### 14. Install on your iPhone (~1 min)
+### 14. Install on your iPad (~1 min)
 
-1. Open the TestFlight email on your phone → tap "View in TestFlight".
+1. Open the TestFlight email on your iPad → tap "View in TestFlight".
 2. Or open the TestFlight app → your app → **Install**.
 3. Play! 🎉
 
@@ -142,7 +142,7 @@ Once step 1–2 are done and you have signing set up on the Mac, subsequent iter
 1. Push code from Windows → `git push`
 2. On MacinCloud: `cd ShanghaiRummy && git pull && xcodegen generate` (only if `project.yml` changed) then Archive + Distribute (~5 min)
 3. Bump the build number in `project.yml` before each upload: `CURRENT_PROJECT_VERSION: "2"`, `"3"`, ... (App Store Connect requires monotonically increasing build numbers)
-4. Install the new build via TestFlight app on your phone.
+4. Install the new build via TestFlight app on your iPad.
 
 ---
 
@@ -176,4 +176,4 @@ In App Store Connect → TestFlight → **External Testing** → New Group ("Fam
 | MacinCloud Managed Server, one session | ~$1–3 |
 | MacinCloud subsequent sessions (until you decide to buy a Mac) | ~$1–3 each |
 | TestFlight itself | Free |
-| Total to get onto your phone this weekend | **~$3** |
+| Total to get onto your iPad this weekend | **~$3** |
