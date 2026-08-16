@@ -151,6 +151,31 @@ final class GameSceneHitTestingTests: XCTestCase {
         )
     }
 
+    func testTopCenterMeldsStayBelowTurnBanner() {
+        let sceneSize = CGSize(width: 1366, height: 1024)
+        let horizontalEdgeInset: CGFloat = 24
+        let seatY = sceneSize.height - 24 - 60
+        let scale = GameScene.expandedOpponentMeldScale
+        let rowY = GameScene.centerTopMeldRowY(
+            sceneSize: sceneSize,
+            seatY: seatY,
+            horizontalEdgeInset: horizontalEdgeInset,
+            meldScale: scale
+        )
+        let meldTop = rowY + CardNode.size.height * scale / 2
+        let bannerBottom = GameScene.turnBannerFrame(
+            sceneSize: sceneSize,
+            horizontalEdgeInset: horizontalEdgeInset
+        ).minY
+
+        XCTAssertLessThan(rowY, seatY)
+        XCTAssertEqual(
+            bannerBottom - meldTop,
+            GameScene.topMeldBannerGap,
+            accuracy: 0.001
+        )
+    }
+
     func testSixPlayerStatusFixtureSeparatesLocalAndActivePlayers() {
         let state = GameFactory.demoSixPlayerStatus()
 
@@ -158,6 +183,10 @@ final class GameSceneHitTestingTests: XCTestCase {
         XCTAssertEqual(state.players[0].name, "You")
         XCTAssertEqual(state.players[state.currentTurnIndex].name, "Sam")
         XCTAssertNotEqual(state.currentPlayerId, state.players[0].id)
+        XCTAssertEqual(
+            state.melds.filter { $0.ownerId == state.currentPlayerId }.count,
+            2
+        )
     }
 
     func testContextAreaShowsOnlyRealEnabledActions() {

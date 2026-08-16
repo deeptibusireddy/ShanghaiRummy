@@ -257,6 +257,29 @@ public enum GameFactory {
             currentLevel: 3
         ))
         state.currentTurnIndex = 3
+        state.players[state.currentTurnIndex].hasGoneDownThisRound = true
+        let activePlayerId = state.currentPlayerId
+        state.melds.append(contentsOf: [
+            Meld(
+                kind: .triplet,
+                cards: [
+                    c(.spades, .ace),
+                    c(.hearts, .ace),
+                    c(.diamonds, .ace),
+                ],
+                ownerId: activePlayerId
+            ),
+            Meld(
+                kind: .sequence,
+                cards: [
+                    c(.clubs, .three),
+                    c(.clubs, .four),
+                    c(.clubs, .five),
+                    c(.clubs, .six),
+                ],
+                ownerId: activePlayerId
+            ),
+        ])
         return state
     }
 

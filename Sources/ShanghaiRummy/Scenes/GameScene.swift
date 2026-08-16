@@ -181,13 +181,13 @@ final class GameScene: SKScene {
         headerLayer.removeAllChildren()
 
         let activePlayer = vm.turnPlayer
-        let width = Self.turnBannerWidth(
-            sceneWidth: size.width,
+        let frame = Self.turnBannerFrame(
+            sceneSize: size,
             horizontalEdgeInset: horizontalEdgeInset
         )
-        let height: CGFloat = 48
-        let center = CGPoint(x: size.width / 2, y: size.height - 31)
-        let panel = SKShapeNode(rectOf: CGSize(width: width, height: height),
+        let width = frame.width
+        let center = CGPoint(x: frame.midX, y: frame.midY)
+        let panel = SKShapeNode(rectOf: frame.size,
                                 cornerRadius: 24)
         panel.fillColor = theme.contractPillBg.withAlphaComponent(0.92)
         panel.strokeColor = theme.turnGlow.withAlphaComponent(0.9)
@@ -832,12 +832,18 @@ final class GameScene: SKScene {
             size.width - outerSeatX - seatHalfWidth - seatPadding
         )
         let groups = balancedMeldGroups(melds, groupCount: 2)
+        let rowY = Self.centerTopMeldRowY(
+            sceneSize: size,
+            seatY: seatY,
+            horizontalEdgeInset: horizontalEdgeInset,
+            meldScale: desiredScale
+        )
 
         if let left = groups.first, !left.isEmpty {
             drawFittedMeldRow(
                 left,
                 bounds: leftBounds,
-                rowY: seatY,
+                rowY: rowY,
                 alignment: .center,
                 desiredScale: desiredScale,
                 minimumScale: minimumScale,
@@ -848,7 +854,7 @@ final class GameScene: SKScene {
             drawFittedMeldRow(
                 groups[1],
                 bounds: rightBounds,
-                rowY: seatY,
+                rowY: rowY,
                 alignment: .center,
                 desiredScale: desiredScale,
                 minimumScale: minimumScale,
@@ -1368,6 +1374,9 @@ final class GameScene: SKScene {
     static let stagingTrayHandGap: CGFloat = 8
     static let compactStagedCardScale: CGFloat = 0.44
     static let expandedStagedCardScale: CGFloat = 0.76
+    static let turnBannerHeight: CGFloat = 48
+    static let turnBannerTopInset: CGFloat = 7
+    static let topMeldBannerGap: CGFloat = 8
 
     static func usesExpandedIPadLayout(sceneHeight: CGFloat) -> Bool {
         sceneHeight >= expandedIPadLayoutMinimumHeight
@@ -1471,6 +1480,38 @@ final class GameScene: SKScene {
             520,
             max(300, sceneWidth - horizontalEdgeInset * 2 - 304)
         )
+    }
+
+    static func turnBannerFrame(
+        sceneSize: CGSize,
+        horizontalEdgeInset: CGFloat
+    ) -> CGRect {
+        let width = turnBannerWidth(
+            sceneWidth: sceneSize.width,
+            horizontalEdgeInset: horizontalEdgeInset
+        )
+        return CGRect(
+            x: sceneSize.width / 2 - width / 2,
+            y: sceneSize.height - turnBannerTopInset - turnBannerHeight,
+            width: width,
+            height: turnBannerHeight
+        )
+    }
+
+    static func centerTopMeldRowY(
+        sceneSize: CGSize,
+        seatY: CGFloat,
+        horizontalEdgeInset: CGFloat,
+        meldScale: CGFloat
+    ) -> CGFloat {
+        let bannerBottom = turnBannerFrame(
+            sceneSize: sceneSize,
+            horizontalEdgeInset: horizontalEdgeInset
+        ).minY
+        let highestSafeCenter = bannerBottom
+            - topMeldBannerGap
+            - CardNode.size.height * meldScale / 2
+        return min(seatY, highestSafeCenter)
     }
 
     private var scaledHandCardSize: CGSize {
