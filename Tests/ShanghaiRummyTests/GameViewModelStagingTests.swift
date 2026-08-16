@@ -59,6 +59,23 @@ final class GameViewModelStagingTests: XCTestCase {
         XCTAssertFalse(vm.stagedCardIds.contains(bogus))
     }
 
+    func testCanSaveTripletOfTwosToContractDraft() {
+        let twos = [
+            Card(suit: .clubs, rank: .two),
+            Card(suit: .hearts, rank: .two),
+            Card(suit: .spades, rank: .two),
+        ]
+        let vm = makeVM(hand: twos + [
+            Card(suit: .diamonds, rank: .three),
+        ])
+        for card in twos {
+            vm.toggleStaged(cardId: card.id)
+        }
+
+        XCTAssertTrue(vm.saveStagedAsMeld())
+        XCTAssertEqual(vm.contractDraft.first?.map(\.id), twos.map(\.id))
+    }
+
     func testStagingClearsOnTurnAdvance() {
         let vm = makeVM()
         // Stage a card, then complete the purchase round and discard.

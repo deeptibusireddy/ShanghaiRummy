@@ -264,7 +264,8 @@ public enum CPUPlayer {
             return 10_000
         }
 
-        var availableNaturals = hand.filter { !$0.isWild }
+        var availableNaturals = hand.filter { !$0.isPrintedJoker }
+        var usedNaturalIds = Set<UUID>()
         let orderedComponents = contract.components.sorted { lhs, rhs in
             if lhs.cardCount != rhs.cardCount {
                 return lhs.cardCount > rhs.cardCount
@@ -278,6 +279,7 @@ public enum CPUPlayer {
                 from: availableNaturals
             )
             let ids = Set(cards.map(\.id))
+            usedNaturalIds.formUnion(ids)
             availableNaturals.removeAll { ids.contains($0.id) }
             matches.append(
                 PartialContractMatch(
@@ -290,7 +292,9 @@ public enum CPUPlayer {
             )
         }
 
-        var remainingWilds = hand.filter(\.isWild).count
+        var remainingWilds = hand.filter {
+            $0.isWild && !usedNaturalIds.contains($0.id)
+        }.count
         while remainingWilds > 0 {
             var bestIndex: Int?
             var bestGain = 0
@@ -339,8 +343,7 @@ public enum CPUPlayer {
             for rank in Rank.allCases {
                 let matching = Suit.allCases.compactMap { suit in
                     cards.first {
-                        !$0.isWild
-                            && $0.rank == rank
+                        $0.isNatural(inTripletOf: rank)
                             && $0.suit == suit
                     }
                 }
@@ -694,13 +697,16 @@ public enum CPUPlayer {
 
     /// All ways to build a triplet of `size` from `hand`. Prefers fewer wilds.
     static func candidateTriplets(of size: Int, from hand: [Card]) -> [[Card]] {
-        let wilds = hand.filter { $0.isWild }
         let maxWilds = RulesConfig.maxWilds(inMeldOfSize: size)
         var candidates: [[Card]] = []
         for rank in Rank.allCases {
+            let wilds = hand.filter {
+                $0.isWild && !$0.isNatural(inTripletOf: rank)
+            }
             let distinctSuitNaturals = Suit.allCases.compactMap { suit in
                 hand.first(where: {
-                    !$0.isWild && $0.rank == rank && $0.suit == suit
+                    $0.isNatural(inTripletOf: rank)
+                        && $0.suit == suit
                 })
             }
             for w in 0...min(maxWilds, wilds.count) {

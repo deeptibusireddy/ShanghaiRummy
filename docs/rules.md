@@ -95,6 +95,9 @@ final round in this variant.
   suits, even when a wild completes it. A wild card's printed suit does not
   consume a suit.
 - Initial contract: ♠7 ♥7 ♦7 (legal) • ♠7 ♠7 ♥7 (illegal).
+- A 2 may be used naturally as rank 2 in a triplet. Three 2s of different
+  suits are legal, as are two different-suit 2s plus a joker. A 2 used this
+  way counts as a natural card, not against the meld's wild limit.
 - Later extension: ♠7 ♥7 ♦7 + ♠7 (legal).
 
 ### Sequence (4+ cards, same suit, consecutive)
@@ -110,8 +113,10 @@ final round in this variant.
 - Example: ♣5 ♣6 ♣7 ♣8 (legal) • ♥Q ♥K ♥A (illegal, only 3 cards; a sequence needs 4).
 
 ### Wild card rules
-- Jokers and 2s are wild — they can substitute for any card. When initially
-  laying down a triplet, natural cards must still have different suits.
+- Jokers and 2s are wild — they can substitute for any card. The exception is
+  a rank-2 triplet, where printed 2s may instead be used as natural 2s. When
+  initially laying down a triplet, natural cards must still have different
+  suits.
 - **When initially going down, maximum wilds per meld =
   floor(meld size / 2).**
   - Triplet (3 cards) → max **1** wild

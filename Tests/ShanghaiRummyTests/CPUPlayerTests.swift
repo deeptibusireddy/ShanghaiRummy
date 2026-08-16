@@ -339,6 +339,29 @@ final class CPUPlayerTests: XCTestCase {
             case .failure(let e): XCTFail("Invalid triplet: \(e)")
             }
         }
+
+        func testFindsNaturalTripletOfTwosForContract() {
+            let hand = [
+                c(.clubs, .two),
+                c(.hearts, .two),
+                c(.spades, .two),
+                c(.clubs, .king),
+                c(.hearts, .king),
+                c(.spades, .king),
+            ]
+
+            let melds = CPUPlayer.findContractSatisfaction(
+                hand: hand,
+                contract: RoundSchedule.contract(forRound: 1)!
+            )
+
+            XCTAssertNotNil(melds)
+            XCTAssertTrue(
+                melds?.contains {
+                    $0.allSatisfy { $0.rank == .two }
+                } == true
+            )
+        }
     }
 
     func testTripletCandidatesNeverReuseANaturalSuit() {

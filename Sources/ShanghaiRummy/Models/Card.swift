@@ -59,6 +59,12 @@ public struct Card: Hashable, Codable, Sendable, Identifiable {
         return rank == .two && !isDead2
     }
 
+    /// A live 2 remains wild generally, but may be used naturally when the
+    /// triplet itself is rank 2.
+    func isNatural(inTripletOf targetRank: Rank) -> Bool {
+        rank == targetRank && (!isWild || targetRank == .two)
+    }
+
     /// Penalty points if left in hand at end of a round.
     /// - Joker: 20
     /// - Live wild 2: 20
@@ -80,4 +86,3 @@ public struct Card: Hashable, Codable, Sendable, Identifiable {
         return copy
     }
 }
-
