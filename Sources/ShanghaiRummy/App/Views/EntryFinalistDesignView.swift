@@ -455,7 +455,6 @@ struct BundAfterDarkHomeView: View {
             }
         }
         .ignoresSafeArea()
-        .accessibilityIdentifier("supper-club-home")
     }
 
     private var statusTitle: String {
