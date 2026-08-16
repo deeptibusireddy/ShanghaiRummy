@@ -5,6 +5,7 @@ import SwiftUI
 /// errors, and end-of-hand summaries.
 struct GameContainerView: View {
     @StateObject var vm: GameViewModel
+    @State private var isConfirmingExit = false
     let theme: VisualTheme
     let onExit: () -> Void
 
@@ -20,7 +21,9 @@ struct GameContainerView: View {
                 .background(Color(theme.background))
                 .accessibilityIdentifier("game-table")
 
-            Button(action: onExit) {
+            Button {
+                isConfirmingExit = true
+            } label: {
                 Image(systemName: "xmark")
                     .font(.system(size: 15, weight: .bold, design: .rounded))
                     .foregroundStyle(.white.opacity(0.9))
@@ -28,7 +31,7 @@ struct GameContainerView: View {
                     .background(.ultraThinMaterial, in: Circle())
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("Quit game")
+            .accessibilityLabel("Leave game")
             .accessibilityIdentifier("quit-game")
             .padding(.leading, 14)
             .padding(.top, 8)
@@ -54,6 +57,17 @@ struct GameContainerView: View {
             }
             .interactiveDismissDisabled(true)
         }
+        .alert(
+            "Leave Game?",
+            isPresented: $isConfirmingExit
+        ) {
+            Button("Keep Playing", role: .cancel) {}
+            Button("Leave Game", role: .destructive) {
+                onExit()
+            }
+        } message: {
+            Text(exitConfirmationMessage)
+        }
         .overlay {
             if let choice = vm.pendingInitialSequenceChoice {
                 initialSequenceChoiceOverlay(choice)
@@ -71,6 +85,14 @@ struct GameContainerView: View {
                 buyDecisionOverlay
             }
         }
+    }
+
+    private var exitConfirmationMessage: String {
+        if vm.isOnlineGame {
+            return "You will leave this online table and may not be able to "
+                + "rejoin."
+        }
+        return "Your current game will end and its progress will be lost."
     }
 
     private func contractReadyOverlay(

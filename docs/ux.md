@@ -76,6 +76,7 @@ percentages of the game surface so they scale to any device.
 | **Turn banner**   | Top strip with active player's name, cards in hand, level, and contract |
 | **Context action**| Bottom right only when a real action such as Save Meld or Go Down is available |
 | **Utility controls** | Top right: Score, Rank, and Suit |
+| **Leave control** | Top left; opens a confirmation instead of ending the game immediately |
 
 ## Seat layouts by player count
 
