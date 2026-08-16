@@ -623,10 +623,23 @@ final class GameScene: SKScene {
             let bounds = edgeMargin...(
                 seat.anchor.x - seatHalfWidth - seatPadding
             )
+            let rowScale = fittedScale(
+                for: melds,
+                desiredScale: desiredScale,
+                minimumScale: minimumScale,
+                meldGap: meldGap,
+                availableWidth: max(0, bounds.upperBound - bounds.lowerBound)
+            )
+            let rowY = Self.centerTopMeldRowY(
+                sceneSize: size,
+                seatY: seat.anchor.y,
+                horizontalEdgeInset: horizontalEdgeInset,
+                meldScale: rowScale
+            )
             drawFittedMeldRow(
                 melds,
                 bounds: bounds,
-                rowY: seat.anchor.y,
+                rowY: rowY,
                 alignment: .trailing,
                 desiredScale: desiredScale,
                 minimumScale: minimumScale,

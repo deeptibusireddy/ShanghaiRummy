@@ -192,6 +192,31 @@ final class GameSceneHitTestingTests: XCTestCase {
         )
     }
 
+    func testFourPlayerTopMeldLaneStaysBelowTurnBanner() {
+        let sceneSize = CGSize(width: 1024, height: 768)
+        let horizontalEdgeInset: CGFloat = 24
+        let seatY = sceneSize.height - 24 - 60
+        let scale = GameScene.expandedOpponentMeldScale
+        let rowY = GameScene.centerTopMeldRowY(
+            sceneSize: sceneSize,
+            seatY: seatY,
+            horizontalEdgeInset: horizontalEdgeInset,
+            meldScale: scale
+        )
+        let meldTop = rowY + CardNode.size.height * scale / 2
+        let bannerBottom = GameScene.turnBannerFrame(
+            sceneSize: sceneSize,
+            horizontalEdgeInset: horizontalEdgeInset
+        ).minY
+
+        XCTAssertLessThan(rowY, seatY)
+        XCTAssertEqual(
+            bannerBottom - meldTop,
+            GameScene.topMeldBannerGap,
+            accuracy: 0.001
+        )
+    }
+
     func testSixPlayerStatusFixtureSeparatesLocalAndActivePlayers() {
         let state = GameFactory.demoSixPlayerStatus()
 
