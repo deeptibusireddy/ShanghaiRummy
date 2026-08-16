@@ -591,7 +591,7 @@ final class GameScene: SKScene {
         let meldGap = melds.count > 2
             ? Self.crowdedOpponentMeldGap
             : Self.standardOpponentMeldGap
-        let desiredScale = Self.preferredOpponentMeldScale
+        let desiredScale = preferredOpponentMeldScaleForLayout
         let minimumScale = Self.minimumMeldScale
         let pileCorridorHalfWidth = Self.protectedPileCorridorHalfWidth
 
@@ -705,6 +705,35 @@ final class GameScene: SKScene {
             )
             return
         }
+
+        if usesExpandedIPadLayout {
+            let preferredRows = greedyMeldRows(
+                melds,
+                scale: desiredScale,
+                meldGap: meldGap,
+                availableWidth: availableWidth
+            )
+            if preferredRows.count <= 2 {
+                let rowYs = sideMeldRowYs(
+                    rowCount: preferredRows.count,
+                    seatY: seatY,
+                    cardScale: desiredScale
+                )
+                for (index, row) in preferredRows.enumerated() {
+                    drawFittedMeldRow(
+                        row,
+                        bounds: bounds,
+                        rowY: rowYs[index],
+                        alignment: alignment,
+                        desiredScale: desiredScale,
+                        minimumScale: minimumScale,
+                        meldGap: meldGap
+                    )
+                }
+                return
+            }
+        }
+
         if Self.meldRowWidth(
             cardCounts: melds.map(\.cards.count),
             scale: minimumScale,
@@ -759,7 +788,7 @@ final class GameScene: SKScene {
         guard rowCount > 1 else { return [seatY] }
 
         let cardHeight = CardNode.size.height * cardScale
-        let reservedOwnMeldScale = Self.preferredOwnMeldScale
+        let reservedOwnMeldScale = preferredOwnMeldScaleForLayout
         let ownMeldTop = ownMeldRowY(scale: reservedOwnMeldScale)
             + CardNode.size.height * reservedOwnMeldScale / 2
         let minimumCenter = ownMeldTop + cardHeight / 2 + 2
@@ -933,24 +962,40 @@ final class GameScene: SKScene {
         meldGap: CGFloat,
         availableWidth: CGFloat
     ) -> [[Meld]] {
-        var rows: [[Meld]] = []
-        for meld in melds {
+        Self.greedyMeldRowIndices(
+            cardCounts: melds.map(\.cards.count),
+            scale: scale,
+            meldGap: meldGap,
+            availableWidth: availableWidth
+        ).map { indices in
+            indices.map { melds[$0] }
+        }
+    }
+
+    static func greedyMeldRowIndices(
+        cardCounts: [Int],
+        scale: CGFloat,
+        meldGap: CGFloat,
+        availableWidth: CGFloat
+    ) -> [[Int]] {
+        var rows: [[Int]] = []
+        for index in cardCounts.indices {
             guard var row = rows.popLast() else {
-                rows.append([meld])
+                rows.append([index])
                 continue
             }
-            let candidate = row + [meld]
-            if Self.meldRowWidth(
-                cardCounts: candidate.map(\.cards.count),
+            let candidate = row + [index]
+            if meldRowWidth(
+                cardCounts: candidate.map { cardCounts[$0] },
                 scale: scale,
-                cardStepFraction: Self.meldCardStepFraction,
+                cardStepFraction: meldCardStepFraction,
                 meldGap: meldGap
             ) <= availableWidth {
-                row.append(meld)
+                row.append(index)
                 rows.append(row)
             } else {
                 rows.append(row)
-                rows.append([meld])
+                rows.append([index])
             }
         }
         return rows
@@ -1306,8 +1351,11 @@ final class GameScene: SKScene {
 
     private static let pileScale: CGFloat = 0.90
     private static let pileGap: CGFloat = 34
-    static let preferredOpponentMeldScale: CGFloat = 0.62
-    static let preferredOwnMeldScale: CGFloat = 0.68
+    static let expandedIPadLayoutMinimumHeight: CGFloat = 600
+    static let compactOpponentMeldScale: CGFloat = 0.62
+    static let expandedOpponentMeldScale: CGFloat = 0.78
+    static let compactOwnMeldScale: CGFloat = 0.68
+    static let expandedOwnMeldScale: CGFloat = 0.86
     static let minimumMeldScale: CGFloat = 0.34
     static let ownMeldGap: CGFloat = 14
     static let ownMeldHandGap: CGFloat = 12
@@ -1315,6 +1363,40 @@ final class GameScene: SKScene {
     static let crowdedOpponentMeldGap: CGFloat = 8
     static let meldCardStepFraction: CGFloat = 0.50
     static let minimumMeldStepFraction: CGFloat = 0.25
+    static let compactStagingTrayHeight: CGFloat = 56
+    static let expandedStagingTrayHeight: CGFloat = 112
+    static let stagingTrayHandGap: CGFloat = 8
+    static let compactStagedCardScale: CGFloat = 0.44
+    static let expandedStagedCardScale: CGFloat = 0.76
+
+    static func usesExpandedIPadLayout(sceneHeight: CGFloat) -> Bool {
+        sceneHeight >= expandedIPadLayoutMinimumHeight
+    }
+
+    static func preferredOpponentMeldScale(sceneHeight: CGFloat) -> CGFloat {
+        usesExpandedIPadLayout(sceneHeight: sceneHeight)
+            ? expandedOpponentMeldScale
+            : compactOpponentMeldScale
+    }
+
+    static func preferredOwnMeldScale(sceneHeight: CGFloat) -> CGFloat {
+        usesExpandedIPadLayout(sceneHeight: sceneHeight)
+            ? expandedOwnMeldScale
+            : compactOwnMeldScale
+    }
+
+    static func stagingTrayHeight(sceneHeight: CGFloat) -> CGFloat {
+        usesExpandedIPadLayout(sceneHeight: sceneHeight)
+            ? expandedStagingTrayHeight
+            : compactStagingTrayHeight
+    }
+
+    static func stagedCardScale(sceneHeight: CGFloat) -> CGFloat {
+        usesExpandedIPadLayout(sceneHeight: sceneHeight)
+            ? expandedStagedCardScale
+            : compactStagedCardScale
+    }
+
     private static var protectedPileCorridorHalfWidth: CGFloat {
         (
             CardNode.size.width * pileScale
@@ -1338,6 +1420,26 @@ final class GameScene: SKScene {
             - Self.protectedPileCorridorHalfWidth
         return sideMeldStart <= sideMeldEnd
             && size.height >= CardNode.size.height * 2.5
+    }
+
+    private var usesExpandedIPadLayout: Bool {
+        Self.usesExpandedIPadLayout(sceneHeight: size.height)
+    }
+
+    private var preferredOpponentMeldScaleForLayout: CGFloat {
+        Self.preferredOpponentMeldScale(sceneHeight: size.height)
+    }
+
+    private var preferredOwnMeldScaleForLayout: CGFloat {
+        Self.preferredOwnMeldScale(sceneHeight: size.height)
+    }
+
+    private var currentStagingTrayHeight: CGFloat {
+        Self.stagingTrayHeight(sceneHeight: size.height)
+    }
+
+    private var stagedCardScaleForLayout: CGFloat {
+        Self.stagedCardScale(sceneHeight: size.height)
     }
 
     private var handCardScale: CGFloat {
@@ -1416,15 +1518,34 @@ final class GameScene: SKScene {
     }
 
     private var stagingTrayY: CGFloat {
-        handRowY + scaledHandCardSize.height / 2 + 36
+        Self.stagingTrayY(
+            handRowY: handRowY,
+            handCardHeight: scaledHandCardSize.height,
+            sceneHeight: size.height
+        )
+    }
+
+    static func stagingTrayY(
+        handRowY: CGFloat,
+        handCardHeight: CGFloat,
+        sceneHeight: CGFloat
+    ) -> CGFloat {
+        handRowY
+            + handCardHeight / 2
+            + stagingTrayHandGap
+            + stagingTrayHeight(sceneHeight: sceneHeight) / 2
     }
 
     private var stagingTrayRect: CGRect {
         let left = horizontalEdgeInset + currentPlayerHUDWidth + 12
         let right = size.width - horizontalEdgeInset - 176
         let width = max(210, right - left)
-        return CGRect(x: left, y: stagingTrayY - 28,
-                      width: width, height: 56)
+        return CGRect(
+            x: left,
+            y: stagingTrayY - currentStagingTrayHeight / 2,
+            width: width,
+            height: currentStagingTrayHeight
+        )
     }
 
     private var tableauLaneY: CGFloat { stagingTrayY }
@@ -1449,7 +1570,7 @@ final class GameScene: SKScene {
     }
 
     private func ownMeldScale(for melds: [Meld], meldGap: CGFloat) -> CGFloat {
-        let desiredScale = Self.preferredOwnMeldScale
+        let desiredScale = preferredOwnMeldScaleForLayout
         let widthAtScaleOne = melds.reduce(CGFloat.zero) { total, meld in
             total + CardNode.size.width * (
                 1 + CGFloat(max(0, meld.cards.count - 1))
@@ -1528,7 +1649,7 @@ final class GameScene: SKScene {
 
     private func addStagedCards(in rect: CGRect) {
         let cards = vm.stagedCards
-        let scale: CGFloat = 0.44
+        let scale = stagedCardScaleForLayout
         let cardW = CardNode.size.width * scale
         let available = rect.width - 28
         let step: CGFloat

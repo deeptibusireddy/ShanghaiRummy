@@ -365,13 +365,34 @@ final class GameSceneHitTestingTests: XCTestCase {
         )
     }
 
-    func testIPadMeldCardsGrowWithoutChangingLayoutSpacing() {
-        XCTAssertEqual(GameScene.preferredOpponentMeldScale, 0.62)
-        XCTAssertEqual(GameScene.preferredOwnMeldScale, 0.68)
+    func testExpandedIPadMeldWorkspacePreservesCompactFallbacks() {
+        XCTAssertFalse(GameScene.usesExpandedIPadLayout(sceneHeight: 402))
+        XCTAssertTrue(GameScene.usesExpandedIPadLayout(sceneHeight: 1024))
+        XCTAssertEqual(
+            GameScene.preferredOpponentMeldScale(sceneHeight: 402),
+            0.62
+        )
+        XCTAssertEqual(
+            GameScene.preferredOpponentMeldScale(sceneHeight: 1024),
+            0.78
+        )
+        XCTAssertEqual(
+            GameScene.preferredOwnMeldScale(sceneHeight: 402),
+            0.68
+        )
+        XCTAssertEqual(
+            GameScene.preferredOwnMeldScale(sceneHeight: 1024),
+            0.86
+        )
         XCTAssertEqual(GameScene.minimumMeldScale, 0.34)
+        XCTAssertEqual(GameScene.stagingTrayHeight(sceneHeight: 402), 56)
+        XCTAssertEqual(GameScene.stagingTrayHeight(sceneHeight: 1024), 112)
+        XCTAssertEqual(GameScene.stagedCardScale(sceneHeight: 402), 0.44)
+        XCTAssertEqual(GameScene.stagedCardScale(sceneHeight: 1024), 0.76)
 
         XCTAssertEqual(GameScene.ownMeldGap, 14)
         XCTAssertEqual(GameScene.ownMeldHandGap, 12)
+        XCTAssertEqual(GameScene.stagingTrayHandGap, 8)
         XCTAssertEqual(GameScene.standardOpponentMeldGap, 12)
         XCTAssertEqual(GameScene.crowdedOpponentMeldGap, 8)
         XCTAssertEqual(GameScene.meldCardStepFraction, 0.50)
@@ -382,15 +403,38 @@ final class GameSceneHitTestingTests: XCTestCase {
         let meldRowY = GameScene.ownMeldRowY(
             handRowY: handRowY,
             handCardHeight: handCardHeight,
-            meldScale: GameScene.preferredOwnMeldScale
+            meldScale: GameScene.expandedOwnMeldScale
         )
         let handTop = handRowY + handCardHeight / 2
         let meldBottom = meldRowY
-            - CardNode.size.height * GameScene.preferredOwnMeldScale / 2
+            - CardNode.size.height * GameScene.expandedOwnMeldScale / 2
         XCTAssertEqual(
             meldBottom - handTop,
             GameScene.ownMeldHandGap,
             accuracy: 0.001
+        )
+
+        let trayY = GameScene.stagingTrayY(
+            handRowY: handRowY,
+            handCardHeight: handCardHeight,
+            sceneHeight: 1024
+        )
+        let trayBottom = trayY
+            - GameScene.stagingTrayHeight(sceneHeight: 1024) / 2
+        XCTAssertEqual(
+            trayBottom - handTop,
+            GameScene.stagingTrayHandGap,
+            accuracy: 0.001
+        )
+
+        XCTAssertEqual(
+            GameScene.greedyMeldRowIndices(
+                cardCounts: [5, 5, 5],
+                scale: GameScene.expandedOpponentMeldScale,
+                meldGap: GameScene.crowdedOpponentMeldGap,
+                availableWidth: 442
+            ),
+            [[0, 1], [2]]
         )
     }
 

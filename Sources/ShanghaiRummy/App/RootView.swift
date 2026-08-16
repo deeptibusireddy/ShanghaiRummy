@@ -91,11 +91,32 @@ struct RootView: View {
                         activeTheme = themeFromArgs()
                         var state = GameFactory.demoMidGame()
                         var localPlayerId: UUID?
-                        if CommandLine.arguments.contains("--demo-stage-triplet") {
+                        let stagesTriplet = CommandLine.arguments.contains(
+                            "--demo-stage-triplet"
+                        )
+                        let stagesLongSequence = CommandLine.arguments.contains(
+                            "--demo-stage-long-sequence"
+                        )
+                        if stagesTriplet || stagesLongSequence {
                             let playerId = state.currentPlayerId
                             state.players[state.currentTurnIndex].hasGoneDownThisRound = false
                             state.players[state.currentTurnIndex].laidDownThisTurn = false
                             state.melds.removeAll { $0.ownerId == playerId }
+                        }
+                        if stagesLongSequence {
+                            state.players[state.currentTurnIndex].hand = [
+                                Card(suit: .hearts, rank: .three),
+                                Card(suit: .hearts, rank: .four),
+                                Card(suit: .hearts, rank: .five),
+                                Card(suit: .hearts, rank: .six),
+                                Card(suit: .hearts, rank: .seven),
+                                Card(suit: .hearts, rank: .eight),
+                                Card(suit: .hearts, rank: .nine),
+                                Card(suit: .spades, rank: .king),
+                                Card(suit: .diamonds, rank: .queen),
+                                Card(suit: .clubs, rank: .ace),
+                                Card.joker(),
+                            ]
                         }
                         if CommandLine.arguments.contains("--demo-buy-decision") {
                             state.phase = .awaitingDraw
@@ -112,7 +133,9 @@ struct RootView: View {
                             state: state,
                             localPlayerId: localPlayerId
                         )
-                        if CommandLine.arguments.contains("--demo-stage-triplet") {
+                        if stagesLongSequence {
+                            stageFirstHeartRun(in: vm)
+                        } else if stagesTriplet {
                             stageFirstTriplet(in: vm)
                         }
                         activeGame = vm
@@ -156,6 +179,14 @@ struct RootView: View {
         for (_, cards) in byRank where cards.count >= 3 {
             for card in cards.prefix(3) { vm.toggleStaged(cardId: card.id) }
             return
+        }
+    }
+
+    private func stageFirstHeartRun(in vm: GameViewModel) {
+        for card in vm.currentPlayer.hand
+            .filter({ $0.suit == .hearts })
+            .prefix(7) {
+            vm.toggleStaged(cardId: card.id)
         }
     }
 
