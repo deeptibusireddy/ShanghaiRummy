@@ -24,7 +24,7 @@ level 10 wins.**
 - Patience — a full game takes several hands (typically 10–15)
 
 The app deals the cards, tracks scoring, enforces rules, and lets everyone
-play from their own iPhone via Game Center.
+play from their own iPhone or iPad via Game Center.
 
 Use **Create Table** to build any 2–6 player mix. You can play immediately with
 1–5 bots and no human invitation. For a mixed table, mark each added seat as
