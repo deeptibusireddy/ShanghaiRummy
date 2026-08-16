@@ -259,7 +259,44 @@ final class ScreenshotUITests: XCTestCase {
         snapshot(named: "10-native-ipad-mid-game")
     }
 
+    func testCaptureMidnightDecoHome() throws {
+        launchEntryFinalist(design: "midnight-deco", screen: "home")
+        snapshot(named: "11-midnight-deco-home-final")
+    }
+
+    func testCaptureMidnightDecoInvite() throws {
+        launchEntryFinalist(design: "midnight-deco", screen: "invite")
+        snapshot(named: "12-midnight-deco-invite-final")
+    }
+
+    func testCaptureBundAfterDarkHome() throws {
+        launchEntryFinalist(design: "bund-after-dark", screen: "home")
+        snapshot(named: "13-bund-after-dark-home-final")
+    }
+
+    func testCaptureBundAfterDarkInvite() throws {
+        launchEntryFinalist(design: "bund-after-dark", screen: "invite")
+        snapshot(named: "14-bund-after-dark-invite-final")
+    }
+
     // MARK: - Helpers
+
+    private func launchEntryFinalist(design: String, screen: String) {
+        app.launchArguments += [
+            "--demo-entry-finalist",
+            "--entry-finalist-design",
+            design,
+            "--entry-finalist-screen",
+            screen,
+        ]
+        app.launch()
+
+        let preview = app.descendants(matching: .any)[
+            "entry-finalist-\(design)-\(screen)"
+        ]
+        XCTAssertTrue(preview.waitForExistence(timeout: 5))
+        Thread.sleep(forTimeInterval: 0.7)
+    }
 
     private func snapshot(named name: String) {
         let screenshot = XCUIScreen.main.screenshot()

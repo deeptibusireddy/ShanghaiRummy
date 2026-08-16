@@ -6,9 +6,15 @@ struct RootView: View {
     @State private var activeTheme: VisualTheme = .gameNight
     @State private var showingFamilyTableSetup = false
     @State private var pendingFamilyTable: FamilyTableConfiguration?
+    private let entryFinalistPreview = EntryFinalistLaunchConfiguration.current()
 
     var body: some View {
-        if let game = gameCenter.onlineGame {
+        if let preview = entryFinalistPreview {
+            EntryFinalistPreviewHost(
+                design: preview.design,
+                screen: preview.screen
+            )
+        } else if let game = gameCenter.onlineGame {
             GameContainerView(vm: game, theme: activeTheme) {
                 gameCenter.leaveOnlineMatch()
             }
