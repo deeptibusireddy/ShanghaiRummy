@@ -31,6 +31,10 @@ file first, then the scene.
   treatment so roster controls have the full iPad canvas.
 - **Starting state:** Only the local host is seated initially. The host adds
   Human and Bot seats explicitly, up to six total players.
+- **Stable roster controls:** Seat cards populate a reserved two-column area.
+  Add Human and Add Bot stay anchored in the lower-center position while the
+  seated count updates, and remain visible but disabled when all six seats
+  are filled.
 - **Starting play:** Bot-only tables begin immediately. Tables with Human
   seats authenticate with Game Center when needed, then request exactly the
   selected number of remote players.
