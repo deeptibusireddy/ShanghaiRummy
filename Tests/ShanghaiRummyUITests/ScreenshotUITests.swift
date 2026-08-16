@@ -105,7 +105,7 @@ final class ScreenshotUITests: XCTestCase {
 
         let quit = app.buttons["quit-game"]
         XCTAssertTrue(quit.waitForExistence(timeout: 5))
-        quit.tap()
+        tapCenter(of: quit)
 
         let alert = app.alerts["Leave Game?"]
         XCTAssertTrue(alert.waitForExistence(timeout: 2))
@@ -116,7 +116,7 @@ final class ScreenshotUITests: XCTestCase {
         alert.buttons["Keep Playing"].tap()
         XCTAssertTrue(quit.waitForExistence(timeout: 2))
 
-        quit.tap()
+        tapCenter(of: quit)
         XCTAssertTrue(alert.waitForExistence(timeout: 2))
         alert.buttons["Leave Game"].tap()
         XCTAssertTrue(createTable.waitForExistence(timeout: 5))
@@ -262,5 +262,16 @@ final class ScreenshotUITests: XCTestCase {
         attachment.name = name
         attachment.lifetime = .keepAlways
         add(attachment)
+    }
+
+    private func tapCenter(of element: XCUIElement) {
+        let appFrame = app.frame
+        let elementFrame = element.frame
+        app.coordinate(withNormalizedOffset: .zero)
+            .withOffset(CGVector(
+                dx: elementFrame.midX - appFrame.minX,
+                dy: elementFrame.midY - appFrame.minY
+            ))
+            .tap()
     }
 }
