@@ -35,6 +35,7 @@ final class ScreenshotUITests: XCTestCase {
             createTable.waitForExistence(timeout: 5),
             "Home menu should show the unified Create Table button"
         )
+        XCTAssertTrue(app.staticTexts["THE SUPPER CLUB IS OPEN"].exists)
         XCTAssertTrue(app.buttons["sign-in-game-center"].exists)
         XCTAssertFalse(app.buttons["Hot-Seat (Pass & Play)"].exists)
         XCTAssertFalse(app.buttons["Quick Pair (2-Player Beta Test)"].exists)

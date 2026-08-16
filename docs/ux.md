@@ -24,9 +24,10 @@ file first, then the scene.
 
 ## Entry and table setup
 
-- **Home:** The Bund After Dark treatment is the production entry screen. It
-  uses the waterfront skyline, warm city lights, and the full Shanghai Rummy
-  Nights wordmark.
+- **Home:** The Supper Club treatment is the production entry screen. It
+  extends Bund After Dark with a layered waterfront skyline, slow river-light
+  shimmer, restrained city-light motion, and the full Shanghai Rummy Nights
+  wordmark.
 - **Create Table:** The setup flow opens full-screen in the Midnight Deco
   treatment so roster controls have the full iPad canvas.
 - **Starting state:** Only the local host is seated initially. The host adds

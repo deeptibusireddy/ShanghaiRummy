@@ -1,3 +1,4 @@
+import Foundation
 import SwiftUI
 
 enum EntryFinalistDesign: String {
@@ -369,7 +370,7 @@ struct BundAfterDarkHomeView: View {
 
                 HStack {
                     VStack(alignment: .leading, spacing: 0) {
-                        Text("MEET AT THE TABLE")
+                        Text("THE SUPPER CLUB IS OPEN")
                             .font(.system(size: 15, weight: .black))
                             .tracking(4.2)
                             .foregroundStyle(palette.gold)
@@ -399,7 +400,7 @@ struct BundAfterDarkHomeView: View {
                             .frame(width: 124, height: 4)
                             .padding(.vertical, 22)
 
-                        Text("A familiar game, under city lights.")
+                        Text("Cards, company, and one more hand.")
                             .font(.title3.weight(.medium))
                             .foregroundStyle(palette.muted)
 
@@ -454,6 +455,7 @@ struct BundAfterDarkHomeView: View {
             }
         }
         .ignoresSafeArea()
+        .accessibilityIdentifier("supper-club-home")
     }
 
     private var statusTitle: String {
@@ -1163,37 +1165,102 @@ private struct MidnightDecoBackdrop: View {
 }
 
 private struct BundAfterDarkBackdrop: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let palette: EntryFinalistPalette
 
     var body: some View {
-        GeometryReader { proxy in
-            ZStack(alignment: .bottom) {
-                LinearGradient(
-                    colors: [
-                        palette.background,
-                        palette.backgroundSecondary,
-                        palette.background,
-                    ],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
+        TimelineView(
+            .animation(minimumInterval: 1.0 / 24.0, paused: reduceMotion)
+        ) { timeline in
+            GeometryReader { proxy in
+                let phase = timeline.date.timeIntervalSinceReferenceDate
+                let nearDrift = CGFloat(sin(phase / 17)) * 3
+                let farDrift = CGFloat(sin(phase / 23)) * -5
+                let glowPulse = 1 + CGFloat(sin(phase / 4.5)) * 0.025
 
-                Circle()
-                    .fill(palette.accent.opacity(0.12))
-                    .frame(width: 240, height: 240)
-                    .blur(radius: 10)
-                    .offset(
-                        x: proxy.size.width * 0.30,
-                        y: -proxy.size.height * 0.26
+                ZStack(alignment: .bottom) {
+                    LinearGradient(
+                        colors: [
+                            palette.background,
+                            palette.backgroundSecondary,
+                            palette.background,
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
                     )
 
-                BundSkyline(palette: palette)
-                    .frame(height: proxy.size.height * 0.42)
+                    Ellipse()
+                        .fill(palette.accent.opacity(0.10))
+                        .frame(
+                            width: proxy.size.width * 0.46,
+                            height: proxy.size.height * 0.34
+                        )
+                        .blur(radius: 26)
+                        .scaleEffect(glowPulse)
+                        .offset(
+                            x: proxy.size.width * 0.29,
+                            y: -proxy.size.height * 0.24
+                        )
 
-                BundRiver(palette: palette)
-                    .frame(height: proxy.size.height * 0.18)
+                    BundNightLights(
+                        palette: palette,
+                        phase: phase
+                    )
+                    .frame(height: proxy.size.height * 0.58)
+                    .opacity(reduceMotion ? 0.72 : 1)
+
+                    BundSkyline(palette: palette)
+                        .frame(height: proxy.size.height * 0.38)
+                        .scaleEffect(
+                            x: 1.08,
+                            y: 0.76,
+                            anchor: .bottom
+                        )
+                        .offset(x: farDrift, y: -18)
+                        .opacity(0.22)
+
+                    BundSkyline(palette: palette)
+                        .frame(height: proxy.size.height * 0.42)
+                        .offset(x: nearDrift)
+
+                    BundRiver(palette: palette, phase: phase)
+                        .frame(height: proxy.size.height * 0.18)
+                }
             }
         }
+    }
+}
+
+private struct BundNightLights: View {
+    let palette: EntryFinalistPalette
+    let phase: TimeInterval
+
+    var body: some View {
+        Canvas { context, size in
+            for index in 0..<18 {
+                let column = CGFloat((index * 37) % 101) / 100
+                let row = CGFloat((index * 53) % 83) / 100
+                let twinkle = (
+                    sin(phase * 0.55 + Double(index) * 0.83) + 1
+                ) / 2
+                let diameter = CGFloat(1.5 + twinkle * 1.8)
+                let x = size.width * column
+                let y = size.height * (0.10 + row * 0.72)
+                let rect = CGRect(
+                    x: x - diameter / 2,
+                    y: y - diameter / 2,
+                    width: diameter,
+                    height: diameter
+                )
+                context.fill(
+                    Path(ellipseIn: rect),
+                    with: .color(
+                        palette.gold.opacity(0.10 + twinkle * 0.34)
+                    )
+                )
+            }
+        }
+        .allowsHitTesting(false)
     }
 }
 
@@ -1281,6 +1348,7 @@ private struct BundBuilding: View {
 
 private struct BundRiver: View {
     let palette: EntryFinalistPalette
+    let phase: TimeInterval
 
     var body: some View {
         Canvas { context, size in
@@ -1300,34 +1368,40 @@ private struct BundRiver: View {
 
             for index in 0..<11 {
                 let y = CGFloat(index) * 17 + 8
+                let shimmer = (
+                    sin(phase * 0.42 + Double(index) * 0.72) + 1
+                ) / 2
+                let drift = CGFloat(
+                    sin(phase * 0.18 + Double(index) * 0.51)
+                ) * 14
                 var path = Path()
-                path.move(to: CGPoint(x: -50, y: y))
+                path.move(to: CGPoint(x: -50 + drift, y: y))
                 path.addLine(to: CGPoint(
-                    x: size.width * 0.30,
+                    x: size.width * 0.30 + drift,
                     y: y - 8
                 ))
                 path.move(to: CGPoint(
-                    x: size.width * 0.38,
+                    x: size.width * 0.38 - drift * 0.35,
                     y: y + 2
                 ))
                 path.addLine(to: CGPoint(
-                    x: size.width * 0.66,
+                    x: size.width * 0.66 - drift * 0.35,
                     y: y - 10
                 ))
                 path.move(to: CGPoint(
-                    x: size.width * 0.74,
+                    x: size.width * 0.74 + drift * 0.55,
                     y: y - 3
                 ))
                 path.addLine(to: CGPoint(
-                    x: size.width + 50,
+                    x: size.width + 50 + drift * 0.55,
                     y: y - 12
                 ))
                 context.stroke(
                     path,
                     with: .color(
                         index.isMultiple(of: 2)
-                            ? palette.accent.opacity(0.24)
-                            : palette.gold.opacity(0.19)
+                            ? palette.accent.opacity(0.15 + shimmer * 0.15)
+                            : palette.gold.opacity(0.12 + shimmer * 0.13)
                     ),
                     lineWidth: 2
                 )
