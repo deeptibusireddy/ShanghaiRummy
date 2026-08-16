@@ -96,6 +96,21 @@ final class ScreenshotUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Bot 1"].waitForExistence(timeout: 2))
         XCTAssertTrue(app.buttons["Remove Bot 1"].exists)
         XCTAssertTrue(start.isEnabled)
+        for botNumber in 2...5 {
+            addBot.tap()
+            XCTAssertTrue(
+                app.staticTexts["Bot \(botNumber)"]
+                    .waitForExistence(timeout: 2)
+            )
+        }
+        XCTAssertTrue(app.staticTexts["6 of 6 seated"].exists)
+        XCTAssertFalse(addHuman.isEnabled)
+        XCTAssertFalse(addBot.isEnabled)
+        XCTAssertEqual(addHuman.frame.midX, initialHumanFrame.midX, accuracy: 1)
+        XCTAssertEqual(addHuman.frame.midY, initialHumanFrame.midY, accuracy: 1)
+        XCTAssertEqual(addBot.frame.midX, initialBotFrame.midX, accuracy: 1)
+        XCTAssertEqual(addBot.frame.midY, initialBotFrame.midY, accuracy: 1)
+        snapshot(named: "02-family-table-full")
         start.tap()
         XCTAssertTrue(app.buttons["quit-game"].waitForExistence(timeout: 5))
     }
