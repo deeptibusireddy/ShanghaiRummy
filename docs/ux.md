@@ -138,16 +138,18 @@ left and right wings beside that seat. This is the constraint that ruled out
 portrait mode.
 
 In compact iPad windows, the hand cards render slightly smaller than their full
-logical size to reserve a dedicated tableau lane. Meld cards use larger, more
-exposed faces and stronger container outlines so ranks and suits remain
-readable. Crowded side-seat melds wrap into two rows with a 34% card-scale
-floor; only card overlap tightens on especially narrow windows, while at least
-25% of each card remains exposed. Five/six-player and compact-width layouts use
-smaller, avatar-first opponent pills to reserve that space. All opponent
-layouts preserve a protected corridor around the shared piles. The discard
-drop zone follows the visible pile instead of extending into the tableau; if
-padded targets ever touch, the nearest visual target wins and an exact tie
-favors the meld.
+logical size to reserve a dedicated tableau lane. Laid-down meld cards prefer
+62% scale for opponents and 68% for the local player so ranks and suits remain
+readable on the open iPad canvas. Horizontal gaps, overlap fractions, seat
+anchors, and table zones do not change; local melds grow upward while retaining
+the same gap above the hand. Crowded side-seat melds wrap into two rows with a
+34% card-scale floor; only card overlap tightens on especially narrow windows,
+while at least 25% of each card remains exposed. Five/six-player and
+compact-width layouts use smaller, avatar-first opponent pills to reserve that
+space. All opponent layouts preserve a protected corridor around the shared
+piles. The discard drop zone follows the visible pile instead of extending
+into the tableau; if padded targets ever touch, the nearest visual target wins
+and an exact tie favors the meld.
 
 ### Player status hierarchy
 
