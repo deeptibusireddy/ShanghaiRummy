@@ -1,6 +1,6 @@
 # Shanghai Rummy — UX & Interaction Design
 
-> Owner: @deeptibusireddy · Updated: 2026-08-10 · Style: contemporary family game night
+> Owner: @deeptibusireddy · Updated: 2026-08-16 · Style: contemporary family game night
 
 This doc is the source of truth for how the game *feels*. The SpriteKit scene
 in M2b implements what's specified here. Any UX change should update this
@@ -19,21 +19,20 @@ file first, then the scene.
 4. **Keep the table live.** Core play never opens a blocking modal. Contract
    cards move through an inline private tray while the public table remains
    visible.
-5. **Landscape only on iPhone and iPad.** Portrait cramped six players onto
-   too little horizontal space; landscape gives every seat room.
+5. **Landscape only on iPad.** Portrait cramps six players into too little
+   horizontal space; landscape gives every seat room.
 
 ## Screen orientation & size
 
 - **Orientation:** Landscape only (locked).
-- **Aspect ratio targets:** Adaptive from the iPhone 15 family
-  (852×393 pt in landscape) through full-size iPad layouts
-  (1194×834 pt and larger).
-- **Device support:** The universal target runs natively on iPhone and iPad.
-  iPad uses its full canvas instead of iPhone compatibility-mode zoom.
-- **Safe areas:** The full-bleed table may extend behind the camera/Dynamic
-  Island and home indicator, but seats, player names, the local HUD, hand, and
-  controls use the device's live landscape safe-area insets. Edge seating is
-  clamped symmetrically so either landscape orientation remains readable.
+- **Aspect ratio targets:** Adaptive from iPad mini through the 13-inch iPad
+  Pro, including compact iPadOS windows.
+- **Device support:** The target is iPad-only and always uses the native iPad
+  canvas rather than iPhone compatibility mode.
+- **Safe areas:** The full-bleed table may extend beneath system areas, but
+  seats, player names, the local HUD, hand, and controls use the device's live
+  landscape safe-area insets. Edge seating is clamped symmetrically so either
+  landscape orientation remains readable.
 
 ## Table zones
 
@@ -138,16 +137,17 @@ pile-free outer bands. A sixth player's center-top melds split into readable
 left and right wings beside that seat. This is the constraint that ruled out
 portrait mode.
 
-On iPhone, the hand cards render slightly smaller than their full logical size
-to reserve a dedicated tableau lane. Meld cards use larger, more exposed faces
-and stronger container outlines so ranks and suits remain readable. Crowded
-side-seat melds wrap into two rows with a 34% card-scale floor; only card
-overlap tightens on especially narrow screens, while at least 25% of each card
-remains exposed. Five/six-player and compact-width layouts use smaller,
-avatar-first opponent pills to reserve that space. All opponent layouts preserve
-a protected corridor around the shared piles. The discard drop zone follows the
-visible pile instead of extending into the tableau; if padded targets ever
-touch, the nearest visual target wins and an exact tie favors the meld.
+In compact iPad windows, the hand cards render slightly smaller than their full
+logical size to reserve a dedicated tableau lane. Meld cards use larger, more
+exposed faces and stronger container outlines so ranks and suits remain
+readable. Crowded side-seat melds wrap into two rows with a 34% card-scale
+floor; only card overlap tightens on especially narrow windows, while at least
+25% of each card remains exposed. Five/six-player and compact-width layouts use
+smaller, avatar-first opponent pills to reserve that space. All opponent
+layouts preserve a protected corridor around the shared piles. The discard
+drop zone follows the visible pile instead of extending into the tableau; if
+padded targets ever touch, the nearest visual target wins and an exact tie
+favors the meld.
 
 ### Player status hierarchy
 

@@ -1,6 +1,6 @@
 # 🍎 Xcode Cloud Bootstrap — Instructions for a Friend with a Mac
 
-**What we're asking you to do:** Spend ~10 minutes clicking through a wizard in Xcode so my iOS game can auto-deliver to my iPhone via TestFlight. After this one-time click-through, I never need a Mac again.
+**What we're asking you to do:** Spend ~10 minutes clicking through a wizard in Xcode so my iPad game can auto-deliver to my iPad via TestFlight. After this one-time click-through, I never need a Mac again.
 
 **Your risk:** essentially none.
 - **The GitHub repo is public** — you never log into GitHub, no passwords needed
@@ -114,7 +114,7 @@ Xcode opens with the project. **No login prompts — the repo is public.**
 
 9. Xcode will offer to **Start Build**. Click **Start Build**.
 
-The build now runs in Apple's cloud (nothing runs on your Mac). You can close Xcode — the build continues remotely and I'll get notified on my phone when it lands in TestFlight.
+The build now runs in Apple's cloud (nothing runs on your Mac). You can close Xcode — the build continues remotely and I'll get notified on my iPad when it lands in TestFlight.
 
 ---
 

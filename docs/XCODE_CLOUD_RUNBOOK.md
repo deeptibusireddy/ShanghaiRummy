@@ -11,7 +11,7 @@
 >
 > This document describes what happens AFTER that bootstrap is done.
 
-**Goal:** Ship Shanghai Rummy Nights to TestFlight on your iPhone using **only a web browser** on Windows. Apple builds the app in their cloud on every push to `main`.
+**Goal:** Ship Shanghai Rummy Nights to TestFlight on your iPad using **only a web browser** on Windows. Apple builds the app in their cloud on every push to `main`.
 
 **Cost:** $0 (included with your $99/yr developer account — 25 build-hours/mo free).
 
@@ -21,7 +21,7 @@
 - [x] Apple Developer Program enrollment ✅
 - [x] App ID registered (`com.deeptibusireddy.ShanghaiRummy` + Game Center) ✅
 - [x] App Store Connect record created ("Shanghai Rummy Nights") ✅
-- [x] TestFlight app installed on your iPhone ✅
+- [x] TestFlight app installed on your iPad ✅
 - [x] `ci_scripts/ci_post_clone.sh` present + executable in the repo ✅
 - [x] App icon, privacy manifest, encryption declaration ✅
 
@@ -103,9 +103,9 @@ When the build lands in TestFlight, it may show "Missing Compliance."
 We declare `ITSAppUsesNonExemptEncryption=false` in both `project.yml` and
 `Info.plist`, so subsequent generated builds shouldn't need this.
 
-### Step 6 — Install on your iPhone
+### Step 6 — Install on your iPad
 
-1. Open the **TestFlight** app on your phone.
+1. Open the **TestFlight** app on your iPad.
 2. You should see **Shanghai Rummy Nights** listed automatically (because you're an internal tester on your own account).
 3. Tap **Install** → wait ~15 sec → tap **Open**.
 4. Play! 🎉
@@ -117,7 +117,7 @@ We declare `ITSAppUsesNonExemptEncryption=false` in both `project.yml` and
 Every `git push` to `main` from Windows automatically:
 1. Kicks off Xcode Cloud in the background (~10 min).
 2. Uploads the new build to TestFlight.
-3. Notifies you on your phone in TestFlight when it's ready to install.
+3. Notifies you on your iPad in TestFlight when it's ready to install.
 
 You literally never touch a Mac.
 

@@ -234,10 +234,12 @@ final class ScreenshotUITests: XCTestCase {
         snapshot(named: "09-game-over-final")
     }
 
-    func testCaptureNativeIPadLayout() throws {
-        guard UIDevice.current.userInterfaceIdiom == .pad else {
-            throw XCTSkip("Native iPad layout only runs on an iPad simulator")
-        }
+    func testCaptureIPadLayout() throws {
+        XCTAssertEqual(
+            UIDevice.current.userInterfaceIdiom,
+            .pad,
+            "The iPad-only target must run on an iPad simulator"
+        )
 
         app.launchArguments += ["--demo-mid-game"]
         app.launch()

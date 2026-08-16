@@ -9,16 +9,12 @@ on:
 
 jobs:
   build-and-test:
-    name: Build & Test (${{ matrix.device }})
+    name: Build & Test (iPad)
     runs-on: macos-15
     timeout-minutes: 20
-    strategy:
-      fail-fast: false
-      matrix:
-        device: [iPhone, iPad]
     env:
-      DEVICE_FAMILY: ${{ matrix.device }}
-      RESULT_BUNDLE: TestResults-${{ matrix.device }}.xcresult
+      DEVICE_FAMILY: iPad
+      RESULT_BUNDLE: TestResults-iPad.xcresult
 
     steps:
       - name: Checkout
@@ -33,13 +29,26 @@ jobs:
       - name: Generate Xcode project
         run: xcodegen generate
 
+      - name: Verify iPad-only target
+        run: |
+          TARGET_DEVICE_FAMILY=$(xcodebuild \
+            -project ShanghaiRummy.xcodeproj \
+            -target ShanghaiRummy \
+            -configuration Debug \
+            -showBuildSettings \
+            | awk -F ' = ' '/TARGETED_DEVICE_FAMILY/ { print $2; exit }')
+          if [ "$TARGET_DEVICE_FAMILY" != "2" ]; then
+            echo "Expected TARGETED_DEVICE_FAMILY=2, got '$TARGET_DEVICE_FAMILY'"
+            exit 1
+          fi
+
       - name: Show available simulators
         run: xcrun simctl list devices available
 
       - name: Build & test
         run: |
           set -o pipefail
-          # Pick the first available device in this matrix family instead of
+          # Pick the first available device in the iPad family instead of
           # pinning to a runtime that may rotate off the hosted runner.
           DEVICE_ID=$(xcrun simctl list devices available -j \
             | python3 -c 'import json,os,sys; d=json.load(sys.stdin)["devices"]; \
@@ -74,7 +83,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: app-screenshots-${{ matrix.device }}
+          name: app-screenshots-iPad
           path: screenshots/
           if-no-files-found: warn
 
@@ -82,6 +91,6 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: test-results-${{ matrix.device }}
+          name: test-results-iPad
           path: ${{ env.RESULT_BUNDLE }}
           if-no-files-found: ignore
