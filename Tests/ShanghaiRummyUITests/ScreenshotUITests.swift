@@ -91,6 +91,37 @@ final class ScreenshotUITests: XCTestCase {
         XCTAssertTrue(app.buttons["quit-game"].waitForExistence(timeout: 5))
     }
 
+    func testQuitRequiresConfirmation() throws {
+        app.launch()
+
+        let createTable = app.buttons["create-table"]
+        XCTAssertTrue(createTable.waitForExistence(timeout: 5))
+        createTable.tap()
+        XCTAssertTrue(
+            app.navigationBars["Create Table"].waitForExistence(timeout: 5)
+        )
+        app.buttons["add-family-bot"].tap()
+        app.buttons["start-family-table"].tap()
+
+        let quit = app.buttons["quit-game"]
+        XCTAssertTrue(quit.waitForExistence(timeout: 5))
+        tapCenter(of: quit)
+
+        let alert = app.alerts["Leave Game?"]
+        XCTAssertTrue(alert.waitForExistence(timeout: 2))
+        XCTAssertTrue(alert.buttons["Keep Playing"].exists)
+        XCTAssertTrue(alert.buttons["Leave Game"].exists)
+        XCTAssertFalse(createTable.exists)
+
+        alert.buttons["Keep Playing"].tap()
+        XCTAssertTrue(quit.waitForExistence(timeout: 2))
+
+        tapCenter(of: quit)
+        XCTAssertTrue(alert.waitForExistence(timeout: 2))
+        alert.buttons["Leave Game"].tap()
+        XCTAssertTrue(createTable.waitForExistence(timeout: 5))
+    }
+
     func testCaptureMidGamePreview() throws {
         // Boots directly into a rigged 4-player mid-game state so we can
         // preview the table populated with melds from every player.
@@ -231,5 +262,16 @@ final class ScreenshotUITests: XCTestCase {
         attachment.name = name
         attachment.lifetime = .keepAlways
         add(attachment)
+    }
+
+    private func tapCenter(of element: XCUIElement) {
+        let appFrame = app.frame
+        let elementFrame = element.frame
+        app.coordinate(withNormalizedOffset: .zero)
+            .withOffset(CGVector(
+                dx: elementFrame.midX - appFrame.minX,
+                dy: elementFrame.midY - appFrame.minY
+            ))
+            .tap()
     }
 }
