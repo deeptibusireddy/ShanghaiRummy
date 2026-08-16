@@ -5,6 +5,8 @@ struct RootView: View {
     @State private var activeGame: GameViewModel?
     @State private var activeTheme: VisualTheme = .gameNight
     @State private var showingFamilyTableSetup = false
+    @State private var familyTableConfiguration =
+        FamilyTableConfiguration()
     @State private var pendingFamilyTable: FamilyTableConfiguration?
     private let entryFinalistPreview = EntryFinalistLaunchConfiguration.current()
 
@@ -26,17 +28,24 @@ struct RootView: View {
             }
         } else {
             homeMenu
-                .sheet(
+                .fullScreenCover(
                     isPresented: $showingFamilyTableSetup,
                     onDismiss: startPendingFamilyTable
                 ) {
-                    FamilyTableSetupView(
+                    MidnightDecoTableView(
+                        configuration: $familyTableConfiguration,
                         localPlayerName: gameCenter.displayName,
-                        isGameCenterAuthenticated: gameCenter.isAuthenticated
-                    ) { configuration in
-                        pendingFamilyTable = configuration
-                        showingFamilyTableSetup = false
-                    }
+                        isGameCenterAuthenticated:
+                            gameCenter.isAuthenticated,
+                        onBack: {
+                            pendingFamilyTable = nil
+                            showingFamilyTableSetup = false
+                        },
+                        onStart: { configuration in
+                            pendingFamilyTable = configuration
+                            showingFamilyTableSetup = false
+                        }
+                    )
                 }
                 .fullScreenCover(isPresented: $gameCenter.isPresentingMatchmaker) {
                     ZStack(alignment: .bottom) {
@@ -71,6 +80,8 @@ struct RootView: View {
                     if CommandLine.arguments.contains(
                         "--demo-family-table-setup"
                     ) {
+                        familyTableConfiguration =
+                            FamilyTableConfiguration()
                         showingFamilyTableSetup = true
                     } else if activeGame == nil,
                        CommandLine.arguments.contains("--demo-six-player-status") {
@@ -232,55 +243,21 @@ struct RootView: View {
     }
 
     private var homeMenu: some View {
-        NavigationStack {
-            VStack(spacing: 24) {
-                Text("Shanghai Rummy")
-                    .font(.largeTitle.bold())
-
-                if gameCenter.isAuthenticated {
-                    Text("Signed in as \(gameCenter.displayName)")
-                        .foregroundStyle(.secondary)
-                } else {
-                    Text(
-                        "Play with bots now, or sign in to Game Center "
-                            + "to invite people."
-                    )
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
-
-                    Button("Sign In to Game Center") {
-                        Task {
-                            await gameCenter.authenticate()
-                        }
-                    }
-                    .buttonStyle(.bordered)
-                    .accessibilityIdentifier("sign-in-game-center")
+        BundAfterDarkHomeView(
+            localPlayerName: gameCenter.displayName,
+            isGameCenterAuthenticated: gameCenter.isAuthenticated,
+            errorMessage: gameCenter.lastError,
+            onCreateTable: {
+                pendingFamilyTable = nil
+                familyTableConfiguration = FamilyTableConfiguration()
+                showingFamilyTableSetup = true
+            },
+            onAuthenticate: {
+                Task {
+                    await gameCenter.authenticate()
                 }
-
-                VStack(spacing: 8) {
-                    Button("Create Table") {
-                        showingFamilyTableSetup = true
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.large)
-                    .accessibilityIdentifier("create-table")
-
-                    Text("Choose people, bots, or both.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
-                }
-
-                if let error = gameCenter.lastError {
-                    Text(error)
-                        .font(.footnote)
-                        .foregroundStyle(.red)
-                        .multilineTextAlignment(.center)
-                }
-
             }
-            .padding()
-        }
+        )
     }
 
     private var onlineLobby: some View {

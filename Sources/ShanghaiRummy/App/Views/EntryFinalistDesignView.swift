@@ -69,16 +69,24 @@ struct EntryFinalistPreviewHost: View {
             case (.midnightDeco, .invite):
                 MidnightDecoTableView(
                     configuration: $configuration,
+                    localPlayerName: "Deepti",
+                    isGameCenterAuthenticated: true,
                     onBack: { screen = .home },
-                    onStart: {}
+                    onStart: { _ in }
                 )
             case (.bundAfterDark, .home):
-                BundAfterDarkHomeView {
-                    screen = .invite
-                }
+                BundAfterDarkHomeView(
+                    localPlayerName: "Deepti",
+                    isGameCenterAuthenticated: true,
+                    errorMessage: nil,
+                    onCreateTable: { screen = .invite },
+                    onAuthenticate: {}
+                )
             case (.bundAfterDark, .invite):
                 BundAfterDarkTableView(
                     configuration: $configuration,
+                    localPlayerName: "Deepti",
+                    isGameCenterAuthenticated: true,
                     onBack: { screen = .home },
                     onStart: {}
                 )
@@ -139,7 +147,8 @@ private struct MidnightDecoHomeView: View {
                 EntryTopStatus(
                     palette: palette,
                     trailingText: "Deepti",
-                    trailingSubtitle: "Game Center"
+                    trailingSubtitle: "Game Center",
+                    isConnected: true
                 )
 
                 HStack(spacing: 56) {
@@ -209,11 +218,27 @@ private struct MidnightDecoHomeView: View {
     }
 }
 
-private struct MidnightDecoTableView: View {
+struct MidnightDecoTableView: View {
     @Binding var configuration: FamilyTableConfiguration
+    let localPlayerName: String
+    let isGameCenterAuthenticated: Bool
     let onBack: () -> Void
-    let onStart: () -> Void
+    let onStart: (FamilyTableConfiguration) -> Void
     private let palette = EntryFinalistPalette.midnightDeco
+
+    init(
+        configuration: Binding<FamilyTableConfiguration>,
+        localPlayerName: String,
+        isGameCenterAuthenticated: Bool,
+        onBack: @escaping () -> Void,
+        onStart: @escaping (FamilyTableConfiguration) -> Void
+    ) {
+        _configuration = configuration
+        self.localPlayerName = localPlayerName
+        self.isGameCenterAuthenticated = isGameCenterAuthenticated
+        self.onBack = onBack
+        self.onStart = onStart
+    }
 
     var body: some View {
         ZStack {
@@ -283,11 +308,18 @@ private struct MidnightDecoTableView: View {
                     EntryRosterPanel(
                         configuration: $configuration,
                         palette: palette,
+                        localPlayerName: localPlayerName,
+                        isGameCenterAuthenticated: isGameCenterAuthenticated,
                         actionTitle: configuration.actionTitle(
-                            isGameCenterAuthenticated: true
+                            isGameCenterAuthenticated:
+                                isGameCenterAuthenticated
                         ),
-                        actionSystemImage: "person.2.badge.plus",
-                        onStart: onStart
+                        actionSystemImage: isGameCenterAuthenticated
+                            ? "person.2.badge.plus"
+                            : "person.crop.circle.badge.checkmark",
+                        onStart: {
+                            onStart(configuration)
+                        }
                     )
                 }
                 .padding(.horizontal, 64)
@@ -296,12 +328,32 @@ private struct MidnightDecoTableView: View {
             }
         }
         .ignoresSafeArea()
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("family-table-setup")
     }
 }
 
-private struct BundAfterDarkHomeView: View {
+struct BundAfterDarkHomeView: View {
     private let palette = EntryFinalistPalette.bundAfterDark
+    let localPlayerName: String
+    let isGameCenterAuthenticated: Bool
+    let errorMessage: String?
     let onCreateTable: () -> Void
+    let onAuthenticate: () -> Void
+
+    init(
+        localPlayerName: String,
+        isGameCenterAuthenticated: Bool,
+        errorMessage: String?,
+        onCreateTable: @escaping () -> Void,
+        onAuthenticate: @escaping () -> Void
+    ) {
+        self.localPlayerName = localPlayerName
+        self.isGameCenterAuthenticated = isGameCenterAuthenticated
+        self.errorMessage = errorMessage
+        self.onCreateTable = onCreateTable
+        self.onAuthenticate = onAuthenticate
+    }
 
     var body: some View {
         ZStack {
@@ -310,8 +362,9 @@ private struct BundAfterDarkHomeView: View {
             VStack(spacing: 0) {
                 EntryTopStatus(
                     palette: palette,
-                    trailingText: "Deepti",
-                    trailingSubtitle: "Game Center"
+                    trailingText: statusTitle,
+                    trailingSubtitle: statusSubtitle,
+                    isConnected: isGameCenterAuthenticated
                 )
 
                 HStack {
@@ -358,13 +411,37 @@ private struct BundAfterDarkHomeView: View {
                                 ))
                                 .accessibilityIdentifier("create-table")
 
-                            Button("How to Play") {}
+                            if isGameCenterAuthenticated {
+                                Label(
+                                    "Game Center Ready",
+                                    systemImage: "checkmark.circle.fill"
+                                )
+                                .font(.headline.weight(.bold))
+                                .foregroundStyle(palette.success)
+                                .padding(.horizontal, 18)
+                            } else {
+                                Button(
+                                    "Sign In to Game Center",
+                                    action: onAuthenticate
+                                )
                                 .buttonStyle(EntrySecondaryButtonStyle(
                                     foreground: palette.text,
                                     stroke: palette.muted
                                 ))
+                                .accessibilityIdentifier(
+                                    "sign-in-game-center"
+                                )
+                            }
                         }
                         .padding(.top, 28)
+
+                        if let errorMessage {
+                            Text(errorMessage)
+                                .font(.footnote.weight(.semibold))
+                                .foregroundStyle(palette.accent)
+                                .frame(maxWidth: 520, alignment: .leading)
+                                .padding(.top, 16)
+                        }
                     }
                     .frame(maxWidth: 650, alignment: .leading)
 
@@ -378,10 +455,23 @@ private struct BundAfterDarkHomeView: View {
         }
         .ignoresSafeArea()
     }
+
+    private var statusTitle: String {
+        if isGameCenterAuthenticated, !localPlayerName.isEmpty {
+            return localPlayerName
+        }
+        return "Game Center"
+    }
+
+    private var statusSubtitle: String {
+        isGameCenterAuthenticated ? "Connected" : "Not signed in"
+    }
 }
 
 private struct BundAfterDarkTableView: View {
     @Binding var configuration: FamilyTableConfiguration
+    let localPlayerName: String
+    let isGameCenterAuthenticated: Bool
     let onBack: () -> Void
     let onStart: () -> Void
     private let palette = EntryFinalistPalette.bundAfterDark
@@ -453,7 +543,12 @@ private struct BundAfterDarkTableView: View {
                     EntryRosterPanel(
                         configuration: $configuration,
                         palette: palette,
-                        actionTitle: "Open Game Center",
+                        localPlayerName: localPlayerName,
+                        isGameCenterAuthenticated: isGameCenterAuthenticated,
+                        actionTitle: configuration.actionTitle(
+                            isGameCenterAuthenticated:
+                                isGameCenterAuthenticated
+                        ),
                         actionSystemImage: "gamecontroller.fill",
                         onStart: onStart
                     )
@@ -471,6 +566,7 @@ private struct EntryTopStatus: View {
     let palette: EntryFinalistPalette
     let trailingText: String
     let trailingSubtitle: String
+    let isConnected: Bool
 
     var body: some View {
         HStack {
@@ -487,9 +583,14 @@ private struct EntryTopStatus: View {
 
             HStack(spacing: 9) {
                 Circle()
-                    .fill(palette.success)
+                    .fill(isConnected ? palette.success : palette.gold)
                     .frame(width: 9, height: 9)
-                    .shadow(color: palette.success.opacity(0.55), radius: 6)
+                    .shadow(
+                        color: (
+                            isConnected ? palette.success : palette.gold
+                        ).opacity(0.55),
+                        radius: 6
+                    )
                 VStack(alignment: .leading, spacing: 1) {
                     Text(trailingText)
                         .font(.caption.weight(.bold))
@@ -567,6 +668,8 @@ private struct EntryNavigationBar: View {
 private struct EntryRosterPanel: View {
     @Binding var configuration: FamilyTableConfiguration
     let palette: EntryFinalistPalette
+    let localPlayerName: String
+    let isGameCenterAuthenticated: Bool
     let actionTitle: String
     let actionSystemImage: String
     let onStart: () -> Void
@@ -593,7 +696,10 @@ private struct EntryRosterPanel: View {
             }
 
             LazyVGrid(columns: columns, spacing: 12) {
-                EntryHostSeatCard(palette: palette)
+                EntryHostSeatCard(
+                    localPlayerName: localPlayerName,
+                    palette: palette
+                )
 
                 ForEach($configuration.seats) { $seat in
                     EntryConfigurableSeatCard(
@@ -631,7 +737,7 @@ private struct EntryRosterPanel: View {
                     Text(invitationSummary)
                         .font(.subheadline.weight(.semibold))
                     Text(
-                        "Every player with the app can create and host a table."
+                        supportingMessage
                     )
                     .font(.caption)
                     .foregroundStyle(palette.muted)
@@ -663,6 +769,17 @@ private struct EntryRosterPanel: View {
     }
 
     private var invitationSummary: String {
+        if configuration.seats.isEmpty {
+            return "Add at least one player to begin"
+        }
+        if configuration.invitedHumanCount > 0,
+           !isGameCenterAuthenticated {
+            return "Sign in to send "
+                + "\(configuration.invitedHumanCount) Game Center "
+                + (configuration.invitedHumanCount == 1
+                    ? "invitation"
+                    : "invitations")
+        }
         if configuration.invitedHumanCount == 0 {
             return "\(configuration.botCount) bot "
                 + (configuration.botCount == 1 ? "seat" : "seats")
@@ -673,9 +790,18 @@ private struct EntryRosterPanel: View {
                 ? "invitation"
                 : "invitations")
     }
+
+    private var supportingMessage: String {
+        if configuration.invitedHumanCount > 0,
+           !isGameCenterAuthenticated {
+            return "Authentication opens before the invitation picker."
+        }
+        return "Every player with the app can create and host a table."
+    }
 }
 
 private struct EntryHostSeatCard: View {
+    let localPlayerName: String
     let palette: EntryFinalistPalette
 
     var body: some View {
@@ -689,7 +815,7 @@ private struct EntryHostSeatCard: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text("You")
                     .font(.subheadline.weight(.bold))
-                Text("Deepti - this iPad")
+                Text(hostSubtitle)
                     .font(.caption)
                     .foregroundStyle(palette.muted)
             }
@@ -711,6 +837,12 @@ private struct EntryHostSeatCard: View {
                         .stroke(palette.gold, lineWidth: 1.5)
                 )
         )
+    }
+
+    private var hostSubtitle: String {
+        localPlayerName.isEmpty
+            ? "This iPad"
+            : "\(localPlayerName) - this iPad"
     }
 }
 
@@ -825,6 +957,11 @@ private struct EntryAddSeatButton: View {
                             )
                         )
                 )
+        )
+        .accessibilityIdentifier(
+            title == "Add Human"
+                ? "add-family-human"
+                : "add-family-bot"
         )
     }
 }

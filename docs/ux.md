@@ -1,4 +1,4 @@
-# Shanghai Rummy — UX & Interaction Design
+# Shanghai Rummy Nights — UX & Interaction Design
 
 > Owner: @deeptibusireddy · Updated: 2026-08-16 · Style: contemporary family game night
 
@@ -21,6 +21,21 @@ file first, then the scene.
    visible.
 5. **Landscape only on iPad.** Portrait cramps six players into too little
    horizontal space; landscape gives every seat room.
+
+## Entry and table setup
+
+- **Home:** The Bund After Dark treatment is the production entry screen. It
+  uses the waterfront skyline, warm city lights, and the full Shanghai Rummy
+  Nights wordmark.
+- **Create Table:** The setup flow opens full-screen in the Midnight Deco
+  treatment so roster controls have the full iPad canvas.
+- **Starting state:** Only the local host is seated initially. The host adds
+  Human and Bot seats explicitly, up to six total players.
+- **Starting play:** Bot-only tables begin immediately. Tables with Human
+  seats authenticate with Game Center when needed, then request exactly the
+  selected number of remote players.
+- **Safe exit:** Back closes setup without starting a table or changing the
+  current game state.
 
 ## Screen orientation & size
 

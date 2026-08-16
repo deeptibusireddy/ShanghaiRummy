@@ -180,8 +180,8 @@ final class GameCenterManager: NSObject, ObservableObject {
                 botCount: botCount
             )
             request.inviteMessage = botCount == 0
-                ? "Join my Shanghai Rummy table"
-                : "Join my Shanghai Rummy table — \(botCount) bot "
+                ? "Join my Shanghai Rummy Nights table"
+                : "Join my Shanghai Rummy Nights table — \(botCount) bot "
                     + (botCount == 1 ? "seat" : "seats")
                     + " reserved"
             request.recipientResponseHandler = { [weak self] player, response in

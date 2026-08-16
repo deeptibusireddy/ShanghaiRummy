@@ -1,4 +1,4 @@
-# Shanghai Rummy
+# Shanghai Rummy Nights
 
 An iPadOS multiplayer card game (Shanghai Rummy / Contract Rummy variant) built
 for family play on iPad via **Game Center**.

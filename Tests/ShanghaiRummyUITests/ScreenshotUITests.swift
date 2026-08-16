@@ -41,7 +41,7 @@ final class ScreenshotUITests: XCTestCase {
         createTable.tap()
 
         XCTAssertTrue(
-            app.navigationBars["Create Table"].waitForExistence(timeout: 5)
+            app.buttons["start-family-table"].waitForExistence(timeout: 5)
         )
         snapshot(named: "02-create-table-setup")
 
@@ -63,7 +63,7 @@ final class ScreenshotUITests: XCTestCase {
         app.launch()
 
         XCTAssertTrue(
-            app.navigationBars["Create Table"].waitForExistence(timeout: 5)
+            app.buttons["start-family-table"].waitForExistence(timeout: 5)
         )
         XCTAssertTrue(app.staticTexts["You"].exists)
         XCTAssertFalse(app.staticTexts["Bot 1"].exists)
@@ -98,7 +98,7 @@ final class ScreenshotUITests: XCTestCase {
         XCTAssertTrue(createTable.waitForExistence(timeout: 5))
         createTable.tap()
         XCTAssertTrue(
-            app.navigationBars["Create Table"].waitForExistence(timeout: 5)
+            app.buttons["start-family-table"].waitForExistence(timeout: 5)
         )
         app.buttons["add-family-bot"].tap()
         app.buttons["start-family-table"].tap()
