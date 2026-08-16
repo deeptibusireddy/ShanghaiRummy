@@ -19,14 +19,17 @@ file first, then the scene.
 4. **Keep the table live.** Core play never opens a blocking modal. Contract
    cards move through an inline private tray while the public table remains
    visible.
-5. **Landscape only.** Portrait cramped six players onto too little
-   horizontal space; landscape gives every seat room.
+5. **Landscape only on iPhone and iPad.** Portrait cramped six players onto
+   too little horizontal space; landscape gives every seat room.
 
 ## Screen orientation & size
 
 - **Orientation:** Landscape only (locked).
-- **Aspect ratio target:** iPhone 15+ family (~19.5:9). Design at logical
-  size 852×393 pt (iPhone 15 in landscape) and scale up for iPad later.
+- **Aspect ratio targets:** Adaptive from the iPhone 15 family
+  (852×393 pt in landscape) through full-size iPad layouts
+  (1194×834 pt and larger).
+- **Device support:** The universal target runs natively on iPhone and iPad.
+  iPad uses its full canvas instead of iPhone compatibility-mode zoom.
 - **Safe areas:** The full-bleed table may extend behind the camera/Dynamic
   Island and home indicator, but seats, player names, the local HUD, hand, and
   controls use the device's live landscape safe-area insets. Edge seating is

@@ -1,7 +1,7 @@
 # Shanghai Rummy
 
 An iOS multiplayer card game (Shanghai Rummy / Contract Rummy variant) built for
-family play across iPhones via **Game Center**.
+family play across iPhone and iPad via **Game Center**.
 
 The **Create Table** screen supports any 2–6 player mix. You plus 1–5 bots
 starts immediately without an invitation. For mixed tables, choose each added
@@ -24,6 +24,7 @@ table; hosting is not tied to the developer's account.
 | Multiplayer    | GameKit — live real-time matches via Game Center               |
 | Persistence    | SwiftData (local), CloudKit (optional later)                  |
 | Min iOS        | 17.0                                                          |
+| Devices        | Native universal app for iPhone and iPad (landscape)          |
 | Project gen    | [XcodeGen](https://github.com/yonaskolb/XcodeGen) (`project.yml`) |
 
 ## Getting started (on macOS)

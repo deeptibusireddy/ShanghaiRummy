@@ -1,4 +1,5 @@
 import XCTest
+import UIKit
 
 /// UI tests whose only job is to walk the app and capture screenshots at each
 /// key screen. CI extracts these screenshots from the .xcresult bundle and
@@ -200,6 +201,26 @@ final class ScreenshotUITests: XCTestCase {
         XCTAssertTrue(app.buttons["quit-game"].waitForExistence(timeout: 5))
         Thread.sleep(forTimeInterval: 0.9)
         snapshot(named: "09-game-over-final")
+    }
+
+    func testCaptureNativeIPadLayout() throws {
+        guard UIDevice.current.userInterfaceIdiom == .pad else {
+            throw XCTSkip("Native iPad layout only runs on an iPad simulator")
+        }
+
+        app.launchArguments += ["--demo-mid-game"]
+        app.launch()
+
+        XCTAssertTrue(app.buttons["quit-game"].waitForExistence(timeout: 5))
+        let window = app.windows.firstMatch
+        XCTAssertTrue(window.waitForExistence(timeout: 2))
+        XCTAssertLessThan(
+            window.frame.width / window.frame.height,
+            1.8,
+            "The iPad should use its native canvas, not a zoomed iPhone viewport"
+        )
+        Thread.sleep(forTimeInterval: 0.7)
+        snapshot(named: "10-native-ipad-mid-game")
     }
 
     // MARK: - Helpers
