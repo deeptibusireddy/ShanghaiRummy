@@ -73,16 +73,25 @@ final class ScreenshotUITests: XCTestCase {
         snapshot(named: "02-family-table-setup")
 
         let addHuman = app.buttons["add-family-human"]
+        let addBot = app.buttons["add-family-bot"]
         XCTAssertTrue(addHuman.exists)
+        XCTAssertTrue(addBot.exists)
+        let initialHumanFrame = addHuman.frame
+        let initialBotFrame = addBot.frame
+        XCTAssertTrue(app.staticTexts["1 of 6 seated"].exists)
         addHuman.tap()
         XCTAssertTrue(app.staticTexts["Human 1"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.staticTexts["2 of 6 seated"].exists)
+        XCTAssertEqual(addHuman.frame.midX, initialHumanFrame.midX, accuracy: 1)
+        XCTAssertEqual(addHuman.frame.midY, initialHumanFrame.midY, accuracy: 1)
+        XCTAssertEqual(addBot.frame.midX, initialBotFrame.midX, accuracy: 1)
+        XCTAssertEqual(addBot.frame.midY, initialBotFrame.midY, accuracy: 1)
         XCTAssertTrue(start.isEnabled)
         XCTAssertEqual(start.label, "Sign In & Invite 1 Person")
+        snapshot(named: "02-family-table-one-human")
         app.buttons["Remove Human 1"].tap()
         XCTAssertFalse(start.isEnabled)
 
-        let addBot = app.buttons["add-family-bot"]
-        XCTAssertTrue(addBot.exists)
         addBot.tap()
         XCTAssertTrue(app.staticTexts["Bot 1"].waitForExistence(timeout: 2))
         XCTAssertTrue(app.buttons["Remove Bot 1"].exists)

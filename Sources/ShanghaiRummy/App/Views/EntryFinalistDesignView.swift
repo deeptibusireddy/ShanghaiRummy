@@ -690,7 +690,7 @@ private struct EntryRosterPanel: View {
                         .foregroundStyle(palette.muted)
                 }
                 Spacer()
-                Text("2-6 total")
+                Text("\(configuration.totalPlayerCount) of 6 seated")
                     .font(.caption.weight(.bold))
                     .foregroundStyle(palette.muted)
             }
@@ -710,27 +710,30 @@ private struct EntryRosterPanel: View {
                         configuration.removeSeat(id: seat.id)
                     }
                 }
-
-                if configuration.canAddSeat {
-                    EntryAddSeatButton(
-                        title: "Add Human",
-                        systemImage: "person.badge.plus",
-                        palette: palette
-                    ) {
-                        configuration.addSeat(kind: .human)
-                    }
-
-                    EntryAddSeatButton(
-                        title: "Add Bot",
-                        systemImage: "cpu",
-                        palette: palette
-                    ) {
-                        configuration.addSeat(kind: .bot)
-                    }
-                }
             }
+            .frame(height: 240, alignment: .top)
 
             Spacer(minLength: 0)
+
+            HStack(spacing: 12) {
+                EntryAddSeatButton(
+                    title: "Add Human",
+                    systemImage: "person.badge.plus",
+                    palette: palette
+                ) {
+                    configuration.addSeat(kind: .human)
+                }
+
+                EntryAddSeatButton(
+                    title: "Add Bot",
+                    systemImage: "cpu",
+                    palette: palette
+                ) {
+                    configuration.addSeat(kind: .bot)
+                }
+            }
+            .frame(maxWidth: 560)
+            .disabled(!configuration.canAddSeat)
 
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
@@ -929,6 +932,7 @@ private struct EntryConfigurableSeatCard: View {
 }
 
 private struct EntryAddSeatButton: View {
+    @Environment(\.isEnabled) private var isEnabled
     let title: String
     let systemImage: String
     let palette: EntryFinalistPalette
@@ -941,16 +945,21 @@ private struct EntryAddSeatButton: View {
                 .frame(maxWidth: .infinity, minHeight: 44)
         }
         .buttonStyle(.plain)
-        .foregroundStyle(palette.accent)
+        .foregroundStyle(isEnabled ? palette.accent : palette.muted)
         .padding(13)
         .frame(maxWidth: .infinity, minHeight: 72)
         .background(
             RoundedRectangle(cornerRadius: 15)
-                .fill(palette.accent.opacity(0.08))
+                .fill(
+                    (isEnabled ? palette.accent : palette.muted)
+                        .opacity(isEnabled ? 0.08 : 0.05)
+                )
                 .overlay(
                     RoundedRectangle(cornerRadius: 15)
                         .stroke(
-                            palette.accent.opacity(0.55),
+                            (
+                                isEnabled ? palette.accent : palette.muted
+                            ).opacity(isEnabled ? 0.55 : 0.24),
                             style: StrokeStyle(
                                 lineWidth: 1.2,
                                 dash: [6, 5]
