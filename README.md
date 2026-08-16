@@ -8,6 +8,8 @@ starts immediately without an invitation. For mixed tables, choose each added
 seat as Human or Bot; bot seats stay reserved while Game Center opens for the
 exact number of invited people. The home screen uses this single setup path
 instead of separate local, bot, and online game choices.
+Every device can sign in to Game Center from the app and create an invitation
+table; hosting is not tied to the developer's account.
 
 > **Status:** Early scaffold. See [`docs/rules.md`](docs/rules.md) for the rule
 > set being implemented and the session plan for milestones.

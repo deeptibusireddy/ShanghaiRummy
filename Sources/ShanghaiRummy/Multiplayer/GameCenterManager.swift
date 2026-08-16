@@ -27,15 +27,23 @@ final class GameCenterManager: NSObject, ObservableObject {
     private var gameSetup: RealtimeGameSetup?
     private var requestedRemoteHumanCount: Int?
     private var shouldBroadcastGameSetup = false
+    private var shouldPresentMatchmakerAfterAuthentication = false
     private var isRunningHostedBots = false
 
     func authenticate() async {
+        lastError = nil
         let localPlayer = GKLocalPlayer.local
         localPlayer.authenticateHandler = { [weak self] viewController, error in
             Task { @MainActor in
                 guard let self else { return }
                 if let error {
-                    self.lastError = error.localizedDescription
+                    let wasStartingTable =
+                        self.shouldPresentMatchmakerAfterAuthentication
+                    self.clearPendingMatchmaking()
+                    self.lastError = wasStartingTable
+                        ? "Game Center sign-in failed: "
+                            + error.localizedDescription
+                        : error.localizedDescription
                     self.isAuthenticated = false
                     self.isPresentingAuthentication = false
                     self.authenticationViewController = nil
@@ -46,24 +54,29 @@ final class GameCenterManager: NSObject, ObservableObject {
                     self.isPresentingAuthentication = true
                     return
                 }
+                let authenticationWasPresented =
+                    self.isPresentingAuthentication
                 self.authenticationViewController = nil
                 self.isPresentingAuthentication = false
                 self.isAuthenticated = localPlayer.isAuthenticated
                 self.displayName = localPlayer.displayName
-                self.lastError = nil
                 if localPlayer.isAuthenticated {
+                    self.lastError = nil
                     localPlayer.unregisterAllListeners()
                     localPlayer.register(self)
+                    if !authenticationWasPresented {
+                        self.presentPendingMatchmakerIfReady()
+                    }
+                } else if self.shouldPresentMatchmakerAfterAuthentication {
+                    self.clearPendingMatchmaking()
+                    self.lastError =
+                        "Sign in to Game Center to invite other players"
                 }
             }
         }
     }
 
     func beginMatchmaking(invitedHumanCount: Int, botCount: Int) {
-        guard isAuthenticated else {
-            lastError = "Sign in to Game Center before starting an online game"
-            return
-        }
         guard invitedHumanCount >= 1,
               botCount >= 0,
               invitedHumanCount + botCount + 1 <= RulesConfig.maxPlayers else {
@@ -82,7 +95,25 @@ final class GameCenterManager: NSObject, ObservableObject {
             matchmakerNotice = "\(botCount) \(bots) reserved • Invite exactly "
                 + "\(invitedHumanCount) \(people)"
         }
-        isPresentingMatchmaker = true
+        if isAuthenticated {
+            isPresentingMatchmaker = true
+        } else {
+            shouldPresentMatchmakerAfterAuthentication = true
+            Task { [weak self] in
+                await self?.authenticate()
+            }
+        }
+    }
+
+    func authenticationDidDismiss() {
+        authenticationViewController = nil
+        isPresentingAuthentication = false
+        if isAuthenticated {
+            presentPendingMatchmakerIfReady()
+        } else if shouldPresentMatchmakerAfterAuthentication {
+            clearPendingMatchmaking()
+            lastError = "Sign in to Game Center to invite other players"
+        }
     }
 
     func beginQuickPair() {
@@ -639,12 +670,31 @@ final class GameCenterManager: NSObject, ObservableObject {
         gameSetup = nil
         requestedRemoteHumanCount = nil
         shouldBroadcastGameSetup = false
+        shouldPresentMatchmakerAfterAuthentication = false
         isRunningHostedBots = false
         onlineGame = nil
         hasActiveMatch = false
         isChoosingHost = false
         matchmakerNotice = nil
         onlineStatusMessage = ""
+    }
+
+    private func presentPendingMatchmakerIfReady() {
+        guard shouldPresentMatchmakerAfterAuthentication,
+              isAuthenticated,
+              !isPresentingAuthentication else {
+            return
+        }
+        shouldPresentMatchmakerAfterAuthentication = false
+        isPresentingMatchmaker = true
+    }
+
+    private func clearPendingMatchmaking() {
+        gameSetup = nil
+        requestedRemoteHumanCount = nil
+        shouldBroadcastGameSetup = false
+        shouldPresentMatchmakerAfterAuthentication = false
+        matchmakerNotice = nil
     }
 
     private func broadcastGameSetupIfNeeded() {
@@ -704,10 +754,7 @@ extension GameCenterManager: GKMatchmakerViewControllerDelegate {
     ) {
         Task { @MainActor [weak self] in
             self?.isPresentingMatchmaker = false
-            self?.matchmakerNotice = nil
-            self?.gameSetup = nil
-            self?.requestedRemoteHumanCount = nil
-            self?.shouldBroadcastGameSetup = false
+            self?.clearPendingMatchmaking()
         }
     }
 
@@ -717,11 +764,8 @@ extension GameCenterManager: GKMatchmakerViewControllerDelegate {
     ) {
         Task { @MainActor [weak self] in
             self?.isPresentingMatchmaker = false
-            self?.matchmakerNotice = nil
             self?.lastError = error.localizedDescription
-            self?.gameSetup = nil
-            self?.requestedRemoteHumanCount = nil
-            self?.shouldBroadcastGameSetup = false
+            self?.clearPendingMatchmaking()
         }
     }
 
@@ -814,9 +858,7 @@ extension GameCenterManager: GKLocalPlayerListener {
         Task { @MainActor [weak self] in
             guard let self else { return }
             self.pendingInvite = invite
-            self.gameSetup = nil
-            self.requestedRemoteHumanCount = nil
-            self.shouldBroadcastGameSetup = false
+            self.clearPendingMatchmaking()
             self.isPresentingMatchmaker = true
         }
     }
