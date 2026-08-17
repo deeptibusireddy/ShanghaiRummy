@@ -121,64 +121,118 @@ jobs:
             >> "$GITHUB_ENV"
 
       - name: Simulate games 1–50
+        continue-on-error: true
         run: $SIMULATOR --players $PLAYER_COUNT --start 1 --count 50 --output simulation-reports/${PLAYER_COUNT}p-0001-0050.json
 
       - name: Simulate games 51–100
+        continue-on-error: true
         run: $SIMULATOR --players $PLAYER_COUNT --start 51 --count 50 --output simulation-reports/${PLAYER_COUNT}p-0051-0100.json
 
       - name: Simulate games 101–150
+        continue-on-error: true
         run: $SIMULATOR --players $PLAYER_COUNT --start 101 --count 50 --output simulation-reports/${PLAYER_COUNT}p-0101-0150.json
 
       - name: Simulate games 151–200
+        continue-on-error: true
         run: $SIMULATOR --players $PLAYER_COUNT --start 151 --count 50 --output simulation-reports/${PLAYER_COUNT}p-0151-0200.json
 
       - name: Simulate games 201–250
+        continue-on-error: true
         run: $SIMULATOR --players $PLAYER_COUNT --start 201 --count 50 --output simulation-reports/${PLAYER_COUNT}p-0201-0250.json
 
       - name: Simulate games 251–300
+        continue-on-error: true
         run: $SIMULATOR --players $PLAYER_COUNT --start 251 --count 50 --output simulation-reports/${PLAYER_COUNT}p-0251-0300.json
 
       - name: Simulate games 301–350
+        continue-on-error: true
         run: $SIMULATOR --players $PLAYER_COUNT --start 301 --count 50 --output simulation-reports/${PLAYER_COUNT}p-0301-0350.json
 
       - name: Simulate games 351–400
+        continue-on-error: true
         run: $SIMULATOR --players $PLAYER_COUNT --start 351 --count 50 --output simulation-reports/${PLAYER_COUNT}p-0351-0400.json
 
       - name: Simulate games 401–450
+        continue-on-error: true
         run: $SIMULATOR --players $PLAYER_COUNT --start 401 --count 50 --output simulation-reports/${PLAYER_COUNT}p-0401-0450.json
 
       - name: Simulate games 451–500
+        continue-on-error: true
         run: $SIMULATOR --players $PLAYER_COUNT --start 451 --count 50 --output simulation-reports/${PLAYER_COUNT}p-0451-0500.json
 
       - name: Simulate games 501–550
+        continue-on-error: true
         run: $SIMULATOR --players $PLAYER_COUNT --start 501 --count 50 --output simulation-reports/${PLAYER_COUNT}p-0501-0550.json
 
       - name: Simulate games 551–600
+        continue-on-error: true
         run: $SIMULATOR --players $PLAYER_COUNT --start 551 --count 50 --output simulation-reports/${PLAYER_COUNT}p-0551-0600.json
 
       - name: Simulate games 601–650
+        continue-on-error: true
         run: $SIMULATOR --players $PLAYER_COUNT --start 601 --count 50 --output simulation-reports/${PLAYER_COUNT}p-0601-0650.json
 
       - name: Simulate games 651–700
+        continue-on-error: true
         run: $SIMULATOR --players $PLAYER_COUNT --start 651 --count 50 --output simulation-reports/${PLAYER_COUNT}p-0651-0700.json
 
       - name: Simulate games 701–750
+        continue-on-error: true
         run: $SIMULATOR --players $PLAYER_COUNT --start 701 --count 50 --output simulation-reports/${PLAYER_COUNT}p-0701-0750.json
 
       - name: Simulate games 751–800
+        continue-on-error: true
         run: $SIMULATOR --players $PLAYER_COUNT --start 751 --count 50 --output simulation-reports/${PLAYER_COUNT}p-0751-0800.json
 
       - name: Simulate games 801–850
+        continue-on-error: true
         run: $SIMULATOR --players $PLAYER_COUNT --start 801 --count 50 --output simulation-reports/${PLAYER_COUNT}p-0801-0850.json
 
       - name: Simulate games 851–900
+        continue-on-error: true
         run: $SIMULATOR --players $PLAYER_COUNT --start 851 --count 50 --output simulation-reports/${PLAYER_COUNT}p-0851-0900.json
 
       - name: Simulate games 901–950
+        continue-on-error: true
         run: $SIMULATOR --players $PLAYER_COUNT --start 901 --count 50 --output simulation-reports/${PLAYER_COUNT}p-0901-0950.json
 
       - name: Simulate games 951–1,000
+        continue-on-error: true
         run: $SIMULATOR --players $PLAYER_COUNT --start 951 --count 50 --output simulation-reports/${PLAYER_COUNT}p-0951-1000.json
+
+      - name: Verify 1,000 successful games
+        run: |
+          python3 - <<'PY'
+          import glob
+          import json
+          import sys
+
+          paths = sorted(glob.glob("simulation-reports/*.json"))
+          reports = []
+          for path in paths:
+              with open(path, encoding="utf-8") as handle:
+                  reports.append(json.load(handle))
+
+          requested = sum(report["gamesRequested"] for report in reports)
+          completed = sum(report["gamesCompleted"] for report in reports)
+          failures = [
+              failure
+              for report in reports
+              for failure in report["failures"]
+          ]
+          print(
+              f"{len(reports)} batches, {completed}/{requested} games completed, "
+              f"{len(failures)} failures"
+          )
+          if len(reports) != 20 or requested != 1000 or completed != 1000 or failures:
+              for failure in failures[:20]:
+                  print(
+                      f"{failure['playerCount']}p game {failure['gameNumber']}: "
+                      f"{failure['message']}",
+                      file=sys.stderr,
+                  )
+              sys.exit(1)
+          PY
 
       - name: Upload simulation results
         if: always()

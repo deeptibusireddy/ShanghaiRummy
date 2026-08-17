@@ -1311,6 +1311,34 @@ final class WildRedemptionTests: XCTestCase {
         XCTAssertTrue(new.players[0].hand.contains(where: { $0.id == wild2.id }))
     }
 
+    func testRedeemFromExpandedSequenceIgnoresInitialWildLimit() {
+        let wilds = (0..<6).map { _ in Card.joker() }
+        let c7 = c(.clubs, .seven)
+        let (g, p1, _, meld) = stateWithSequence(
+            meldCards: [
+                c(.clubs, .five),
+                c(.clubs, .six),
+            ] + wilds,
+            p1Hand: [c7]
+        )
+
+        let new = try! TurnEngine.apply(
+            .redeemWild(
+                playerId: p1.id,
+                meldId: meld.id,
+                wildCardId: wilds[0].id,
+                replacementCard: c7
+            ),
+            to: g
+        ).get()
+
+        XCTAssertEqual(new.melds[0].cards[2].id, c7.id)
+        XCTAssertEqual(new.melds[0].wildCount, 5)
+        XCTAssertTrue(new.players[0].hand.contains {
+            $0.id == wilds[0].id
+        })
+    }
+
     func testRedeemWithWrongPositionalCardFails() {
         // Player tries to hand ♣3 for the joker in ♣5 ♣6 🃏 ♣8.
         let joker = Card.joker()

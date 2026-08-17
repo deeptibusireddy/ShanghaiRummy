@@ -169,6 +169,14 @@ public enum MeldValidator {
         validateSequence(cards, enforcesWildLimit: true)
     }
 
+    /// Validate a sequence that is already on the table, where the initial
+    /// contract wild limit no longer applies.
+    static func validateEstablishedSequence(
+        _ cards: [Card]
+    ) -> Result<Void, ValidationError> {
+        validateSequence(cards, enforcesWildLimit: false)
+    }
+
     private static func validateSequence(
         _ cards: [Card],
         enforcesWildLimit: Bool

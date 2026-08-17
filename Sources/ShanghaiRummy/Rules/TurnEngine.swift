@@ -321,7 +321,7 @@ public enum TurnEngine {
         guard wildsAfter == wildsBefore - 1 else {
             return .failure(.invalidRedemption(reason: "Replacement does not reduce wild count by one"))
         }
-        switch MeldValidator.validateSequence(proposed) {
+        switch MeldValidator.validateEstablishedSequence(proposed) {
         case .failure(let e):
             return .failure(.invalidRedemption(reason: "Result would be an illegal sequence (\(e))"))
         case .success:
