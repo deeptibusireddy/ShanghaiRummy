@@ -120,14 +120,21 @@ public enum TurnEngine {
     /// Independent-contract variant:
     /// 1. Add end-of-hand penalty points to every player's `totalScore`.
     /// 2. Every player who went down THIS HAND advances their `currentLevel`.
-    /// 3. If any player has `currentLevel > RulesConfig.maxLevel`, the game ends;
-    ///    winner = that player. If multiple players finished level 10 in the
-    ///    same hand, tiebreaker is lowest `totalScore`.
+    /// 3. If any player has completed level 10, the game ends. Normal gameplay
+    ///    reaches that state automatically as soon as the final hand closes;
+    ///    this check remains here for older/manual round-ended snapshots.
     /// 4. Otherwise, deal a new hand via `GameFactory.newHand`.
     public static func advanceHand(state: GameState) -> Result<GameState, ActionError> {
         guard state.phase == .roundEnded else { return .failure(.wrongPhase(state.phase)) }
 
-        // 1. Score.
+        var s = applyingRoundResults(to: state)
+        if finishGameIfNeeded(state: &s) {
+            return .success(s)
+        }
+        return .success(GameFactory.newHand(from: s))
+    }
+
+    private static func applyingRoundResults(to state: GameState) -> GameState {
         let wentOutId = state.players.first {
             $0.hand.isEmpty && $0.hasGoneDownThisRound
         }?.id
@@ -138,23 +145,40 @@ public enum TurnEngine {
             s.players[i].totalScore += handScores[s.players[i].id] ?? 0
         }
 
-        // 2. Advance levels for players who went down this hand.
         for i in s.players.indices where s.players[i].hasGoneDownThisRound {
             s.players[i].currentLevel += 1
         }
+        return s
+    }
 
-        // 3. Check win condition.
-        let finishers = s.players.filter { $0.currentLevel > RulesConfig.maxLevel }
-        if !finishers.isEmpty {
-            let minScore = finishers.map(\.totalScore).min() ?? 0
-            let winners = finishers.filter { $0.totalScore == minScore }
-            s.gameWinnerIds = winners.map(\.id)
-            s.phase = .gameEnded
-            return .success(s)
+    @discardableResult
+    private static func finishGameIfNeeded(state: inout GameState) -> Bool {
+        let finishers = state.players.filter {
+            $0.currentLevel > RulesConfig.maxLevel
         }
+        guard !finishers.isEmpty else { return false }
 
-        // 4. Deal next hand.
-        return .success(GameFactory.newHand(from: s))
+        let minScore = finishers.map(\.totalScore).min() ?? 0
+        state.gameWinnerIds = finishers
+            .filter { $0.totalScore == minScore }
+            .map(\.id)
+        state.phase = .gameEnded
+        state.buyDecisionPlayerId = nil
+        state.buyRequestPlayerIds.removeAll()
+        return true
+    }
+
+    private static func finalizeGameAfterLastHandIfNeeded(
+        state: inout GameState
+    ) {
+        let completedLevelTen = state.players.contains {
+            $0.currentLevel >= RulesConfig.maxLevel
+                && $0.hasGoneDownThisRound
+        }
+        guard completedLevelTen else { return }
+
+        state = applyingRoundResults(to: state)
+        _ = finishGameIfNeeded(state: &state)
     }
 
     // MARK: - Handlers
@@ -297,7 +321,7 @@ public enum TurnEngine {
         guard wildsAfter == wildsBefore - 1 else {
             return .failure(.invalidRedemption(reason: "Replacement does not reduce wild count by one"))
         }
-        switch MeldValidator.validateSequence(proposed) {
+        switch MeldValidator.validateEstablishedSequence(proposed) {
         case .failure(let e):
             return .failure(.invalidRedemption(reason: "Result would be an illegal sequence (\(e))"))
         case .success:
@@ -497,6 +521,7 @@ public enum TurnEngine {
         state.phase = .roundEnded
         state.buyDecisionPlayerId = nil
         state.buyRequestPlayerIds.removeAll()
+        finalizeGameAfterLastHandIfNeeded(state: &state)
     }
 
     private static func endRoundIfCurrentPlayerWentOut(
@@ -510,6 +535,7 @@ public enum TurnEngine {
         state.phase = .roundEnded
         state.buyDecisionPlayerId = nil
         state.buyRequestPlayerIds.removeAll()
+        finalizeGameAfterLastHandIfNeeded(state: &state)
         return true
     }
 

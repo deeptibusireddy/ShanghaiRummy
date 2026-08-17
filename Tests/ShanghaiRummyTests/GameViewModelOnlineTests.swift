@@ -68,7 +68,7 @@ final class GameViewModelOnlineTests: XCTestCase {
         viewModel.sortHandByRank()
         XCTAssertEqual(
             viewModel.orderedHand.map(\.id),
-            [cards[2].id, cards[1].id, cards[4].id, cards[0].id, cards[3].id]
+            [cards[1].id, cards[4].id, cards[0].id, cards[2].id, cards[3].id]
         )
 
         viewModel.toggleStaged(cardId: cards[0].id)

@@ -18,7 +18,8 @@ public struct Player: Codable, Sendable, Identifiable, Equatable {
     public var laidDownThisTurn: Bool
     /// The contract level this player is currently attempting (1...10).
     /// Advances by 1 at the end of each hand ONLY if they went down.
-    /// The first player to complete level 10 wins the game.
+    /// Completing level 10 ends the game; cumulative score breaks ties when
+    /// multiple players finish the final contract in the same hand.
     public var currentLevel: Int
 
     public init(

@@ -90,6 +90,9 @@ final class ScreenshotUITests: XCTestCase {
         addHuman.tap()
         XCTAssertTrue(app.staticTexts["Human 1"].waitForExistence(timeout: 2))
         XCTAssertTrue(app.staticTexts["2 of 6 seated"].exists)
+        XCTAssertTrue(app.buttons["Remove Human 1"].exists)
+        XCTAssertFalse(app.buttons["Human"].exists)
+        XCTAssertFalse(app.buttons["Bot"].exists)
         XCTAssertFalse(
             app.descendants(matching: .any)["reserved-family-seat-2"].exists
         )
@@ -175,6 +178,15 @@ final class ScreenshotUITests: XCTestCase {
         XCTAssertTrue(app.buttons["quit-game"].waitForExistence(timeout: 5))
         Thread.sleep(forTimeInterval: 0.7)
         snapshot(named: "04-mid-game-game-night")
+    }
+
+    func testCapturePacedBotTurn() throws {
+        app.launchArguments += ["--demo-bot-turn"]
+        app.launch()
+
+        XCTAssertTrue(app.buttons["quit-game"].waitForExistence(timeout: 5))
+        Thread.sleep(forTimeInterval: 0.7)
+        snapshot(named: "04-bot-turn-progress")
     }
 
     func testCaptureFourPlayerBuyDecision() throws {
@@ -277,7 +289,28 @@ final class ScreenshotUITests: XCTestCase {
     func testCaptureGameOver() throws {
         app.launchArguments += ["--demo-game-over"]
         app.launch()
-        XCTAssertTrue(app.buttons["quit-game"].waitForExistence(timeout: 5))
+
+        let celebration = app.descendants(matching: .any)[
+            "game-over-celebration"
+        ]
+        XCTAssertTrue(celebration.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Tonight's Champion"].exists)
+        XCTAssertTrue(app.staticTexts["You"].exists)
+        XCTAssertTrue(
+            app.descendants(matching: .any)["podium-place-1"].exists
+        )
+        XCTAssertTrue(
+            app.descendants(matching: .any)["podium-place-2"].exists
+        )
+        XCTAssertTrue(
+            app.descendants(matching: .any)["podium-place-3"].exists
+        )
+        XCTAssertTrue(
+            app.descendants(matching: .any)["final-standing-4"].exists
+        )
+        XCTAssertTrue(app.buttons["game-over-back-to-menu"].exists)
+        XCTAssertFalse(app.buttons["Deal Next Hand"].isHittable)
+        XCTAssertFalse(app.buttons["quit-game"].isHittable)
         Thread.sleep(forTimeInterval: 0.9)
         snapshot(named: "09-game-over-final")
     }

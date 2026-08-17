@@ -98,7 +98,7 @@ final class GameViewModelStagingTests: XCTestCase {
         XCTAssertTrue(vm.stagedCardIds.isEmpty)
     }
 
-    func testRankSortPutsNaturalCardsInRankOrderAndWildsLast() {
+    func testRankSortPutsAceAfterKingAndWildsLast() {
         let king = Card(suit: .hearts, rank: .king)
         let three = Card(suit: .clubs, rank: .three)
         let ace = Card(suit: .spades, rank: .ace)
@@ -109,10 +109,10 @@ final class GameViewModelStagingTests: XCTestCase {
         vm.sortHandByRank()
 
         XCTAssertEqual(vm.orderedHand.map(\.id),
-                       [ace.id, three.id, five.id, king.id, joker.id])
+                       [three.id, five.id, king.id, ace.id, joker.id])
     }
 
-    func testSuitSortUsesConsistentSuitGroupsAndWildsLast() {
+    func testSuitSortAlternatesBlackAndRedAndKeepsWildsLast() {
         let king = Card(suit: .hearts, rank: .king)
         let three = Card(suit: .clubs, rank: .three)
         let ace = Card(suit: .spades, rank: .ace)
@@ -123,7 +123,7 @@ final class GameViewModelStagingTests: XCTestCase {
         vm.sortHandBySuit()
 
         XCTAssertEqual(vm.orderedHand.map(\.id),
-                       [three.id, five.id, king.id, ace.id, joker.id])
+                       [three.id, king.id, ace.id, five.id, joker.id])
     }
 
     func testRelativeReorderRemainsCorrectWhileAnotherCardIsStaged() {

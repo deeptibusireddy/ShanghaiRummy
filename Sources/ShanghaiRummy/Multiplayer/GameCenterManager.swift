@@ -29,6 +29,8 @@ final class GameCenterManager: NSObject, ObservableObject {
     private var shouldBroadcastGameSetup = false
     private var shouldPresentMatchmakerAfterAuthentication = false
     private var isRunningHostedBots = false
+    private var hostedBotTask: Task<Void, Never>?
+    private var hostedBotTaskId: UUID?
 
     func authenticate() async {
         lastError = nil
@@ -249,6 +251,7 @@ final class GameCenterManager: NSObject, ObservableObject {
 
     private func accept(match: GKMatch) {
         self.match?.disconnect()
+        cancelHostedBotActions()
         self.match = match
         requestedRemoteHumanCount = nil
         match.delegate = self
@@ -666,12 +669,12 @@ final class GameCenterManager: NSObject, ObservableObject {
         pendingLocalRequestId = nil
         buyOfferTimeoutTask?.cancel()
         buyOfferTimeoutTask = nil
+        cancelHostedBotActions()
         quickPairSearchId = nil
         gameSetup = nil
         requestedRemoteHumanCount = nil
         shouldBroadcastGameSetup = false
         shouldPresentMatchmakerAfterAuthentication = false
-        isRunningHostedBots = false
         onlineGame = nil
         hasActiveMatch = false
         isChoosingHost = false
@@ -704,17 +707,47 @@ final class GameCenterManager: NSObject, ObservableObject {
 
     private func runHostedBotsIfNeeded() {
         guard !isRunningHostedBots,
-              var authority,
+              let authority,
               authority.snapshot.hostGamePlayerId
-                == GKLocalPlayer.local.gamePlayerID else {
+                == GKLocalPlayer.local.gamePlayerID,
+              RealtimeBotDriver.nextAction(in: authority.snapshot) != nil else {
             return
         }
 
+        let taskId = UUID()
         isRunningHostedBots = true
-        defer { isRunningHostedBots = false }
+        hostedBotTaskId = taskId
+        hostedBotTask = Task { @MainActor [weak self] in
+            await self?.runPacedHostedBotActions(taskId: taskId)
+        }
+    }
+
+    private func runPacedHostedBotActions(taskId: UUID) async {
+        defer {
+            if hostedBotTaskId == taskId {
+                hostedBotTask = nil
+                hostedBotTaskId = nil
+                isRunningHostedBots = false
+            }
+        }
+
         var actionCount = 0
 
         while actionCount < 200 {
+            do {
+                try await Task.sleep(
+                    for: GameViewModel.defaultCPUActionDelay
+                )
+            } catch {
+                return
+            }
+            guard hostedBotTaskId == taskId,
+                  !Task.isCancelled,
+                  var authority,
+                  authority.snapshot.hostGamePlayerId
+                    == GKLocalPlayer.local.gamePlayerID else {
+                return
+            }
             let snapshot = authority.snapshot
             guard let action = RealtimeBotDriver.nextAction(
                 in: snapshot
@@ -740,11 +773,18 @@ final class GameCenterManager: NSObject, ObservableObject {
             }
         }
 
-        self.authority = authority
         if actionCount == 200,
+           let authority,
            RealtimeBotDriver.nextAction(in: authority.snapshot) != nil {
             failOnlineSession("A bot took too many actions without ending its turn")
         }
+    }
+
+    private func cancelHostedBotActions() {
+        hostedBotTask?.cancel()
+        hostedBotTask = nil
+        hostedBotTaskId = nil
+        isRunningHostedBots = false
     }
 }
 

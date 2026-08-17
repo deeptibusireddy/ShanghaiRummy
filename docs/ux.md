@@ -10,9 +10,9 @@ file first, then the scene.
 
 1. **Cards first.** Cards, melds, and the current turn dominate the visual
    hierarchy. Table texture and chrome stay quiet.
-2. **One-tap where possible, drag where it matters.** Draw / discard are
-   taps. Meld staging is drag & drop so the physical act of building a
-   meld matches the mental one.
+2. **One-tap where possible, drag where it matters.** Tap hand cards to
+   stage them and tap staged cards to return them. Drag when choosing a
+   spatial target: staging tray, public meld, or discard pile.
 3. **Independent-contract clarity.** Each seat displays that player's
    current level and running score. You always know where you stand
    relative to the others.
@@ -41,6 +41,9 @@ file first, then the scene.
 - **Stable roster controls:** Add Human and Add Bot stay anchored in the
   lower-center position while the seated count updates, and remain visible
   but disabled when all six seats are filled.
+- **Single-purpose seat cards:** Human or Bot is chosen when the seat is
+  added. Configured cards expose only the X removal action; changing a seat
+  type means removing it and adding the intended type.
 - **Starting play:** Bot-only tables begin immediately. Tables with Human
   seats authenticate with Game Center when needed, then request exactly the
   selected number of remote players.
@@ -101,6 +104,11 @@ percentages of the game surface so they scale to any device.
 | **Context action**| Bottom right only when a real action such as Save Meld or Go Down is available |
 | **Utility controls** | Top right: Score, Rank, and Suit |
 | **Leave control** | Top left; opens a confirmation instead of ending the game immediately |
+
+- **Rank sorting:** Ace is displayed after King, while live wild cards remain
+  at the end of the hand.
+- **Suit sorting:** Suit groups alternate black and red in Clubs, Hearts,
+  Spades, Diamonds order. Wild cards remain at the end.
 
 ## Seat layouts by player count
 
@@ -186,11 +194,15 @@ meld.
 
 - The top banner is the single glanceable active-turn summary: active name,
   hand count, level/contract, and current guidance.
+- Bot turns use the same banner without adding another table overlay. The
+  banner explicitly labels **BOT TURN**, shows action-specific guidance, and
+  animates progress dots while the active bot seat remains highlighted.
 - Seat pills are the spatial roster. They always retain name, hand count, and
   level; amber border, avatar, and halo styling identify the active player
   without replacing useful details with another turn label.
 - The bottom-left local HUD remains the persistent personal reference for name,
-  score, level, and contract.
+  score, level, and contract. On full-height iPad layouts, these details use a
+  larger semibold treatment so they remain readable at a glance.
 - The bottom-right area is reserved for real enabled actions. Passive prompts
   and duplicated "[name]'s turn" boxes are omitted because guidance already
   lives in the top banner.
@@ -223,11 +235,11 @@ meld.
 
 Two modes:
 
-1. **Add to an existing meld** — after going down on an earlier turn, tap
-   a compatible hand card for automatic placement or drag it to a specific
-   glowing meld. A successful drop commits immediately unless a wild fits both
-   sequence ends; then a blocking low-end/high-end picker asks for its position.
-   If only one sequence end is legal, placement remains automatic.
+1. **Add to an existing meld** — after going down on an earlier turn, drag
+   a compatible hand card to a specific glowing meld. A successful drop commits
+   immediately unless a wild fits both sequence ends; then a blocking
+   low-end/high-end picker asks for its position. If only one sequence end is
+   legal, placement remains automatic.
 2. **Build a new contract meld** — tap cards or drag them into the persistent
    **staging tray**. Save each valid set/run as a draft chip, then tap
    **Go Down** when the full contract is ready. If a sequence has multiple
@@ -236,6 +248,7 @@ Two modes:
 
 **Staging tray properties:**
 - Visible only to you (hot-seat: only the current player).
+- Tap a hand card to move it into the staging tray.
 - Saved draft cards leave the hand fan and appear as tappable chips; tapping
   a chip returns that meld to the hand.
 - Tap a staged card to return it to the hand.
@@ -254,7 +267,6 @@ with warning feedback.
 ### Discarding
 
 - Drag a card from your hand onto the discard pile → snap.
-- Or: tap-select a card + tap discard button.
 - One card only. Confirm the turn ends after any confirmation modals
   (e.g., "You have unconfirmed staged cards — abandon?").
 - On confirm: card lands on discard, auto-advance triggers pass-and-play
@@ -290,13 +302,18 @@ with warning feedback.
   you've gone down → hand ends.
 - **Hand-over overlay** slides up center: title, per-player level
   bumps, per-player round score, cumulative totals. **Next hand**
-  button starts the new deal.
+  button starts the new deal for ordinary hands.
+- If anyone completed level 10, final scoring happens immediately and the
+  hand-over/deal step is skipped.
 
 ### Game over
 
-- First player past level 10 → full-screen celebration overlay.
-- Fireworks/haptic (M4).
-- Buttons: **View final scores** and **Back to menu**.
+- A completed level-10 hand transitions directly to a full-screen celebration.
+- Champion name, animated crowns, confetti, success feedback, and a prominent
+  top-three podium establish a clear winner moment.
+- Complete standings show ordinal placement, contracts completed, and final
+  penalty score. Progress decides placement; lower score breaks ties.
+- Button: **Back to Menu**.
 
 ## Visual style
 
@@ -331,8 +348,13 @@ with warning feedback.
 - Active turn: the current player's seat uses a bright pulsing amber halo,
   amber avatar/name treatment. The local seat always retains its own level and
   contract description, including while another player has the turn.
+- Bot pacing: automated actions are separated by a 550 ms presentation beat.
+  A normal draw-and-discard turn therefore remains visible for at least about
+  one second, while longer meld sequences progress one readable step at a time.
 
 Haptics (M4):
+- Turn handoff: short two-note chime plus a medium impact on supported devices,
+  emitted once when control passes to the local human player.
 - Draw: `.light`
 - Discard: `.rigid`
 - Go Down / Go Out: `.success`
@@ -352,7 +374,7 @@ Haptics (M4):
 ## Local bot tables vs online
 
 - Local bot table: your seat stays anchored at the bottom and every bot action,
-  including draw and buy decisions, runs automatically.
+  including draw and buy decisions, runs automatically with visible pacing.
 - Online: scene stays anchored to *you* (your seat always bottom); opponent
   hands stay hidden, and the turn banner shows whose turn or buy decision is
   active.
@@ -370,12 +392,13 @@ Haptics (M4):
   exact selected human count. A noninteractive notice over Apple's screen keeps
   the reserved bot count visible.
 - Bot identities are shared with every device, but only the authoritative host
-  runs their decisions. Humans cannot submit normal turn actions for bots.
+  runs their decisions. The host applies the same pacing before broadcasting
+  each bot action, and humans cannot submit normal turn actions for bots.
 - Bot draw and buy decisions resolve automatically; a human is never asked to
   accept or pass on a bot's behalf.
-- When clockwise dealer rotation assigns the next deal to a bot, any human may
-  tap **Deal Next Hand** after reviewing the scorecard; the host validates and
-  performs that one delegated bot action.
+- On non-final hands, when clockwise dealer rotation assigns the next deal to a
+  bot, any human may tap **Deal Next Hand** after reviewing the scorecard; the
+  host validates and performs that one delegated bot action.
 
 ## Open UX questions (park here)
 

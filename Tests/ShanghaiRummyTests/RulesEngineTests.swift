@@ -1311,6 +1311,34 @@ final class WildRedemptionTests: XCTestCase {
         XCTAssertTrue(new.players[0].hand.contains(where: { $0.id == wild2.id }))
     }
 
+    func testRedeemFromExpandedSequenceIgnoresInitialWildLimit() {
+        let wilds = (0..<6).map { _ in Card.joker() }
+        let c7 = c(.clubs, .seven)
+        let (g, p1, _, meld) = stateWithSequence(
+            meldCards: [
+                c(.clubs, .five),
+                c(.clubs, .six),
+            ] + wilds,
+            p1Hand: [c7]
+        )
+
+        let new = try! TurnEngine.apply(
+            .redeemWild(
+                playerId: p1.id,
+                meldId: meld.id,
+                wildCardId: wilds[0].id,
+                replacementCard: c7
+            ),
+            to: g
+        ).get()
+
+        XCTAssertEqual(new.melds[0].cards[2].id, c7.id)
+        XCTAssertEqual(new.melds[0].wildCount, 5)
+        XCTAssertTrue(new.players[0].hand.contains {
+            $0.id == wilds[0].id
+        })
+    }
+
     func testRedeemWithWrongPositionalCardFails() {
         // Player tries to hand ♣3 for the joker in ♣5 ♣6 🃏 ♣8.
         let joker = Card.joker()
@@ -1676,6 +1704,88 @@ final class IndependentContractTests: XCTestCase {
         XCTAssertEqual(next.phase, .gameEnded)
         XCTAssertEqual(next.gameWinnerIds.count, 1)
         XCTAssertEqual(next.gameWinnerIds.first, g.players[0].id)
+    }
+
+    func testFinalLevelTenHandEndsDirectlyFromDiscard() throws {
+        let finalDiscard = c(.clubs, .four)
+        var g = endedHand(
+            p1Level: 10,
+            p1WentDown: true,
+            p1Hand: [finalDiscard],
+            p1Total: 100,
+            p2Level: 6,
+            p2WentDown: false,
+            p2Hand: [c(.clubs, .ace)],
+            p2Total: 40
+        )
+        g.phase = .awaitingMeldOrDiscard
+        g.stock = [c(.hearts, .five)]
+        g.buyDecisionPlayerId = nil
+
+        let finished = try TurnEngine.apply(
+            .discard(playerId: g.players[0].id, card: finalDiscard),
+            to: g
+        ).get()
+
+        XCTAssertEqual(finished.phase, .gameEnded)
+        XCTAssertEqual(finished.players[0].currentLevel, 11)
+        XCTAssertEqual(finished.players[0].totalScore, 100)
+        XCTAssertEqual(finished.players[1].totalScore, 55)
+        XCTAssertEqual(finished.gameWinnerIds, [g.players[0].id])
+    }
+
+    func testNonFinalHandStillWaitsForDealAfterDiscard() throws {
+        let finalDiscard = c(.clubs, .four)
+        var g = endedHand(
+            p1Level: 9,
+            p1WentDown: true,
+            p1Hand: [finalDiscard],
+            p1Total: 100,
+            p2Level: 6,
+            p2WentDown: false,
+            p2Hand: [c(.clubs, .ace)],
+            p2Total: 40
+        )
+        g.phase = .awaitingMeldOrDiscard
+        g.stock = [c(.hearts, .five)]
+        g.buyDecisionPlayerId = nil
+
+        let ended = try TurnEngine.apply(
+            .discard(playerId: g.players[0].id, card: finalDiscard),
+            to: g
+        ).get()
+
+        XCTAssertEqual(ended.phase, .roundEnded)
+        XCTAssertEqual(ended.players[0].currentLevel, 9)
+        XCTAssertEqual(ended.players[1].totalScore, 40)
+        XCTAssertTrue(ended.gameWinnerIds.isEmpty)
+    }
+
+    func testStockExhaustionAlsoFinalizesCompletedLevelTen() throws {
+        var g = endedHand(
+            p1Level: 10,
+            p1WentDown: true,
+            p1Hand: [c(.diamonds, .five)],
+            p1Total: 80,
+            p2Level: 7,
+            p2WentDown: false,
+            p2Hand: [c(.spades, .six)],
+            p2Total: 60,
+            currentTurnIndex: 1
+        )
+        g.phase = .awaitingDraw
+        g.stock = []
+        g.discard = [c(.hearts, .king)]
+        g.buyDecisionPlayerId = g.currentPlayerId
+
+        let finished = try TurnEngine.apply(
+            .passBuyOffer(playerId: g.currentPlayerId),
+            to: g
+        ).get()
+
+        XCTAssertEqual(finished.phase, .gameEnded)
+        XCTAssertEqual(finished.players[0].currentLevel, 11)
+        XCTAssertEqual(finished.gameWinnerIds, [g.players[0].id])
     }
 
     func testTieBreakerByLowestCumulativeScore() {

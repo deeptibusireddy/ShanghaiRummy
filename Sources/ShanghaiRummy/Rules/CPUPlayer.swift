@@ -144,7 +144,7 @@ public enum CPUPlayer {
         let minimumBuysNeeded = (handShortage + 1) / 2
         if player.currentLevel >= 7,
            minimumBuysNeeded > 0,
-           minimumBuysNeeded >= buysRemaining {
+           minimumBuysNeeded <= buysRemaining {
             return true
         }
 

@@ -9,6 +9,8 @@ import Combine
 /// authoritative Game Center host and publishes the returned snapshots.
 @MainActor
 public final class GameViewModel: ObservableObject {
+    public static let defaultCPUActionDelay: Duration = .milliseconds(550)
+
     public enum SequenceEnd: Equatable {
         case start
         case end
@@ -47,6 +49,9 @@ public final class GameViewModel: ObservableObject {
     /// IDs of players controlled by the CPU, in practice or mixed online games.
     @Published public var cpuPlayerIds: Set<UUID> = [] {
         didSet {
+            if !isCurrentPlayerCPU {
+                cancelPacedCPUActions()
+            }
             runLocalCPUActionsIfNeeded()
         }
     }
@@ -65,15 +70,23 @@ public final class GameViewModel: ObservableObject {
 
     /// Re-entrancy guard for the CPU auto-play loop (see `dispatch`).
     private var isRunningCPUTurns: Bool = false
+    private var cpuTurnTask: Task<Void, Never>?
+    private var cpuTurnTaskId: UUID?
+    private let cpuActionDelay: Duration
     private var onlineActionSubmitter: ((TurnEngine.Action) -> Bool)?
     private var localBuyOfferTimeoutTask: Task<Void, Never>?
     private var hasPresentedContractReadyPrompt = false
 
     // MARK: - Init
 
-    public init(state: GameState, localPlayerId: UUID? = nil) {
+    public init(
+        state: GameState,
+        localPlayerId: UUID? = nil,
+        cpuActionDelay: Duration = GameViewModel.defaultCPUActionDelay
+    ) {
         self.state = state
         self.localPlayerId = localPlayerId
+        self.cpuActionDelay = cpuActionDelay
         scheduleLocalBuyOfferTimeout()
     }
 
@@ -86,6 +99,10 @@ public final class GameViewModel: ObservableObject {
     // MARK: - Derived helpers used by views
 
     public var turnPlayer: Player { state.players[state.currentTurnIndex] }
+    public var activePlayer: Player {
+        state.players.first(where: { $0.id == state.activePlayerId })
+            ?? turnPlayer
+    }
     public var currentPlayer: Player {
         guard let localPlayerId,
               let local = state.players.first(where: { $0.id == localPlayerId }) else {
@@ -118,6 +135,9 @@ public final class GameViewModel: ObservableObject {
         return index
     }
     public var isOnlineGame: Bool { localPlayerId != nil }
+    public var isLocalActivePlayer: Bool {
+        localPlayerId == nil || state.activePlayerId == localPlayerId
+    }
     public var isLocalPlayersTurn: Bool {
         localPlayerId == nil || state.currentPlayerId == localPlayerId
     }
@@ -126,6 +146,9 @@ public final class GameViewModel: ObservableObject {
     }
     public var turnPlayerContractDescription: String {
         contractDescription(for: turnPlayer.id)
+    }
+    public var activePlayerContractDescription: String {
+        contractDescription(for: activePlayer.id)
     }
     public func contractDescription(for playerId: UUID) -> String {
         state.contract(forPlayer: playerId)?.displayName ?? "—"
@@ -246,11 +269,11 @@ public final class GameViewModel: ObservableObject {
                     && !(outgoingActiveIsCPU || incomingIsCPU)
             }
             scheduleLocalBuyOfferTimeout()
-            // Auto-pump CPU turns and CPU buy decisions.
+            // Pace CPU turns so each decision remains visible on the table.
             if incomingIsCPU,
                onlineActionSubmitter == nil,
                !isRunningCPUTurns {
-                runAllCPUTurns()
+                runLocalCPUActionsIfNeeded()
             }
             return true
         case .failure(let err):
@@ -262,6 +285,7 @@ public final class GameViewModel: ObservableObject {
     public func configureOnlineActionSubmitter(
         _ submitter: @escaping (TurnEngine.Action) -> Bool
     ) {
+        cancelPacedCPUActions()
         localBuyOfferTimeoutTask?.cancel()
         localBuyOfferTimeoutTask = nil
         onlineActionSubmitter = submitter
@@ -415,6 +439,26 @@ public final class GameViewModel: ObservableObject {
 
     public var isHandOver: Bool { state.phase == .roundEnded }
     public var isGameOver: Bool { state.phase == .gameEnded }
+    public var botTurnActivityText: String? {
+        guard isCurrentPlayerCPU else { return nil }
+        switch state.phase {
+        case .awaitingDraw:
+            if state.buyDecisionPlayerId != state.currentPlayerId {
+                return "Considering the discard…"
+            }
+            return "Choosing stock or discard…"
+        case .awaitingMeldOrDiscard:
+            if activePlayer.laidDownThisTurn {
+                return "Choosing a discard…"
+            }
+            if activePlayer.hasGoneDownThisRound {
+                return "Looking for a card to play…"
+            }
+            return "Checking the contract…"
+        case .roundEnded, .gameEnded:
+            return nil
+        }
+    }
     public var winnerNames: [String] {
         state.gameWinnerIds.compactMap { id in
             state.players.first(where: { $0.id == id })?.name
@@ -498,25 +542,62 @@ public final class GameViewModel: ObservableObject {
     public struct FinalScoreRow: Identifiable, Equatable {
         public let id: UUID
         public let name: String
+        public let placement: Int
         public let totalScore: Int
         public let currentLevel: Int
+        public let contractsCompleted: Int
         public let isWinner: Bool
     }
 
-    /// Final scoreboard, non-nil only while `phase == .gameEnded`. Sorted
-    /// by score ascending (lowest = winner in Shanghai Rummy).
+    /// Final scoreboard, non-nil only while `phase == .gameEnded`.
+    /// Finishers rank first, followed by contract progress; lower cumulative
+    /// penalty score breaks ties at the same progress.
     public var finalScoreboard: [FinalScoreRow]? {
         guard state.phase == .gameEnded else { return nil }
         let winners = Set(state.gameWinnerIds)
-        let rows = state.players.map { p in
-            FinalScoreRow(
-                id: p.id, name: p.name,
-                totalScore: p.totalScore,
-                currentLevel: p.currentLevel,
-                isWinner: winners.contains(p.id)
+        let rankedPlayers = state.players.sorted { lhs, rhs in
+            let lhsIsWinner = winners.contains(lhs.id)
+            let rhsIsWinner = winners.contains(rhs.id)
+            if lhsIsWinner != rhsIsWinner {
+                return lhsIsWinner
+            }
+            if lhs.currentLevel != rhs.currentLevel {
+                return lhs.currentLevel > rhs.currentLevel
+            }
+            if lhs.totalScore != rhs.totalScore {
+                return lhs.totalScore < rhs.totalScore
+            }
+            return lhs.name < rhs.name
+        }
+
+        var previousWinner: Bool?
+        var previousLevel: Int?
+        var previousScore: Int?
+        var placement = 0
+        return rankedPlayers.enumerated().map { index, player in
+            let isWinner = winners.contains(player.id)
+            if previousWinner != isWinner
+                || previousLevel != player.currentLevel
+                || previousScore != player.totalScore {
+                placement = index + 1
+            }
+            previousWinner = isWinner
+            previousLevel = player.currentLevel
+            previousScore = player.totalScore
+
+            return FinalScoreRow(
+                id: player.id,
+                name: player.name,
+                placement: placement,
+                totalScore: player.totalScore,
+                currentLevel: player.currentLevel,
+                contractsCompleted: min(
+                    max(player.currentLevel - 1, 0),
+                    RulesConfig.maxLevel
+                ),
+                isWinner: isWinner
             )
         }
-        return rows.sorted { $0.totalScore < $1.totalScore }
     }
 
     // MARK: - Hand display order (M2f)
@@ -575,7 +656,9 @@ public final class GameViewModel: ObservableObject {
 
     private func rankSortKey(_ card: Card) -> String {
         let wildBucket = card.isWild ? 1 : 0
-        let rank = card.rank?.rawValue ?? 99
+        let rank = card.rank == .ace
+            ? Rank.king.rawValue + 1
+            : (card.rank?.rawValue ?? 99)
         let suit = suitIndex(card.suit)
         return String(format: "%01d-%02d-%01d-%@",
                       wildBucket, rank, suit, card.id.uuidString)
@@ -592,9 +675,9 @@ public final class GameViewModel: ObservableObject {
     private func suitIndex(_ suit: Suit?) -> Int {
         switch suit {
         case .clubs: return 0
-        case .diamonds: return 1
-        case .hearts: return 2
-        case .spades: return 3
+        case .hearts: return 1
+        case .spades: return 2
+        case .diamonds: return 3
         case .none: return 4
         }
     }
@@ -905,35 +988,6 @@ public final class GameViewModel: ObservableObject {
         return layoffHandCard(card, to: meldId)
     }
 
-    @discardableResult
-    public func playTappedHandCard(_ card: Card) -> Bool {
-        guard canPlayFromHand(card) else { return false }
-
-        // Prefer the exact-slot redemption when a tap could also extend
-        // another meld; dragging still lets the player choose a specific meld.
-        for meld in state.melds
-            where redemptionWildCardId(for: card, in: meld) != nil {
-            return playHandCard(card, to: meld.id)
-        }
-        for meld in state.melds where canLayOff(card, to: meld) {
-            return layoffHandCard(card, to: meld.id)
-        }
-        return false
-    }
-
-    /// If the player has gone down and `card` extends some existing meld,
-    /// dispatch the `.addToMeld`. Returns true if the layoff succeeded.
-    /// Called from a single-tap on a hand card (not a drag).
-    @discardableResult
-    public func layoffTappedHandCard(_ card: Card) -> Bool {
-        guard currentPlayer.hasGoneDownThisRound,
-              !currentPlayer.laidDownThisTurn else { return false }
-        for meld in state.melds {
-            if layoffHandCard(card, to: meld.id) { return true }
-        }
-        return false
-    }
-
     public func canLayOff(_ card: Card, to meld: Meld) -> Bool {
         guard canPlayFromHand(card) else { return false }
         return canAdd(card, to: meld, atStart: false)
@@ -1064,7 +1118,48 @@ public final class GameViewModel: ObservableObject {
                 || state.phase == .awaitingMeldOrDiscard) else {
             return
         }
-        runAllCPUTurns()
+        let taskId = UUID()
+        isRunningCPUTurns = true
+        cpuTurnTaskId = taskId
+        cpuTurnTask = Task { @MainActor [weak self] in
+            await self?.runPacedCPUTurns(taskId: taskId)
+        }
+    }
+
+    private func runPacedCPUTurns(taskId: UUID) async {
+        defer {
+            if cpuTurnTaskId == taskId {
+                cpuTurnTask = nil
+                cpuTurnTaskId = nil
+                isRunningCPUTurns = false
+            }
+        }
+
+        var guardCounter = 0
+        while isCurrentPlayerCPU
+                && (state.phase == .awaitingDraw
+                    || state.phase == .awaitingMeldOrDiscard)
+                && guardCounter < 200 {
+            do {
+                try await Task.sleep(for: cpuActionDelay)
+            } catch {
+                return
+            }
+            guard cpuTurnTaskId == taskId,
+                  !Task.isCancelled,
+                  isCurrentPlayerCPU else {
+                return
+            }
+            if !stepCurrentCPUTurn() { return }
+            guardCounter += 1
+        }
+    }
+
+    private func cancelPacedCPUActions() {
+        cpuTurnTask?.cancel()
+        cpuTurnTask = nil
+        cpuTurnTaskId = nil
+        isRunningCPUTurns = false
     }
 
     /// If the current player is a CPU and the round is still live, run a
@@ -1081,8 +1176,11 @@ public final class GameViewModel: ObservableObject {
 
     /// Pump CPU actions until it's a human's turn (or the round/game ends).
     /// Caps iterations to avoid any theoretical infinite loop from a bad
-    /// heuristic — 200 covers dozens of full turns per player.
+    /// heuristic — 200 covers dozens of full turns per player. Tests and
+    /// simulations use this immediate path; normal gameplay uses paced turns.
     public func runAllCPUTurns() {
+        guard onlineActionSubmitter == nil else { return }
+        cancelPacedCPUActions()
         isRunningCPUTurns = true
         defer { isRunningCPUTurns = false }
         var guardCounter = 0

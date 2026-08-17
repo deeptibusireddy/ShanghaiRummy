@@ -78,6 +78,44 @@ final class GameViewModelHandSummaryTests: XCTestCase {
         XCTAssertEqual(youAfter, youLevelBefore + 1, "You went down — level should advance")
     }
 
+    func testFinalLevelTenDiscardSkipsDealAndShowsGameOver() {
+        let finalDiscard = c(.clubs, .four)
+        let champion = Player(
+            name: "Champion",
+            hand: [finalDiscard],
+            totalScore: 100,
+            hasGoneDownThisRound: true,
+            currentLevel: 10
+        )
+        let runnerUp = Player(
+            name: "Runner Up",
+            hand: [c(.clubs, .ace)],
+            totalScore: 40,
+            currentLevel: 7
+        )
+        let state = GameState(
+            players: [champion, runnerUp],
+            currentRound: 12,
+            currentTurnIndex: 0,
+            dealerIndex: 1,
+            stock: [c(.hearts, .five)],
+            discard: [c(.diamonds, .six)],
+            melds: [],
+            phase: .awaitingMeldOrDiscard,
+            stockReshufflesUsed: 0,
+            randomSeed: 9
+        )
+        let viewModel = vm(state: state)
+
+        viewModel.discard(finalDiscard)
+
+        XCTAssertTrue(viewModel.isGameOver)
+        XCTAssertFalse(viewModel.isHandOver)
+        XCTAssertFalse(viewModel.canAdvanceHand)
+        XCTAssertNil(viewModel.pendingHandSummary)
+        XCTAssertEqual(viewModel.winnerNames, ["Champion"])
+    }
+
     // MARK: - liveScoreboard
 
     func testLiveScoreboardShowsLevelAndCumulativeScoreLowestFirst() {
@@ -121,9 +159,90 @@ final class GameViewModelHandSummaryTests: XCTestCase {
         let v = vm(state: GameFactory.demoGameOver())
         let rows = try XCTUnwrap(v.finalScoreboard)
         XCTAssertEqual(rows.count, 4)
-        // Sorted ascending — You (245) should be first.
         XCTAssertEqual(rows.first?.name, "You")
+        XCTAssertEqual(rows.map(\.placement), [1, 2, 3, 4])
+        XCTAssertEqual(rows.first?.contractsCompleted, 10)
         XCTAssertTrue(rows.first?.isWinner ?? false)
         XCTAssertFalse(rows.last?.isWinner ?? true)
+    }
+
+    func testFinalScoreboardRanksProgressBeforePenaltyScore() throws {
+        let champion = Player(
+            name: "Champion",
+            hand: [],
+            totalScore: 240,
+            currentLevel: 11
+        )
+        let runnerUp = Player(
+            name: "Runner Up",
+            hand: [],
+            totalScore: 40,
+            currentLevel: 10
+        )
+        let third = Player(
+            name: "Third",
+            hand: [],
+            totalScore: 10,
+            currentLevel: 9
+        )
+        let state = GameState(
+            players: [third, runnerUp, champion],
+            currentRound: 10,
+            currentTurnIndex: 0,
+            dealerIndex: 2,
+            stock: [],
+            discard: [],
+            melds: [],
+            phase: .gameEnded,
+            stockReshufflesUsed: 0,
+            randomSeed: 7,
+            gameWinnerIds: [champion.id]
+        )
+
+        let rows = try XCTUnwrap(vm(state: state).finalScoreboard)
+
+        XCTAssertEqual(rows.map(\.name), ["Champion", "Runner Up", "Third"])
+        XCTAssertEqual(rows.map(\.placement), [1, 2, 3])
+        XCTAssertEqual(rows.map(\.contractsCompleted), [10, 9, 8])
+    }
+
+    func testFinalScoreboardSharesPlacementForExactTies() throws {
+        let first = Player(
+            name: "A",
+            hand: [],
+            totalScore: 60,
+            currentLevel: 11
+        )
+        let second = Player(
+            name: "B",
+            hand: [],
+            totalScore: 60,
+            currentLevel: 11
+        )
+        let third = Player(
+            name: "C",
+            hand: [],
+            totalScore: 20,
+            currentLevel: 9
+        )
+        let state = GameState(
+            players: [third, second, first],
+            currentRound: 10,
+            currentTurnIndex: 0,
+            dealerIndex: 2,
+            stock: [],
+            discard: [],
+            melds: [],
+            phase: .gameEnded,
+            stockReshufflesUsed: 0,
+            randomSeed: 8,
+            gameWinnerIds: [first.id, second.id]
+        )
+
+        let rows = try XCTUnwrap(vm(state: state).finalScoreboard)
+
+        XCTAssertEqual(rows.map(\.placement), [1, 1, 3])
+        XCTAssertTrue(rows[0].isWinner)
+        XCTAssertTrue(rows[1].isWinner)
     }
 }
