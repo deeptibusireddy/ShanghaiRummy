@@ -41,6 +41,9 @@ file first, then the scene.
 - **Stable roster controls:** Add Human and Add Bot stay anchored in the
   lower-center position while the seated count updates, and remain visible
   but disabled when all six seats are filled.
+- **Single-purpose seat cards:** Human or Bot is chosen when the seat is
+  added. Configured cards expose only the X removal action; changing a seat
+  type means removing it and adding the intended type.
 - **Starting play:** Bot-only tables begin immediately. Tables with Human
   seats authenticate with Game Center when needed, then request exactly the
   selected number of remote players.

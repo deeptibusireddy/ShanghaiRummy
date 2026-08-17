@@ -1,10 +1,8 @@
 import SwiftUI
 
-enum FamilyTableSeatKind: String, CaseIterable, Identifiable {
+enum FamilyTableSeatKind: String {
     case human = "Human"
     case bot = "Bot"
-
-    var id: String { rawValue }
 
     var systemImage: String {
         switch self {
@@ -117,23 +115,24 @@ struct FamilyTableSetupView: View {
                 Section {
                     localPlayerRow
 
-                    ForEach($configuration.seats) { $seat in
+                    ForEach(configuration.seats) { seat in
                         HStack(spacing: 12) {
                             Image(systemName: seat.kind.systemImage)
                                 .foregroundStyle(.secondary)
                                 .frame(width: 24)
 
-                            Text(configuration.label(for: seat.id))
-                                .frame(minWidth: 72, alignment: .leading)
-
-                            Picker("Player type", selection: $seat.kind) {
-                                ForEach(FamilyTableSeatKind.allCases) { kind in
-                                    Text(kind.rawValue).tag(kind)
-                                }
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(configuration.label(for: seat.id))
+                                Text(
+                                    seat.kind == .human
+                                        ? "Game Center invite"
+                                        : "Ready immediately"
+                                )
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
                             }
-                            .pickerStyle(.segmented)
-                            .labelsHidden()
-                            .frame(maxWidth: 190)
+
+                            Spacer()
 
                             Button {
                                 configuration.removeSeat(id: seat.id)

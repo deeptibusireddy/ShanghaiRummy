@@ -730,9 +730,9 @@ private struct EntryRosterPanel: View {
                     palette: palette
                 )
 
-                ForEach($configuration.seats) { $seat in
+                ForEach(configuration.seats) { seat in
                     EntryConfigurableSeatCard(
-                        seat: $seat,
+                        seat: seat,
                         title: configuration.label(for: seat.id),
                         palette: palette
                     ) {
@@ -904,7 +904,7 @@ private struct EntryHostSeatCard: View {
 }
 
 private struct EntryConfigurableSeatCard: View {
-    @Binding var seat: FamilyTableSeat
+    let seat: FamilyTableSeat
     let title: String
     let palette: EntryFinalistPalette
     let onRemove: () -> Void
@@ -930,38 +930,6 @@ private struct EntryConfigurableSeatCard: View {
             }
 
             Spacer(minLength: 4)
-
-            HStack(spacing: 2) {
-                ForEach(FamilyTableSeatKind.allCases) { kind in
-                    Button {
-                        seat.kind = kind
-                    } label: {
-                        Image(systemName: kind.systemImage)
-                            .font(.caption2.weight(.bold))
-                            .frame(width: 26, height: 24)
-                            .foregroundStyle(
-                                seat.kind == kind
-                                    ? palette.background
-                                    : palette.muted
-                            )
-                            .background(
-                                RoundedRectangle(cornerRadius: 6)
-                                    .fill(
-                                        seat.kind == kind
-                                            ? palette.accent
-                                            : Color.clear
-                                    )
-                            )
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(kind.rawValue)
-                }
-            }
-            .padding(3)
-            .background(
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(palette.background.opacity(0.50))
-            )
 
             Button(action: onRemove) {
                 Image(systemName: "xmark")

@@ -90,6 +90,9 @@ final class ScreenshotUITests: XCTestCase {
         addHuman.tap()
         XCTAssertTrue(app.staticTexts["Human 1"].waitForExistence(timeout: 2))
         XCTAssertTrue(app.staticTexts["2 of 6 seated"].exists)
+        XCTAssertTrue(app.buttons["Remove Human 1"].exists)
+        XCTAssertFalse(app.buttons["Human"].exists)
+        XCTAssertFalse(app.buttons["Bot"].exists)
         XCTAssertFalse(
             app.descendants(matching: .any)["reserved-family-seat-2"].exists
         )
