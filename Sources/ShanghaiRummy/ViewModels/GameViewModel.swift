@@ -541,7 +541,7 @@ public final class GameViewModel: ObservableObject {
             previousLevel = player.currentLevel
             previousScore = player.totalScore
 
-            FinalScoreRow(
+            return FinalScoreRow(
                 id: player.id,
                 name: player.name,
                 placement: placement,
