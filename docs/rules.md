@@ -233,13 +233,15 @@ someone finishes level 10.
 
 ## Winning
 
-Play continues hand after hand until a player **finishes level 10**. The first
-player to lay down the level-10 contract wins the game outright — even if
-their cumulative penalty score is higher than someone else's.
+Play continues hand after hand until at least one player **finishes level 10**.
+When that hand closes, final penalties and level progress are applied
+immediately and the game ends — there is no extra deal.
 
-- If two or more players finish level 10 in the **same hand**, the winner is
-  the one with the **lowest cumulative score**. If they're still tied, both
-  are declared co-winners.
+- If one player finished level 10, that player is the champion even if another
+  player has a lower cumulative penalty score.
+- If two or more players finish level 10 in the **same hand**, the finisher
+  with the **lowest cumulative score** wins. If they're still tied, they are
+  declared co-champions.
 - Cumulative scores are tracked throughout the match for tiebreakers and
   bragging rights, but the primary win condition is "first to level 10."
 

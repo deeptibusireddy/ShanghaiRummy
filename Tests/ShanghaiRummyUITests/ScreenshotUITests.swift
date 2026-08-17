@@ -280,7 +280,28 @@ final class ScreenshotUITests: XCTestCase {
     func testCaptureGameOver() throws {
         app.launchArguments += ["--demo-game-over"]
         app.launch()
-        XCTAssertTrue(app.buttons["quit-game"].waitForExistence(timeout: 5))
+
+        let celebration = app.descendants(matching: .any)[
+            "game-over-celebration"
+        ]
+        XCTAssertTrue(celebration.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Tonight's Champion"].exists)
+        XCTAssertTrue(app.staticTexts["You"].exists)
+        XCTAssertTrue(
+            app.descendants(matching: .any)["podium-place-1"].exists
+        )
+        XCTAssertTrue(
+            app.descendants(matching: .any)["podium-place-2"].exists
+        )
+        XCTAssertTrue(
+            app.descendants(matching: .any)["podium-place-3"].exists
+        )
+        XCTAssertTrue(
+            app.descendants(matching: .any)["final-standing-4"].exists
+        )
+        XCTAssertTrue(app.buttons["game-over-back-to-menu"].exists)
+        XCTAssertFalse(app.buttons["Deal Next Hand"].exists)
+        XCTAssertFalse(app.buttons["quit-game"].exists)
         Thread.sleep(forTimeInterval: 0.9)
         snapshot(named: "09-game-over-final")
     }

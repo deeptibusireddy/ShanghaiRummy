@@ -299,13 +299,18 @@ with warning feedback.
   you've gone down → hand ends.
 - **Hand-over overlay** slides up center: title, per-player level
   bumps, per-player round score, cumulative totals. **Next hand**
-  button starts the new deal.
+  button starts the new deal for ordinary hands.
+- If anyone completed level 10, final scoring happens immediately and the
+  hand-over/deal step is skipped.
 
 ### Game over
 
-- First player past level 10 → full-screen celebration overlay.
-- Fireworks/haptic (M4).
-- Buttons: **View final scores** and **Back to menu**.
+- A completed level-10 hand transitions directly to a full-screen celebration.
+- Champion name, animated crowns, confetti, success feedback, and a prominent
+  top-three podium establish a clear winner moment.
+- Complete standings show ordinal placement, contracts completed, and final
+  penalty score. Progress decides placement; lower score breaks ties.
+- Button: **Back to Menu**.
 
 ## Visual style
 
@@ -384,9 +389,9 @@ Haptics (M4):
   runs their decisions. Humans cannot submit normal turn actions for bots.
 - Bot draw and buy decisions resolve automatically; a human is never asked to
   accept or pass on a bot's behalf.
-- When clockwise dealer rotation assigns the next deal to a bot, any human may
-  tap **Deal Next Hand** after reviewing the scorecard; the host validates and
-  performs that one delegated bot action.
+- On non-final hands, when clockwise dealer rotation assigns the next deal to a
+  bot, any human may tap **Deal Next Hand** after reviewing the scorecard; the
+  host validates and performs that one delegated bot action.
 
 ## Open UX questions (park here)
 

@@ -498,25 +498,62 @@ public final class GameViewModel: ObservableObject {
     public struct FinalScoreRow: Identifiable, Equatable {
         public let id: UUID
         public let name: String
+        public let placement: Int
         public let totalScore: Int
         public let currentLevel: Int
+        public let contractsCompleted: Int
         public let isWinner: Bool
     }
 
-    /// Final scoreboard, non-nil only while `phase == .gameEnded`. Sorted
-    /// by score ascending (lowest = winner in Shanghai Rummy).
+    /// Final scoreboard, non-nil only while `phase == .gameEnded`.
+    /// Finishers rank first, followed by contract progress; lower cumulative
+    /// penalty score breaks ties at the same progress.
     public var finalScoreboard: [FinalScoreRow]? {
         guard state.phase == .gameEnded else { return nil }
         let winners = Set(state.gameWinnerIds)
-        let rows = state.players.map { p in
+        let rankedPlayers = state.players.sorted { lhs, rhs in
+            let lhsIsWinner = winners.contains(lhs.id)
+            let rhsIsWinner = winners.contains(rhs.id)
+            if lhsIsWinner != rhsIsWinner {
+                return lhsIsWinner
+            }
+            if lhs.currentLevel != rhs.currentLevel {
+                return lhs.currentLevel > rhs.currentLevel
+            }
+            if lhs.totalScore != rhs.totalScore {
+                return lhs.totalScore < rhs.totalScore
+            }
+            return lhs.name < rhs.name
+        }
+
+        var previousWinner: Bool?
+        var previousLevel: Int?
+        var previousScore: Int?
+        var placement = 0
+        return rankedPlayers.enumerated().map { index, player in
+            let isWinner = winners.contains(player.id)
+            if previousWinner != isWinner
+                || previousLevel != player.currentLevel
+                || previousScore != player.totalScore {
+                placement = index + 1
+            }
+            previousWinner = isWinner
+            previousLevel = player.currentLevel
+            previousScore = player.totalScore
+
             FinalScoreRow(
-                id: p.id, name: p.name,
-                totalScore: p.totalScore,
-                currentLevel: p.currentLevel,
-                isWinner: winners.contains(p.id)
+                id: player.id,
+                name: player.name,
+                placement: placement,
+                totalScore: player.totalScore,
+                currentLevel: player.currentLevel,
+                contractsCompleted: min(
+                    max(player.currentLevel - 1, 0),
+                    RulesConfig.maxLevel
+                ),
+                isWinner: isWinner
             )
         }
-        return rows.sorted { $0.totalScore < $1.totalScore }
     }
 
     // MARK: - Hand display order (M2f)

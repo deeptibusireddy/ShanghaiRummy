@@ -326,13 +326,15 @@ those wilds!
 
 ## Winning the game
 
-The **first player to complete level 10** wins the match — as soon as you
-lay down the level-10 contract, you win, even if someone else has a lower
-cumulative penalty score.
+The match ends when a hand closes with at least one player having completed
+level 10. Final penalties are counted immediately, and the winner screen
+appears without dealing another hand.
 
 - If two or more players finish level 10 in the **same hand**, the winner
   is the one with the **lowest cumulative penalty score** at that point.
-  If they're still tied, they're co-winners.
+  If they're still tied, they're co-champions.
+- Final standings rank finishers first, then remaining players by contract
+  progress; lower cumulative score breaks ties at the same progress.
 - The game typically runs 10–15 hands: everyone starts on level 1, but
   people fall behind on hands where they can't go down, so the total
   number of hands depends on how the deals go.

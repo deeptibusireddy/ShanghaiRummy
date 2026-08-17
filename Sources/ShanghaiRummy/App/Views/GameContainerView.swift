@@ -33,6 +33,9 @@ struct GameContainerView: View {
             .buttonStyle(.plain)
             .accessibilityLabel("Leave game")
             .accessibilityIdentifier("quit-game")
+            .opacity(vm.isGameOver ? 0 : 1)
+            .disabled(vm.isGameOver)
+            .accessibilityHidden(vm.isGameOver)
             .padding(.leading, 14)
             .padding(.top, 8)
 
@@ -73,10 +76,10 @@ struct GameContainerView: View {
                 initialSequenceChoiceOverlay(choice)
             } else if let choice = vm.pendingSequenceEndChoice {
                 sequenceEndChoiceOverlay(choice)
-            } else if vm.isHandOver {
-                handOverOverlay
             } else if vm.isGameOver {
                 gameOverOverlay
+            } else if vm.isHandOver {
+                handOverOverlay
             } else if let prompt = vm.contractReadyPrompt {
                 contractReadyOverlay(prompt)
             } else if vm.isScorecardPresented {
@@ -694,62 +697,11 @@ struct GameContainerView: View {
     }
 
     private var gameOverOverlay: some View {
-        VStack(spacing: 14) {
-            Text("🎉 Game Over")
-                .font(.title).bold()
-            let names = vm.winnerNames
-            if names.count > 1 {
-                Text("Co-winners: " + names.joined(separator: ", "))
-                    .font(.headline)
-            } else {
-                Text((names.first ?? "Someone") + " wins!")
-                    .font(.headline)
-            }
-            finalTable
-            Button("Back to Menu") { onExit() }
-                .buttonStyle(.borderedProminent)
-                .padding(.top, 4)
-        }
-        .padding(20)
-        .frame(maxWidth: 460)
-        .background(RoundedRectangle(cornerRadius: 16).fill(.regularMaterial))
-        .padding()
-    }
-
-    @ViewBuilder
-    private var finalTable: some View {
-        let rows = vm.finalScoreboard ?? []
-        VStack(spacing: 6) {
-            HStack {
-                Text("Rank").frame(width: 44, alignment: .leading)
-                Text("Player").frame(maxWidth: .infinity, alignment: .leading)
-                Text("Lvl").frame(width: 44, alignment: .trailing)
-                Text("Total").frame(width: 60, alignment: .trailing)
-            }
-            .font(.caption.bold())
-            .foregroundStyle(.secondary)
-            Divider()
-            ForEach(Array(rows.enumerated()), id: \.element.id) { i, row in
-                HStack {
-                    Text("\(i + 1)")
-                        .frame(width: 44, alignment: .leading)
-                        .foregroundStyle(row.isWinner ? .yellow : .primary)
-                    HStack(spacing: 6) {
-                        Text(row.name).bold()
-                        if row.isWinner {
-                            Image(systemName: "crown.fill")
-                                .foregroundStyle(.yellow)
-                        }
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    Text("\(row.currentLevel)")
-                        .frame(width: 44, alignment: .trailing)
-                    Text("\(row.totalScore)")
-                        .frame(width: 60, alignment: .trailing)
-                        .bold()
-                }
-                .font(.body)
-            }
-        }
+        GameOverCelebrationView(
+            rows: vm.finalScoreboard ?? [],
+            winnerNames: vm.winnerNames,
+            theme: theme,
+            onExit: onExit
+        )
     }
 }
