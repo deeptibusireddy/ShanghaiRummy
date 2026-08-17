@@ -768,23 +768,31 @@ final class CPUPlayerTests: XCTestCase {
                                          cpuNames: ["Bot"],
                                          seed: 7)
         var initial = built.state
-        initial.dealerIndex = 0
-        initial.currentTurnIndex = 1
-        initial.buyDecisionPlayerId = initial.players[1].id
+        let youId = built.localPlayerId
+        let botId = built.cpuIds.first!
+        let youIndex = initial.players.firstIndex {
+            $0.id == youId
+        }!
+        let botIndex = initial.players.firstIndex {
+            $0.id == botId
+        }!
+        initial.dealerIndex = youIndex
+        initial.currentTurnIndex = botIndex
+        initial.buyDecisionPlayerId = botId
         let vm = GameViewModel(state: initial)
         vm.cpuPlayerIds = built.cpuIds
         // Put the Bot up first. A non-wild discard pauses its turn to offer
         // You a buy.
         vm.runAllCPUTurns()
-        if vm.state.currentPlayerId != built.state.players[0].id {
+        if vm.state.currentPlayerId != youId {
             XCTAssertEqual(
                 vm.state.buyDecisionPlayerId,
-                built.state.players[0].id
+                youId
             )
             vm.passBuyOffer()
             vm.runAllCPUTurns()
         }
-        XCTAssertEqual(vm.state.currentPlayerId, built.state.players[0].id)
+        XCTAssertEqual(vm.state.currentPlayerId, youId)
         XCTAssertFalse(vm.isCurrentPlayerCPU)
 
         // Resolve You's purchase round, discard, and decline any buy offered
@@ -804,6 +812,69 @@ final class CPUPlayerTests: XCTestCase {
             || vm.state.phase == .roundEnded
             || vm.state.phase == .gameEnded,
             "After You's discard the auto-pump should have played the Bot's turn"
+        )
+    }
+
+    @MainActor
+    func testOpeningDrawCeremonyMovesThroughBothStages() {
+        let built = GameFactory.newVsCPU(
+            you: "You",
+            cpuNames: ["Bot"],
+            seed: 7
+        )
+        let vm = GameViewModel(
+            state: built.state,
+            localPlayerId: built.localPlayerId,
+            presentsOpeningDraw: true
+        )
+
+        XCTAssertEqual(vm.openingDrawStage, .drawing)
+        vm.showOpeningSeatOrder()
+        XCTAssertEqual(vm.openingDrawStage, .seating)
+        vm.completeOpeningDrawCeremony()
+        XCTAssertNil(vm.openingDrawStage)
+    }
+
+    @MainActor
+    func testOpeningDrawDoesNotReplayAfterPlayHasStarted() {
+        let built = GameFactory.newVsCPU(
+            you: "You",
+            cpuNames: ["Bot"],
+            seed: 7
+        )
+        var progressed = built.state
+        progressed.currentTurnIndex = 1
+        progressed.buyDecisionPlayerId = progressed.players[1].id
+
+        let vm = GameViewModel(
+            state: progressed,
+            localPlayerId: built.localPlayerId,
+            presentsOpeningDraw: true
+        )
+
+        XCTAssertNil(vm.openingDrawStage)
+    }
+
+    func testVsCPUTracksHumanIdentityAfterOpeningDrawReordersSeats() {
+        let built = GameFactory.newVsCPU(
+            you: "You",
+            cpuNames: ["Bot 1", "Bot 2", "Bot 3"],
+            seed: 7
+        )
+
+        XCTAssertEqual(
+            built.state.players.first {
+                $0.id == built.localPlayerId
+            }?.name,
+            "You"
+        )
+        XCTAssertEqual(
+            Set(
+                built.state.players
+                    .filter { built.cpuIds.contains($0.id) }
+                    .map(\.name)
+            ),
+            Set(["Bot 1", "Bot 2", "Bot 3"])
         )
     }
 }

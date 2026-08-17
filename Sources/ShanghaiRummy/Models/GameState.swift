@@ -34,6 +34,10 @@ public struct GameState: Codable, Sendable, Equatable {
     /// private hand. Purchase cards survive until that buyer's official draw;
     /// the official draw remains highlighted only for that turn.
     public var highlightedCardIdsByPlayer: [UUID: [UUID]]
+    /// Preserves the original roster's opening cards so every client can show
+    /// the same seating reveal. `players` itself is already ordered from the
+    /// highest draw to the lowest draw.
+    public var openingDraws: [OpeningDraw]
 
     private enum CodingKeys: String, CodingKey {
         case players
@@ -50,6 +54,7 @@ public struct GameState: Codable, Sendable, Equatable {
         case buyRequestPlayerIds
         case buyDecisionPlayerId
         case highlightedCardIdsByPlayer
+        case openingDraws
     }
 
     public enum Phase: String, Codable, Sendable {
@@ -160,7 +165,8 @@ public struct GameState: Codable, Sendable, Equatable {
         gameWinnerIds: [UUID] = [],
         buyRequestPlayerIds: [UUID] = [],
         buyDecisionPlayerId: UUID? = nil,
-        highlightedCardIdsByPlayer: [UUID: [UUID]] = [:]
+        highlightedCardIdsByPlayer: [UUID: [UUID]] = [:],
+        openingDraws: [OpeningDraw] = []
     ) {
         self.players = players
         self.currentRound = currentRound
@@ -181,6 +187,7 @@ public struct GameState: Codable, Sendable, Equatable {
                 phase: phase
             )
         self.highlightedCardIdsByPlayer = highlightedCardIdsByPlayer
+        self.openingDraws = openingDraws
     }
 
     public init(from decoder: Decoder) throws {
@@ -218,6 +225,10 @@ public struct GameState: Codable, Sendable, Equatable {
             [UUID: [UUID]].self,
             forKey: .highlightedCardIdsByPlayer
         ) ?? [:]
+        openingDraws = try container.decodeIfPresent(
+            [OpeningDraw].self,
+            forKey: .openingDraws
+        ) ?? []
     }
 
     private static func initialBuyDecisionPlayerId(

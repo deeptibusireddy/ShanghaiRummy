@@ -126,6 +126,51 @@ final class RealtimeGameProtocolTests: XCTestCase {
         XCTAssertLessThan(encoded.count, 80_000)
     }
 
+    func testOpeningDrawReorderingPreservesParticipantAndBotIdentity() {
+        let humans = [
+            Player(name: "Human 1"),
+            Player(name: "Human 2"),
+        ]
+        let bots = [
+            Player(name: "Bot 1"),
+            Player(name: "Bot 2"),
+        ]
+        let roster = humans + bots
+        let state = try! XCTUnwrap(
+            (0...100)
+                .lazy
+                .map {
+                    GameFactory.newGame(
+                        players: roster,
+                        seed: UInt64($0)
+                    )
+                }
+                .first {
+                    $0.players.map(\.id) != roster.map(\.id)
+                }
+        )
+        let participants = humans.enumerated().map {
+            RealtimeParticipantBinding(
+                gamePlayerId: "gc-player-\($0.offset)",
+                playerId: $0.element.id,
+                displayName: $0.element.name
+            )
+        }
+        let snapshot = RealtimeGameSnapshot(
+            revision: 0,
+            state: state,
+            participants: participants,
+            botPlayerIds: bots.map(\.id),
+            hostGamePlayerId: participants[0].gamePlayerId
+        )
+
+        XCTAssertTrue(snapshot.hasValidPlayerIdentityLayout())
+        XCTAssertNotEqual(
+            state.players.map(\.id),
+            roster.map(\.id)
+        )
+    }
+
     func testMixedSnapshotRequiresEverySeatToBeExactlyOneHumanOrBot() {
         let state = GameFactory.newGame(
             playerNames: ["Human 1", "Human 2", "Bot 1"],

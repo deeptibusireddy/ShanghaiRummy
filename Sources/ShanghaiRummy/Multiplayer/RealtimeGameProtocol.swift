@@ -102,7 +102,7 @@ enum RealtimeGameMessage: Codable, Equatable, Sendable {
 }
 
 enum RealtimeMessageCodec {
-    static let protocolVersion = 3
+    static let protocolVersion = 4
 
     static func playerGroup(botCount: Int) -> Int {
         protocolVersion * 10 + botCount

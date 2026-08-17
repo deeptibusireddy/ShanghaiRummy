@@ -14,6 +14,7 @@ final class GameStateCodingTests: XCTestCase {
         object.removeValue(forKey: "buyRequestPlayerIds")
         object.removeValue(forKey: "buyDecisionPlayerId")
         object.removeValue(forKey: "highlightedCardIdsByPlayer")
+        object.removeValue(forKey: "openingDraws")
         let legacyData = try JSONSerialization.data(withJSONObject: object)
 
         let decoded = try JSONDecoder().decode(GameState.self, from: legacyData)
@@ -21,6 +22,7 @@ final class GameStateCodingTests: XCTestCase {
         XCTAssertTrue(decoded.buyRequestPlayerIds.isEmpty)
         XCTAssertEqual(decoded.buyDecisionPlayerId, decoded.currentPlayerId)
         XCTAssertTrue(decoded.highlightedCardIdsByPlayer.isEmpty)
+        XCTAssertTrue(decoded.openingDraws.isEmpty)
         XCTAssertEqual(decoded.players, state.players)
     }
 

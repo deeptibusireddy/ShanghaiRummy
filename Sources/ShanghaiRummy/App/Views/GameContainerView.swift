@@ -72,7 +72,16 @@ struct GameContainerView: View {
             Text(exitConfirmationMessage)
         }
         .overlay {
-            if let choice = vm.pendingInitialSequenceChoice {
+            if let stage = vm.openingDrawStage {
+                OpeningDrawView(
+                    stage: stage,
+                    draws: vm.state.openingDraws,
+                    players: vm.state.players,
+                    theme: theme
+                ) {
+                    vm.completeOpeningDrawCeremony()
+                }
+            } else if let choice = vm.pendingInitialSequenceChoice {
                 initialSequenceChoiceOverlay(choice)
             } else if let choice = vm.pendingSequenceEndChoice {
                 sequenceEndChoiceOverlay(choice)
@@ -88,6 +97,34 @@ struct GameContainerView: View {
                 buyDecisionOverlay
             }
         }
+        .task {
+            await runOpeningDrawCeremony()
+        }
+    }
+
+    private func runOpeningDrawCeremony() async {
+        if vm.openingDrawStage == .drawing {
+            do {
+                try await Task.sleep(
+                    for: GameViewModel.openingDrawRevealDuration
+                )
+            } catch {
+                return
+            }
+            guard vm.openingDrawStage == .drawing else { return }
+            vm.showOpeningSeatOrder()
+        }
+
+        guard vm.openingDrawStage == .seating else { return }
+        do {
+            try await Task.sleep(
+                for: GameViewModel.openingDrawSeatingDuration
+            )
+        } catch {
+            return
+        }
+        guard vm.openingDrawStage == .seating else { return }
+        vm.completeOpeningDrawCeremony()
     }
 
     private var exitConfirmationMessage: String {

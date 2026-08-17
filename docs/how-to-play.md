@@ -33,6 +33,19 @@ number of people selected.
 
 ---
 
+## Drawing for seats
+
+Before the first hand, everyone draws a random card. Jokers are skipped and
+Ace is high. If two players draw the same rank, the app redraws those ties
+automatically until every rank is unique.
+
+Players sit from highest card to lowest card clockwise around the table. The
+lowest-card player deals first, so the highest-card player receives the first
+chance at the opening discard. The dealer then moves one seat clockwise after
+each hand.
+
+---
+
 ## The object of the game
 
 Each hand you're trying to **"go down"** — that means laying down a specific
@@ -46,9 +59,9 @@ The **first player to empty their hand** ends the hand for everyone. Then:
 - Anyone who didn't stays put and tries the same level again next hand.
 - Everyone counts penalty points for cards left in hand (running total).
 
-The opening dealer is chosen randomly, and the player one seat clockwise goes
-first. After that, the deal moves one player clockwise every hand, regardless
-of who emptied their hand.
+The lowest opening draw deals first, and the highest opening draw goes first.
+After that, the deal moves one player clockwise every hand, regardless of who
+emptied their hand.
 
 **Winner = the first player to complete level 10.** If two people finish
 level 10 in the same hand, lowest cumulative penalty score breaks the tie.

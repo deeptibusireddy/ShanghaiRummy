@@ -1,6 +1,6 @@
 # Shanghai Rummy Nights — UX & Interaction Design
 
-> Owner: @deeptibusireddy · Updated: 2026-08-16 · Style: contemporary family game night
+> Owner: @deeptibusireddy · Updated: 2026-08-17 · Style: contemporary family game night
 
 This doc is the source of truth for how the game *feels*. The SpriteKit scene
 in M2b implements what's specified here. Any UX change should update this
@@ -47,6 +47,12 @@ file first, then the scene.
 - **Starting play:** Bot-only tables begin immediately. Tables with Human
   seats authenticate with Game Center when needed, then request exactly the
   selected number of remote players.
+- **Opening draw:** Once the roster is complete, every player receives a
+  face-up random non-joker card. After a short reveal, the cards animate into
+  highest-to-lowest clockwise order. Ace is high, tied ranks redraw, the
+  lowest-card player is marked as dealer, and the highest-card player is
+  marked to play first. The game remains blocked until the seating animation
+  completes or the user taps **Take Your Seats**.
 - **Safe exit:** Back closes setup without starting a table or changing the
   current game state.
 

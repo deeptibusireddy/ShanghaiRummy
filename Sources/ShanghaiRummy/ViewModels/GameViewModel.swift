@@ -10,10 +10,17 @@ import Combine
 @MainActor
 public final class GameViewModel: ObservableObject {
     public static let defaultCPUActionDelay: Duration = .milliseconds(900)
+    public static let openingDrawRevealDuration: Duration = .milliseconds(2400)
+    public static let openingDrawSeatingDuration: Duration = .milliseconds(2400)
 
     public enum SequenceEnd: Equatable {
         case start
         case end
+    }
+
+    public enum OpeningDrawStage: Equatable {
+        case drawing
+        case seating
     }
 
     public struct PendingSequenceEndChoice: Equatable {
@@ -63,6 +70,7 @@ public final class GameViewModel: ObservableObject {
     @Published public private(set) var contractReadyPrompt:
         ContractReadyPrompt? = nil
     @Published public private(set) var isScorecardPresented = false
+    @Published public private(set) var openingDrawStage: OpeningDrawStage?
 
     /// Non-nil in online mode. The local hand remains at the bottom even while
     /// another participant owns the turn.
@@ -76,24 +84,54 @@ public final class GameViewModel: ObservableObject {
     private var onlineActionSubmitter: ((TurnEngine.Action) -> Bool)?
     private var localBuyOfferTimeoutTask: Task<Void, Never>?
     private var hasPresentedContractReadyPrompt = false
+    private var openingDrawCompletionHandler: (() -> Void)?
 
     // MARK: - Init
 
     public init(
         state: GameState,
         localPlayerId: UUID? = nil,
-        cpuActionDelay: Duration = GameViewModel.defaultCPUActionDelay
+        cpuActionDelay: Duration = GameViewModel.defaultCPUActionDelay,
+        presentsOpeningDraw: Bool = false
     ) {
         self.state = state
         self.localPlayerId = localPlayerId
         self.cpuActionDelay = cpuActionDelay
+        openingDrawStage = presentsOpeningDraw
+            && Self.shouldPresentOpeningDraw(for: state)
+            ? .drawing
+            : nil
         scheduleLocalBuyOfferTimeout()
+    }
+
+    private static func shouldPresentOpeningDraw(
+        for state: GameState
+    ) -> Bool {
+        state.players.count >= RulesConfig.minPlayers
+            && state.currentRound == 1
+            && state.phase == .awaitingDraw
+            && state.currentTurnIndex == 0
+            && state.dealerIndex == state.players.count - 1
+            && state.buyDecisionPlayerId == state.currentPlayerId
+            && state.openingDraws.count == state.players.count
+            && state.discard.count == 1
+            && state.melds.isEmpty
+            && state.highlightedCardIdsByPlayer.isEmpty
+            && state.players.allSatisfy {
+                $0.hand.count == RulesConfig.handSizeAtDeal
+                    && $0.buysUsedThisRound == 0
+                    && !$0.hasGoneDownThisRound
+                    && !$0.laidDownThisTurn
+            }
     }
 
     /// Convenience factory: build a fresh match from names.
     public static func newHotSeat(playerNames: [String], seed: UInt64? = nil) -> GameViewModel {
         let s = seed ?? UInt64.random(in: 0...UInt64.max)
-        return GameViewModel(state: GameFactory.newGame(playerNames: playerNames, seed: s))
+        return GameViewModel(
+            state: GameFactory.newGame(playerNames: playerNames, seed: s),
+            presentsOpeningDraw: true
+        )
     }
 
     // MARK: - Derived helpers used by views
@@ -135,6 +173,9 @@ public final class GameViewModel: ObservableObject {
         return index
     }
     public var isOnlineGame: Bool { localPlayerId != nil }
+    public var isOpeningDrawPresented: Bool {
+        openingDrawStage != nil
+    }
     public var isLocalActivePlayer: Bool {
         localPlayerId == nil || state.activePlayerId == localPlayerId
     }
@@ -291,6 +332,25 @@ public final class GameViewModel: ObservableObject {
         onlineActionSubmitter = submitter
     }
 
+    public func configureOpeningDrawCompletion(
+        _ completion: @escaping () -> Void
+    ) {
+        openingDrawCompletionHandler = completion
+    }
+
+    public func showOpeningSeatOrder() {
+        guard openingDrawStage == .drawing else { return }
+        openingDrawStage = .seating
+    }
+
+    public func completeOpeningDrawCeremony() {
+        guard openingDrawStage != nil else { return }
+        openingDrawStage = nil
+        scheduleLocalBuyOfferTimeout()
+        runLocalCPUActionsIfNeeded()
+        openingDrawCompletionHandler?()
+    }
+
     public func receiveAuthoritativeState(
         _ newState: GameState,
         completesPendingAction: Bool = true
@@ -404,6 +464,7 @@ public final class GameViewModel: ObservableObject {
         localBuyOfferTimeoutTask?.cancel()
         localBuyOfferTimeoutTask = nil
         guard !isOnlineGame,
+              openingDrawStage == nil,
               !isBetweenTurns,
               state.phase == .awaitingDraw,
               let offeredPlayerId = state.buyDecisionPlayerId,
@@ -1112,6 +1173,7 @@ public final class GameViewModel: ObservableObject {
 
     private func runLocalCPUActionsIfNeeded() {
         guard onlineActionSubmitter == nil,
+              openingDrawStage == nil,
               !isRunningCPUTurns,
               isCurrentPlayerCPU,
               (state.phase == .awaitingDraw
@@ -1136,7 +1198,8 @@ public final class GameViewModel: ObservableObject {
         }
 
         var guardCounter = 0
-        while isCurrentPlayerCPU
+        while openingDrawStage == nil
+                && isCurrentPlayerCPU
                 && (state.phase == .awaitingDraw
                     || state.phase == .awaitingMeldOrDiscard)
                 && guardCounter < 200 {
@@ -1147,6 +1210,7 @@ public final class GameViewModel: ObservableObject {
             }
             guard cpuTurnTaskId == taskId,
                   !Task.isCancelled,
+                  openingDrawStage == nil,
                   isCurrentPlayerCPU else {
                 return
             }

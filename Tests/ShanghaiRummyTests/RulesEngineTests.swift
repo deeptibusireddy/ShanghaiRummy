@@ -441,6 +441,7 @@ final class TurnEngineTests: XCTestCase {
         XCTAssertEqual(g.currentRound, 1)
         XCTAssertEqual(g.phase, .awaitingDraw)
         XCTAssertTrue(g.players.indices.contains(g.dealerIndex))
+        XCTAssertEqual(g.openingDraws.count, g.players.count)
         XCTAssertEqual(
             g.currentTurnIndex,
             (g.dealerIndex + 1) % g.players.count
@@ -451,7 +452,7 @@ final class TurnEngineTests: XCTestCase {
         XCTAssertEqual(g.discard.count, 1)
     }
 
-    func testOpeningDealerIsSeededAndVariesAcrossMatches() {
+    func testOpeningDrawIsSeededAndDeterminesSeating() {
         let first = GameFactory.newGame(
             playerNames: ["A", "B", "C", "D"],
             seed: 84
@@ -460,7 +461,51 @@ final class TurnEngineTests: XCTestCase {
             playerNames: ["A", "B", "C", "D"],
             seed: 84
         )
-        XCTAssertEqual(first.dealerIndex, repeated.dealerIndex)
+        let signature: (OpeningDraw) -> String = {
+            "\($0.card.rank?.rawValue ?? 0)-\($0.card.suit?.rawValue ?? "")"
+        }
+        XCTAssertEqual(
+            first.openingDraws.map(signature),
+            repeated.openingDraws.map(signature)
+        )
+        XCTAssertEqual(
+            Set(first.openingDraws.compactMap(\.card.rank)).count,
+            first.players.count
+        )
+        XCTAssertTrue(first.openingDraws.allSatisfy { !$0.card.isPrintedJoker })
+        let nameByPlayerId = Dictionary(
+            uniqueKeysWithValues: first.players.map { ($0.id, $0.name) }
+        )
+        XCTAssertEqual(
+            first.openingDraws.compactMap {
+                nameByPlayerId[$0.playerId]
+            },
+            ["A", "B", "C", "D"]
+        )
+
+        let drawByPlayerId = Dictionary(
+            uniqueKeysWithValues: first.openingDraws.map {
+                ($0.playerId, $0.seatingValue)
+            }
+        )
+        let seatedValues = first.players.map {
+            drawByPlayerId[$0.id, default: 0]
+        }
+        XCTAssertEqual(seatedValues, seatedValues.sorted(by: >))
+        XCTAssertEqual(first.dealerIndex, first.players.count - 1)
+        XCTAssertEqual(first.currentTurnIndex, 0)
+        XCTAssertEqual(
+            first.players[first.dealerIndex].id,
+            first.openingDraws.min(by: {
+                $0.seatingValue < $1.seatingValue
+            })?.playerId
+        )
+        XCTAssertEqual(
+            first.currentPlayerId,
+            first.openingDraws.max(by: {
+                $0.seatingValue < $1.seatingValue
+            })?.playerId
+        )
 
         let games = (0..<16).map { seed in
             GameFactory.newGame(
@@ -469,13 +514,26 @@ final class TurnEngineTests: XCTestCase {
             )
         }
         for game in games {
-            XCTAssertEqual(
-                game.currentTurnIndex,
-                (game.dealerIndex + 1) % game.players.count
-            )
+            XCTAssertEqual(game.currentTurnIndex, 0)
+            XCTAssertEqual(game.dealerIndex, game.players.count - 1)
         }
-        let dealerIndices = Set(games.map(\.dealerIndex))
-        XCTAssertGreaterThan(dealerIndices.count, 1)
+        let dealerNames = Set(games.map {
+            $0.players[$0.dealerIndex].name
+        })
+        XCTAssertGreaterThan(dealerNames.count, 1)
+    }
+
+    func testOpeningDrawTreatsAceAsHigh() {
+        let ace = OpeningDraw(
+            playerId: UUID(),
+            card: Card(suit: .hearts, rank: .ace)
+        )
+        let king = OpeningDraw(
+            playerId: UUID(),
+            card: Card(suit: .spades, rank: .king)
+        )
+
+        XCTAssertGreaterThan(ace.seatingValue, king.seatingValue)
     }
 
     func testEveryonePassingDrawsStockForTurnPlayer() {

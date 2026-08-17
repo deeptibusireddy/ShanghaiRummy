@@ -167,11 +167,16 @@ struct RootView: View {
                             seed: 42
                         )
                         var state = built.state
-                        state.currentTurnIndex = 1
-                        state.buyDecisionPlayerId = state.players[1].id
+                        let botId = state.players.first {
+                            built.cpuIds.contains($0.id)
+                        }!.id
+                        state.currentTurnIndex = state.players.firstIndex {
+                            $0.id == botId
+                        }!
+                        state.buyDecisionPlayerId = botId
                         let vm = GameViewModel(
                             state: state,
-                            localPlayerId: state.players[0].id,
+                            localPlayerId: built.localPlayerId,
                             cpuActionDelay: .seconds(30)
                         )
                         vm.cpuPlayerIds = built.cpuIds
@@ -184,7 +189,10 @@ struct RootView: View {
                             cpuNames: ["Alex", "Jordan", "Sam"],
                             seed: 42
                         )
-                        let vm = GameViewModel(state: built.state)
+                        let vm = GameViewModel(
+                            state: built.state,
+                            localPlayerId: built.localPlayerId
+                        )
                         vm.cpuPlayerIds = built.cpuIds
                         activeGame = vm
                     } else if activeGame == nil,
@@ -249,14 +257,29 @@ struct RootView: View {
 
     private func startBotOnlyGame(botCount: Int) {
         let botNames = (0..<botCount).map { "Bot \($0 + 1)" }
-        let built = GameFactory.newVsCPU(
+        var seed = CommandLine.arguments.contains("--ui-testing")
+            ? UInt64(0)
+            : UInt64.random(in: 0...UInt64.max)
+        var built = GameFactory.newVsCPU(
             you: "You",
             cpuNames: botNames,
-            seed: UInt64.random(in: 0...UInt64.max)
+            seed: seed
         )
+        if CommandLine.arguments.contains("--ui-testing") {
+            while built.state.currentPlayerId != built.localPlayerId,
+                  seed < 100 {
+                seed += 1
+                built = GameFactory.newVsCPU(
+                    you: "You",
+                    cpuNames: botNames,
+                    seed: seed
+                )
+            }
+        }
         let viewModel = GameViewModel(
             state: built.state,
-            localPlayerId: built.state.players[0].id
+            localPlayerId: built.localPlayerId,
+            presentsOpeningDraw: true
         )
         viewModel.cpuPlayerIds = built.cpuIds
         activeGame = viewModel

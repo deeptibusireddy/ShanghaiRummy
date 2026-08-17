@@ -346,12 +346,16 @@ final class GameCenterManager: NSObject, ObservableObject {
             return
         }
 
-        let botNames = (0..<botCount).map { "Bot \($0 + 1)" }
+        let humanStatePlayers = players.map {
+            Player(name: $0.displayName)
+        }
+        let botStatePlayers = (0..<botCount).map {
+            Player(name: "Bot \($0 + 1)")
+        }
         let state = GameFactory.newGame(
-            playerNames: players.map(\.displayName) + botNames,
+            players: humanStatePlayers + botStatePlayers,
             seed: UInt64.random(in: 0...UInt64.max)
         )
-        let humanStatePlayers = state.players.prefix(players.count)
         let bindings = zip(players, humanStatePlayers).map { gamePlayer, player in
             RealtimeParticipantBinding(
                 gamePlayerId: gamePlayer.gamePlayerID,
@@ -359,9 +363,7 @@ final class GameCenterManager: NSObject, ObservableObject {
                 displayName: gamePlayer.displayName
             )
         }
-        let botPlayerIds = state.players
-            .dropFirst(players.count)
-            .map(\.id)
+        let botPlayerIds = botStatePlayers.map(\.id)
         let snapshot = RealtimeGameSnapshot(
             revision: 0,
             state: state,
@@ -404,10 +406,14 @@ final class GameCenterManager: NSObject, ObservableObject {
         } else {
             let viewModel = GameViewModel(
                 state: snapshot.state,
-                localPlayerId: localBinding.playerId
+                localPlayerId: localBinding.playerId,
+                presentsOpeningDraw: true
             )
             viewModel.configureOnlineActionSubmitter { [weak self] action in
                 self?.submit(action) ?? false
+            }
+            viewModel.configureOpeningDrawCompletion { [weak self] in
+                self?.runHostedBotsIfNeeded()
             }
             viewModel.cpuPlayerIds = Set(snapshot.botPlayerIds)
             onlineGame = viewModel
@@ -707,6 +713,7 @@ final class GameCenterManager: NSObject, ObservableObject {
 
     private func runHostedBotsIfNeeded() {
         guard !isRunningHostedBots,
+              onlineGame?.isOpeningDrawPresented != true,
               let authority,
               authority.snapshot.hostGamePlayerId
                 == GKLocalPlayer.local.gamePlayerID,
