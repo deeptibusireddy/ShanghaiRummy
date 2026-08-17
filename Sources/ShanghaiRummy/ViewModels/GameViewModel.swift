@@ -594,9 +594,9 @@ public final class GameViewModel: ObservableObject {
     private func suitIndex(_ suit: Suit?) -> Int {
         switch suit {
         case .clubs: return 0
-        case .diamonds: return 1
-        case .hearts: return 2
-        case .spades: return 3
+        case .hearts: return 1
+        case .spades: return 2
+        case .diamonds: return 3
         case .none: return 4
         }
     }

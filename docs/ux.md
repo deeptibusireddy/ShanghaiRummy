@@ -106,7 +106,9 @@ percentages of the game surface so they scale to any device.
 | **Leave control** | Top left; opens a confirmation instead of ending the game immediately |
 
 - **Rank sorting:** Ace is displayed after King, while live wild cards remain
-  at the end of the hand. Suit sorting keeps its existing grouping.
+  at the end of the hand.
+- **Suit sorting:** Suit groups alternate black and red in Clubs, Hearts,
+  Spades, Diamonds order. Wild cards remain at the end.
 
 ## Seat layouts by player count
 
