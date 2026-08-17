@@ -7,6 +7,10 @@ on:
     branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: read
+  issues: write
+
 jobs:
   build-and-test:
     name: Build & Test (iPad)
@@ -96,12 +100,17 @@ jobs:
           if-no-files-found: ignore
 
   game-simulation:
-    name: Simulate 5,000 Games
+    name: Simulate 1,000 Games (${{ matrix.player_count }} Players)
     if: ${{ github.event_name == 'workflow_dispatch' }}
     runs-on: macos-15
     timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        player_count: [2, 3, 4, 5, 6]
     env:
-      RESULT_BUNDLE: GameSimulationResults.xcresult
+      PLAYER_COUNT: ${{ matrix.player_count }}
+      DERIVED_DATA: SimulationDerivedData-${{ matrix.player_count }}
 
     steps:
       - name: Checkout
@@ -113,50 +122,115 @@ jobs:
       - name: Generate Xcode project
         run: xcodegen generate
 
-      - name: Run 2–6 player simulations
+      - name: Select iPad simulator
         run: |
-          set -o pipefail
           DEVICE_ID=$(xcrun simctl list devices available -j \
             | python3 -c 'import json,sys; d=json.load(sys.stdin)["devices"]; \
               picks=[dev for k,v in d.items() if "iOS" in k for dev in v if "iPad" in dev["name"]]; \
               print(picks[0]["udid"])')
+          echo "DEVICE_ID=$DEVICE_ID" >> "$GITHUB_ENV"
+
+      - name: Create progress comment
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          PR_NUMBER=$(gh pr list \
+            --repo "$GITHUB_REPOSITORY" \
+            --head "$GITHUB_REF_NAME" \
+            --state open \
+            --json number \
+            --jq '.[0].number')
+          if [ -n "$PR_NUMBER" ]; then
+            COMMENT_ID=$(gh api \
+              "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" \
+              -f body="🤖 **${PLAYER_COUNT}-player simulation:** 0 / 1,000 games complete." \
+              --jq .id)
+            echo "COMMENT_ID=$COMMENT_ID" >> "$GITHUB_ENV"
+          fi
+
+      - name: Build simulation tests
+        run: |
+          set -o pipefail
           xcodebuild \
             -project ShanghaiRummy.xcodeproj \
             -scheme ShanghaiRummy \
             -sdk iphonesimulator \
             -destination "platform=iOS Simulator,id=$DEVICE_ID" \
             -configuration Debug \
-            -resultBundlePath "$RESULT_BUNDLE" \
-            -only-testing:ShanghaiRummyTests/GameSimulationTests/testFiveThousandBotGamesComplete \
-            SWIFT_ACTIVE_COMPILATION_CONDITIONS='$(inherited) RUN_GAME_SIMULATIONS' \
+            -derivedDataPath "$DERIVED_DATA" \
+            SWIFT_ACTIVE_COMPILATION_CONDITIONS='$(inherited) RUN_GAME_SIMULATIONS SIMULATE_PLAYER_COUNT_${{ matrix.player_count }}' \
             CODE_SIGNING_ALLOWED=NO \
-            test \
-            | tee game-simulation.log \
+            build-for-testing \
             | xcbeautify --renderer github-actions
 
-      - name: Extract simulation report
-        if: always()
+      - name: Run simulation batches
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          mkdir -p simulation-attachments
-          xcparse attachments \
-            "$RESULT_BUNDLE" \
-            simulation-attachments \
-            --uti public.json
-          REPORT=$(find simulation-attachments -type f | head -1)
-          if [ -z "$REPORT" ]; then
-            echo "Simulation report attachment was not found"
-            exit 1
+          set -o pipefail
+          mkdir -p simulation-logs simulation-reports simulation-results
+          for BATCH in $(seq 0 19); do
+            TEST_NAME=$(printf "testBatch%02d" "$BATCH")
+            RESULT_BUNDLE="simulation-results/${PLAYER_COUNT}p-${TEST_NAME}.xcresult"
+            LOG_FILE="simulation-logs/${PLAYER_COUNT}p-${TEST_NAME}.log"
+            ATTACHMENTS="simulation-results/${PLAYER_COUNT}p-${TEST_NAME}-attachments"
+
+            xcodebuild \
+              -project ShanghaiRummy.xcodeproj \
+              -scheme ShanghaiRummy \
+              -sdk iphonesimulator \
+              -destination "platform=iOS Simulator,id=$DEVICE_ID" \
+              -configuration Debug \
+              -derivedDataPath "$DERIVED_DATA" \
+              -resultBundlePath "$RESULT_BUNDLE" \
+              -only-testing:ShanghaiRummyTests/GameSimulationTests/$TEST_NAME \
+              CODE_SIGNING_ALLOWED=NO \
+              test-without-building \
+              | tee "$LOG_FILE" \
+              | xcbeautify --renderer github-actions
+
+            mkdir -p "$ATTACHMENTS"
+            xcparse attachments \
+              "$RESULT_BUNDLE" \
+              "$ATTACHMENTS" \
+              --uti public.json
+            REPORT=$(find "$ATTACHMENTS" -type f | head -1)
+            if [ -z "$REPORT" ]; then
+              echo "Simulation report was not found for $TEST_NAME"
+              exit 1
+            fi
+            cp "$REPORT" \
+              "simulation-reports/${PLAYER_COUNT}p-${TEST_NAME}.json"
+
+            COMPLETED=$(( (BATCH + 1) * 50 ))
+            echo "::notice title=${PLAYER_COUNT}-player simulation::${COMPLETED} / 1,000 games complete"
+            if [ -n "$COMMENT_ID" ]; then
+              gh api \
+                --method PATCH \
+                "repos/$GITHUB_REPOSITORY/issues/comments/$COMMENT_ID" \
+                -f body="🤖 **${PLAYER_COUNT}-player simulation:** ${COMPLETED} / 1,000 games complete."
+            fi
+          done
+
+      - name: Mark simulation failure
+        if: ${{ failure() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ -z "$COMMENT_ID" ]; then
+            exit 0
           fi
-          cp "$REPORT" game-simulation-report.json
+          gh api \
+            --method PATCH \
+            "repos/$GITHUB_REPOSITORY/issues/comments/$COMMENT_ID" \
+            -f body="⚠️ **${PLAYER_COUNT}-player simulation stopped early.** See the workflow logs for the last completed 50-game batch."
 
       - name: Upload simulation results
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: game-simulation-results
+          name: game-simulation-results-${{ matrix.player_count }}-players
           path: |
-            game-simulation-report.json
-            game-simulation.log
-            simulation-attachments/
-            ${{ env.RESULT_BUNDLE }}
+            simulation-reports/
+            simulation-logs/
           if-no-files-found: warn

@@ -3,6 +3,8 @@ import XCTest
 @testable import ShanghaiRummy
 
 final class GameSimulationTests: XCTestCase {
+    private static let gamesPerBatch = 50
+
     private struct ActionTotals: Codable {
         var stockChoices = 0
         var discardTakes = 0
@@ -45,40 +47,26 @@ final class GameSimulationTests: XCTestCase {
                 handsAdvanced += 1
             }
         }
-
-        static func += (lhs: inout ActionTotals, rhs: ActionTotals) {
-            lhs.stockChoices += rhs.stockChoices
-            lhs.discardTakes += rhs.discardTakes
-            lhs.contractsLaid += rhs.contractsLaid
-            lhs.cardsLaidOff += rhs.cardsLaidOff
-            lhs.wildRedemptions += rhs.wildRedemptions
-            lhs.discards += rhs.discards
-            lhs.outOfTurnBuys += rhs.outOfTurnBuys
-            lhs.outOfTurnPasses += rhs.outOfTurnPasses
-            lhs.handsAdvanced += rhs.handsAdvanced
-        }
     }
 
-    private struct GameMetrics {
-        var actionCount = 0
-        var turnCount = 0
-        var hands = 0
-        var wentOutHands = 0
-        var stockExhaustedHands = 0
-        var stockReshuffles = 0
-        var maximumHandSize = 0
-        var winnerSeats: [Int] = []
-        var finalScores: [Int] = []
-        var finalContractsCompleted: [Int] = []
-        var actions = ActionTotals()
+    private struct GameRecord: Codable {
+        let playerCount: Int
+        let gameNumber: Int
+        let seed: UInt64
+        let actionCount: Int
+        let turnCount: Int
+        let hands: Int
+        let wentOutHands: Int
+        let stockExhaustedHands: Int
+        let stockReshuffles: Int
+        let maximumHandSize: Int
+        let winnerSeats: [Int]
+        let finalScores: [Int]
+        let finalContractsCompleted: [Int]
+        let actions: ActionTotals
     }
 
-    private enum GameOutcome {
-        case success(GameMetrics)
-        case failure(message: String, actionCount: Int, phase: GameState.Phase)
-    }
-
-    private struct SimulationFailure: Codable {
+    private struct GameFailure: Codable {
         let playerCount: Int
         let gameNumber: Int
         let seed: UInt64
@@ -87,227 +75,82 @@ final class GameSimulationTests: XCTestCase {
         let message: String
     }
 
-    private struct PlayerCountResult: Codable {
+    private struct BatchReport: Codable {
+        let generatedAt: String
         let playerCount: Int
+        let batchIndex: Int
+        let firstGameNumber: Int
+        let lastGameNumber: Int
         let gamesRequested: Int
         let gamesCompleted: Int
-        let gamesFailed: Int
-        let averageActionsPerGame: Double
-        let p95ActionsPerGame: Int
-        let maximumActionsPerGame: Int
-        let averageHandsPerGame: Double
-        let p95HandsPerGame: Int
-        let maximumHandsPerGame: Int
-        let averageTurnsPerGame: Double
-        let averageMaximumHandSize: Double
-        let averageContractGapAtFinish: Double
-        let wentOutHands: Int
-        let stockExhaustedHands: Int
-        let stockExhaustionPercentOfHands: Double
-        let stockReshuffles: Int
-        let coWinnerGames: Int
-        let winnerSeatCounts: [Int]
-        let averageFinalScoreBySeat: [Double]
-        let averageContractsCompletedBySeat: [Double]
-        let discardTakePercent: Double
-        let outOfTurnBuyAcceptancePercent: Double
-        let actions: ActionTotals
+        let records: [GameRecord]
+        let failures: [GameFailure]
     }
 
-    private struct SimulationReport: Codable {
-        let generatedAt: String
-        let gamesPerPlayerCount: Int
-        let totalGamesRequested: Int
-        let totalGamesCompleted: Int
-        let results: [PlayerCountResult]
-        let failures: [SimulationFailure]
+    private enum GameOutcome {
+        case success(GameRecord)
+        case failure(GameFailure)
     }
 
-    private struct PlayerCountAccumulator {
-        let playerCount: Int
-        let gamesRequested: Int
-        var completed = 0
-        var actionCounts: [Int] = []
-        var handCounts: [Int] = []
-        var turnCounts: [Int] = []
-        var maximumHandSizes: [Int] = []
-        var contractGaps: [Int] = []
-        var wentOutHands = 0
-        var stockExhaustedHands = 0
-        var stockReshuffles = 0
-        var coWinnerGames = 0
-        var winnerSeatCounts: [Int]
-        var finalScoreSums: [Int]
-        var finalContractSums: [Int]
-        var actions = ActionTotals()
+    func testBatch00() throws { try runBatch(index: 0) }
+    func testBatch01() throws { try runBatch(index: 1) }
+    func testBatch02() throws { try runBatch(index: 2) }
+    func testBatch03() throws { try runBatch(index: 3) }
+    func testBatch04() throws { try runBatch(index: 4) }
+    func testBatch05() throws { try runBatch(index: 5) }
+    func testBatch06() throws { try runBatch(index: 6) }
+    func testBatch07() throws { try runBatch(index: 7) }
+    func testBatch08() throws { try runBatch(index: 8) }
+    func testBatch09() throws { try runBatch(index: 9) }
+    func testBatch10() throws { try runBatch(index: 10) }
+    func testBatch11() throws { try runBatch(index: 11) }
+    func testBatch12() throws { try runBatch(index: 12) }
+    func testBatch13() throws { try runBatch(index: 13) }
+    func testBatch14() throws { try runBatch(index: 14) }
+    func testBatch15() throws { try runBatch(index: 15) }
+    func testBatch16() throws { try runBatch(index: 16) }
+    func testBatch17() throws { try runBatch(index: 17) }
+    func testBatch18() throws { try runBatch(index: 18) }
+    func testBatch19() throws { try runBatch(index: 19) }
 
-        init(playerCount: Int, gamesRequested: Int) {
-            self.playerCount = playerCount
-            self.gamesRequested = gamesRequested
-            winnerSeatCounts = Array(repeating: 0, count: playerCount)
-            finalScoreSums = Array(repeating: 0, count: playerCount)
-            finalContractSums = Array(repeating: 0, count: playerCount)
-        }
-
-        mutating func record(_ metrics: GameMetrics) {
-            completed += 1
-            actionCounts.append(metrics.actionCount)
-            handCounts.append(metrics.hands)
-            turnCounts.append(metrics.turnCount)
-            maximumHandSizes.append(metrics.maximumHandSize)
-            let maxContracts =
-                metrics.finalContractsCompleted.max() ?? 0
-            let minContracts =
-                metrics.finalContractsCompleted.min() ?? 0
-            contractGaps.append(maxContracts - minContracts)
-            wentOutHands += metrics.wentOutHands
-            stockExhaustedHands += metrics.stockExhaustedHands
-            stockReshuffles += metrics.stockReshuffles
-            if metrics.winnerSeats.count > 1 {
-                coWinnerGames += 1
-            }
-            for seat in metrics.winnerSeats {
-                winnerSeatCounts[seat] += 1
-            }
-            for seat in 0..<playerCount {
-                finalScoreSums[seat] += metrics.finalScores[seat]
-                finalContractSums[seat] +=
-                    metrics.finalContractsCompleted[seat]
-            }
-            actions += metrics.actions
-        }
-
-        func result(failureCount: Int) -> PlayerCountResult {
-            let totalEndedHands = wentOutHands + stockExhaustedHands
-            let firstRefusalChoices =
-                actions.stockChoices + actions.discardTakes
-            let buyDecisions =
-                actions.outOfTurnBuys + actions.outOfTurnPasses
-            return PlayerCountResult(
-                playerCount: playerCount,
-                gamesRequested: gamesRequested,
-                gamesCompleted: completed,
-                gamesFailed: failureCount,
-                averageActionsPerGame:
-                    GameSimulationTests.average(actionCounts),
-                p95ActionsPerGame:
-                    GameSimulationTests.percentile(actionCounts, 0.95),
-                maximumActionsPerGame: actionCounts.max() ?? 0,
-                averageHandsPerGame:
-                    GameSimulationTests.average(handCounts),
-                p95HandsPerGame:
-                    GameSimulationTests.percentile(handCounts, 0.95),
-                maximumHandsPerGame: handCounts.max() ?? 0,
-                averageTurnsPerGame:
-                    GameSimulationTests.average(turnCounts),
-                averageMaximumHandSize:
-                    GameSimulationTests.average(maximumHandSizes),
-                averageContractGapAtFinish:
-                    GameSimulationTests.average(contractGaps),
-                wentOutHands: wentOutHands,
-                stockExhaustedHands: stockExhaustedHands,
-                stockExhaustionPercentOfHands: GameSimulationTests.percent(
-                    stockExhaustedHands,
-                    totalEndedHands
-                ),
-                stockReshuffles: stockReshuffles,
-                coWinnerGames: coWinnerGames,
-                winnerSeatCounts: winnerSeatCounts,
-                averageFinalScoreBySeat: GameSimulationTests.averages(
-                    finalScoreSums,
-                    denominator: completed
-                ),
-                averageContractsCompletedBySeat:
-                    GameSimulationTests.averages(
-                        finalContractSums,
-                        denominator: completed
-                    ),
-                discardTakePercent: GameSimulationTests.percent(
-                    actions.discardTakes,
-                    firstRefusalChoices
-                ),
-                outOfTurnBuyAcceptancePercent:
-                    GameSimulationTests.percent(
-                        actions.outOfTurnBuys,
-                        buyDecisions
-                    ),
-                actions: actions
-            )
-        }
-    }
-
-    func testFiveThousandBotGamesComplete() throws {
-        #if RUN_GAME_SIMULATIONS
-        let shouldRunSimulations = true
-        #else
-        let shouldRunSimulations = false
-        #endif
-        guard shouldRunSimulations else {
+    private func runBatch(index: Int) throws {
+        guard let playerCount = Self.simulationPlayerCount else {
             throw XCTSkip(
-                "Run the manual simulation workflow to execute the soak suite"
+                "Run the manual simulation workflow to execute soak batches"
             )
         }
-        let gamesPerPlayerCount = 1_000
-        let actionLimitPerGame = 100_000
-        var failures: [SimulationFailure] = []
-        var results: [PlayerCountResult] = []
 
-        for playerCount in RulesConfig.minPlayers...RulesConfig.maxPlayers {
-            var accumulator = PlayerCountAccumulator(
+        let firstGameIndex = index * Self.gamesPerBatch
+        var records: [GameRecord] = []
+        var failures: [GameFailure] = []
+
+        for offset in 0..<Self.gamesPerBatch {
+            let gameNumber = firstGameIndex + offset + 1
+            let seed =
+                UInt64(playerCount) * 1_000_000
+                + UInt64(gameNumber)
+            switch simulateGame(
                 playerCount: playerCount,
-                gamesRequested: gamesPerPlayerCount
-            )
-            let failureStart = failures.count
-
-            for gameIndex in 0..<gamesPerPlayerCount {
-                let seed =
-                    UInt64(playerCount) * 1_000_000
-                    + UInt64(gameIndex + 1)
-                switch simulateGame(
-                    playerCount: playerCount,
-                    seed: seed,
-                    actionLimit: actionLimitPerGame
-                ) {
-                case .success(let metrics):
-                    accumulator.record(metrics)
-                case .failure(let message, let actionCount, let phase):
-                    failures.append(
-                        SimulationFailure(
-                            playerCount: playerCount,
-                            gameNumber: gameIndex + 1,
-                            seed: seed,
-                            actionCount: actionCount,
-                            phase: phase.rawValue,
-                            message: message
-                        )
-                    )
-                }
-
-                if (gameIndex + 1).isMultiple(of: 100) {
-                    print(
-                        "Simulation progress: \(playerCount) players, "
-                            + "\(gameIndex + 1)/\(gamesPerPlayerCount) games"
-                    )
-                }
+                gameNumber: gameNumber,
+                seed: seed,
+                actionLimit: 100_000
+            ) {
+            case .success(let record):
+                records.append(record)
+            case .failure(let failure):
+                failures.append(failure)
             }
-
-            results.append(
-                accumulator.result(
-                    failureCount: failures.count - failureStart
-                )
-            )
         }
 
-        let report = SimulationReport(
+        let report = BatchReport(
             generatedAt: ISO8601DateFormatter().string(from: Date()),
-            gamesPerPlayerCount: gamesPerPlayerCount,
-            totalGamesRequested:
-                gamesPerPlayerCount
-                * (RulesConfig.maxPlayers - RulesConfig.minPlayers + 1),
-            totalGamesCompleted: results.reduce(0) {
-                $0 + $1.gamesCompleted
-            },
-            results: results,
+            playerCount: playerCount,
+            batchIndex: index,
+            firstGameNumber: firstGameIndex + 1,
+            lastGameNumber: firstGameIndex + Self.gamesPerBatch,
+            gamesRequested: Self.gamesPerBatch,
+            gamesCompleted: records.count,
+            records: records,
             failures: failures
         )
         let encoder = JSONEncoder()
@@ -317,13 +160,17 @@ final class GameSimulationTests: XCTestCase {
             data: data,
             uniformTypeIdentifier: "public.json"
         )
-        attachment.name = "game-simulation-report.json"
+        attachment.name = String(
+            format: "game-simulation-%dp-batch-%02d.json",
+            playerCount,
+            index
+        )
         attachment.lifetime = .keepAlways
         add(attachment)
 
         XCTAssertEqual(
-            report.totalGamesCompleted,
-            report.totalGamesRequested,
+            records.count,
+            Self.gamesPerBatch,
             "Every requested game must reach gameEnded"
         )
         XCTAssertTrue(
@@ -334,8 +181,25 @@ final class GameSimulationTests: XCTestCase {
         )
     }
 
+    private static var simulationPlayerCount: Int? {
+        #if RUN_GAME_SIMULATIONS && SIMULATE_PLAYER_COUNT_2
+        return 2
+        #elseif RUN_GAME_SIMULATIONS && SIMULATE_PLAYER_COUNT_3
+        return 3
+        #elseif RUN_GAME_SIMULATIONS && SIMULATE_PLAYER_COUNT_4
+        return 4
+        #elseif RUN_GAME_SIMULATIONS && SIMULATE_PLAYER_COUNT_5
+        return 5
+        #elseif RUN_GAME_SIMULATIONS && SIMULATE_PLAYER_COUNT_6
+        return 6
+        #else
+        return nil
+        #endif
+    }
+
     private func simulateGame(
         playerCount: Int,
+        gameNumber: Int,
         seed: UInt64,
         actionLimit: Int
     ) -> GameOutcome {
@@ -344,12 +208,17 @@ final class GameSimulationTests: XCTestCase {
             playerNames: names,
             seed: seed
         )
-        var metrics = GameMetrics()
-        metrics.maximumHandSize =
+        var actionCount = 0
+        var turnCount = 0
+        var wentOutHands = 0
+        var stockExhaustedHands = 0
+        var stockReshuffles = 0
+        var maximumHandSize =
             state.players.map(\.hand.count).max() ?? 0
+        var actions = ActionTotals()
 
         while state.phase != .gameEnded,
-              metrics.actionCount < actionLimit {
+              actionCount < actionLimit {
             let action: TurnEngine.Action
             if state.phase == .roundEnded {
                 action = .advanceHand(playerId: state.nextDealer.id)
@@ -361,23 +230,28 @@ final class GameSimulationTests: XCTestCase {
             }
 
             let previous = state
-            metrics.actions.record(action, in: previous)
+            actions.record(action, in: previous)
             switch TurnEngine.apply(action, to: previous) {
             case .failure(let error):
                 return .failure(
-                    message: "\(error.description); action: \(action)",
-                    actionCount: metrics.actionCount,
-                    phase: previous.phase
+                    GameFailure(
+                        playerCount: playerCount,
+                        gameNumber: gameNumber,
+                        seed: seed,
+                        actionCount: actionCount,
+                        phase: previous.phase.rawValue,
+                        message: "\(error.description); action: \(action)"
+                    )
                 )
             case .success(let next):
-                metrics.actionCount += 1
+                actionCount += 1
                 if case .discard = action {
-                    metrics.turnCount += 1
+                    turnCount += 1
                 }
                 if next.currentRound == previous.currentRound,
                    next.stockReshufflesUsed
                     > previous.stockReshufflesUsed {
-                    metrics.stockReshuffles +=
+                    stockReshuffles +=
                         next.stockReshufflesUsed
                         - previous.stockReshufflesUsed
                 }
@@ -391,13 +265,13 @@ final class GameSimulationTests: XCTestCase {
                         $0.hand.isEmpty && $0.hasGoneDownThisRound
                     }
                     if someoneWentOut {
-                        metrics.wentOutHands += 1
+                        wentOutHands += 1
                     } else {
-                        metrics.stockExhaustedHands += 1
+                        stockExhaustedHands += 1
                     }
                 }
-                metrics.maximumHandSize = max(
-                    metrics.maximumHandSize,
+                maximumHandSize = max(
+                    maximumHandSize,
                     next.players.map(\.hand.count).max() ?? 0
                 )
                 state = next
@@ -406,69 +280,42 @@ final class GameSimulationTests: XCTestCase {
 
         guard state.phase == .gameEnded else {
             return .failure(
-                message: "Exceeded \(actionLimit) actions",
-                actionCount: metrics.actionCount,
-                phase: state.phase
+                GameFailure(
+                    playerCount: playerCount,
+                    gameNumber: gameNumber,
+                    seed: seed,
+                    actionCount: actionCount,
+                    phase: state.phase.rawValue,
+                    message: "Exceeded \(actionLimit) actions"
+                )
             )
         }
 
         let winnerIds = Set(state.gameWinnerIds)
-        metrics.hands = state.currentRound
-        metrics.winnerSeats = state.players.indices.filter {
-            winnerIds.contains(state.players[$0].id)
-        }
-        metrics.finalScores = state.players.map(\.totalScore)
-        metrics.finalContractsCompleted = state.players.map {
-            min(
-                RulesConfig.maxLevel,
-                max(0, $0.currentLevel - 1)
+        return .success(
+            GameRecord(
+                playerCount: playerCount,
+                gameNumber: gameNumber,
+                seed: seed,
+                actionCount: actionCount,
+                turnCount: turnCount,
+                hands: state.currentRound,
+                wentOutHands: wentOutHands,
+                stockExhaustedHands: stockExhaustedHands,
+                stockReshuffles: stockReshuffles,
+                maximumHandSize: maximumHandSize,
+                winnerSeats: state.players.indices.filter {
+                    winnerIds.contains(state.players[$0].id)
+                },
+                finalScores: state.players.map(\.totalScore),
+                finalContractsCompleted: state.players.map {
+                    min(
+                        RulesConfig.maxLevel,
+                        max(0, $0.currentLevel - 1)
+                    )
+                },
+                actions: actions
             )
-        }
-        return .success(metrics)
-    }
-
-    private static func average(_ values: [Int]) -> Double {
-        guard !values.isEmpty else { return 0 }
-        return rounded(
-            Double(values.reduce(0, +)) / Double(values.count)
         )
-    }
-
-    private static func averages(
-        _ values: [Int],
-        denominator: Int
-    ) -> [Double] {
-        guard denominator > 0 else {
-            return Array(repeating: 0, count: values.count)
-        }
-        return values.map {
-            rounded(Double($0) / Double(denominator))
-        }
-    }
-
-    private static func percentile(
-        _ values: [Int],
-        _ percentile: Double
-    ) -> Int {
-        guard !values.isEmpty else { return 0 }
-        let sorted = values.sorted()
-        let index = Int(
-            (Double(sorted.count - 1) * percentile).rounded(.up)
-        )
-        return sorted[index]
-    }
-
-    private static func percent(
-        _ numerator: Int,
-        _ denominator: Int
-    ) -> Double {
-        guard denominator > 0 else { return 0 }
-        return rounded(
-            Double(numerator) * 100 / Double(denominator)
-        )
-    }
-
-    private static func rounded(_ value: Double) -> Double {
-        (value * 100).rounded() / 100
     }
 }
