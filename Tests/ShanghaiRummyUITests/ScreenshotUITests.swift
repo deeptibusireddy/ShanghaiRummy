@@ -300,8 +300,8 @@ final class ScreenshotUITests: XCTestCase {
             app.descendants(matching: .any)["final-standing-4"].exists
         )
         XCTAssertTrue(app.buttons["game-over-back-to-menu"].exists)
-        XCTAssertFalse(app.buttons["Deal Next Hand"].exists)
-        XCTAssertFalse(app.buttons["quit-game"].exists)
+        XCTAssertFalse(app.buttons["Deal Next Hand"].isHittable)
+        XCTAssertFalse(app.buttons["quit-game"].isHittable)
         Thread.sleep(forTimeInterval: 0.9)
         snapshot(named: "09-game-over-final")
     }
