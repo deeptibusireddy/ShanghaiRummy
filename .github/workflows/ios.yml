@@ -7,10 +7,6 @@ on:
     branches: [main]
   workflow_dispatch:
 
-permissions:
-  contents: read
-  issues: write
-
 jobs:
   build-and-test:
     name: Build & Test (iPad)
@@ -102,7 +98,7 @@ jobs:
   game-simulation:
     name: Simulate 1,000 Games (${{ matrix.player_count }} Players)
     if: ${{ github.event_name == 'workflow_dispatch' }}
-    runs-on: macos-15
+    runs-on: ubuntu-latest
     timeout-minutes: 120
     strategy:
       fail-fast: false
@@ -110,127 +106,84 @@ jobs:
         player_count: [2, 3, 4, 5, 6]
     env:
       PLAYER_COUNT: ${{ matrix.player_count }}
-      DERIVED_DATA: SimulationDerivedData-${{ matrix.player_count }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install XcodeGen, xcbeautify, and xcparse
-        run: brew install xcodegen xcbeautify chargepoint/xcparse/xcparse
+      - name: Show Swift version
+        run: swift --version
 
-      - name: Generate Xcode project
-        run: xcodegen generate
-
-      - name: Select iPad simulator
+      - name: Build release simulator
         run: |
-          DEVICE_ID=$(xcrun simctl list devices available -j \
-            | python3 -c 'import json,sys; d=json.load(sys.stdin)["devices"]; \
-              picks=[dev for k,v in d.items() if "iOS" in k for dev in v if "iPad" in dev["name"]]; \
-              print(picks[0]["udid"])')
-          echo "DEVICE_ID=$DEVICE_ID" >> "$GITHUB_ENV"
+          swift build -c release --product GameSimulationCLI
+          echo "SIMULATOR=$(swift build -c release --show-bin-path)/GameSimulationCLI" \
+            >> "$GITHUB_ENV"
 
-      - name: Create progress comment
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          PR_NUMBER=$(gh pr list \
-            --repo "$GITHUB_REPOSITORY" \
-            --head "$GITHUB_REF_NAME" \
-            --state open \
-            --json number \
-            --jq '.[0].number')
-          if [ -n "$PR_NUMBER" ]; then
-            COMMENT_ID=$(gh api \
-              "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" \
-              -f body="🤖 **${PLAYER_COUNT}-player simulation:** 0 / 1,000 games complete." \
-              --jq .id)
-            echo "COMMENT_ID=$COMMENT_ID" >> "$GITHUB_ENV"
-          fi
+      - name: Simulate games 1–50
+        run: $SIMULATOR --players $PLAYER_COUNT --start 1 --count 50 --output simulation-reports/${PLAYER_COUNT}p-0001-0050.json
 
-      - name: Build simulation tests
-        run: |
-          set -o pipefail
-          xcodebuild \
-            -project ShanghaiRummy.xcodeproj \
-            -scheme ShanghaiRummy \
-            -sdk iphonesimulator \
-            -destination "platform=iOS Simulator,id=$DEVICE_ID" \
-            -configuration Debug \
-            -derivedDataPath "$DERIVED_DATA" \
-            SWIFT_ACTIVE_COMPILATION_CONDITIONS='$(inherited) RUN_GAME_SIMULATIONS SIMULATE_PLAYER_COUNT_${{ matrix.player_count }}' \
-            CODE_SIGNING_ALLOWED=NO \
-            build-for-testing \
-            | xcbeautify --renderer github-actions
+      - name: Simulate games 51–100
+        run: $SIMULATOR --players $PLAYER_COUNT --start 51 --count 50 --output simulation-reports/${PLAYER_COUNT}p-0051-0100.json
 
-      - name: Run simulation batches
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -o pipefail
-          mkdir -p simulation-logs simulation-reports simulation-results
-          for BATCH in $(seq 0 19); do
-            TEST_NAME=$(printf "testBatch%02d" "$BATCH")
-            RESULT_BUNDLE="simulation-results/${PLAYER_COUNT}p-${TEST_NAME}.xcresult"
-            LOG_FILE="simulation-logs/${PLAYER_COUNT}p-${TEST_NAME}.log"
-            ATTACHMENTS="simulation-results/${PLAYER_COUNT}p-${TEST_NAME}-attachments"
+      - name: Simulate games 101–150
+        run: $SIMULATOR --players $PLAYER_COUNT --start 101 --count 50 --output simulation-reports/${PLAYER_COUNT}p-0101-0150.json
 
-            xcodebuild \
-              -project ShanghaiRummy.xcodeproj \
-              -scheme ShanghaiRummy \
-              -sdk iphonesimulator \
-              -destination "platform=iOS Simulator,id=$DEVICE_ID" \
-              -configuration Debug \
-              -derivedDataPath "$DERIVED_DATA" \
-              -resultBundlePath "$RESULT_BUNDLE" \
-              -only-testing:ShanghaiRummyTests/GameSimulationTests/$TEST_NAME \
-              CODE_SIGNING_ALLOWED=NO \
-              test-without-building \
-              | tee "$LOG_FILE" \
-              | xcbeautify --renderer github-actions
+      - name: Simulate games 151–200
+        run: $SIMULATOR --players $PLAYER_COUNT --start 151 --count 50 --output simulation-reports/${PLAYER_COUNT}p-0151-0200.json
 
-            mkdir -p "$ATTACHMENTS"
-            xcparse attachments \
-              "$RESULT_BUNDLE" \
-              "$ATTACHMENTS" \
-              --uti public.json
-            REPORT=$(find "$ATTACHMENTS" -type f | head -1)
-            if [ -z "$REPORT" ]; then
-              echo "Simulation report was not found for $TEST_NAME"
-              exit 1
-            fi
-            cp "$REPORT" \
-              "simulation-reports/${PLAYER_COUNT}p-${TEST_NAME}.json"
+      - name: Simulate games 201–250
+        run: $SIMULATOR --players $PLAYER_COUNT --start 201 --count 50 --output simulation-reports/${PLAYER_COUNT}p-0201-0250.json
 
-            COMPLETED=$(( (BATCH + 1) * 50 ))
-            echo "::notice title=${PLAYER_COUNT}-player simulation::${COMPLETED} / 1,000 games complete"
-            if [ -n "$COMMENT_ID" ]; then
-              gh api \
-                --method PATCH \
-                "repos/$GITHUB_REPOSITORY/issues/comments/$COMMENT_ID" \
-                -f body="🤖 **${PLAYER_COUNT}-player simulation:** ${COMPLETED} / 1,000 games complete."
-            fi
-          done
+      - name: Simulate games 251–300
+        run: $SIMULATOR --players $PLAYER_COUNT --start 251 --count 50 --output simulation-reports/${PLAYER_COUNT}p-0251-0300.json
 
-      - name: Mark simulation failure
-        if: ${{ failure() }}
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          if [ -z "$COMMENT_ID" ]; then
-            exit 0
-          fi
-          gh api \
-            --method PATCH \
-            "repos/$GITHUB_REPOSITORY/issues/comments/$COMMENT_ID" \
-            -f body="⚠️ **${PLAYER_COUNT}-player simulation stopped early.** See the workflow logs for the last completed 50-game batch."
+      - name: Simulate games 301–350
+        run: $SIMULATOR --players $PLAYER_COUNT --start 301 --count 50 --output simulation-reports/${PLAYER_COUNT}p-0301-0350.json
+
+      - name: Simulate games 351–400
+        run: $SIMULATOR --players $PLAYER_COUNT --start 351 --count 50 --output simulation-reports/${PLAYER_COUNT}p-0351-0400.json
+
+      - name: Simulate games 401–450
+        run: $SIMULATOR --players $PLAYER_COUNT --start 401 --count 50 --output simulation-reports/${PLAYER_COUNT}p-0401-0450.json
+
+      - name: Simulate games 451–500
+        run: $SIMULATOR --players $PLAYER_COUNT --start 451 --count 50 --output simulation-reports/${PLAYER_COUNT}p-0451-0500.json
+
+      - name: Simulate games 501–550
+        run: $SIMULATOR --players $PLAYER_COUNT --start 501 --count 50 --output simulation-reports/${PLAYER_COUNT}p-0501-0550.json
+
+      - name: Simulate games 551–600
+        run: $SIMULATOR --players $PLAYER_COUNT --start 551 --count 50 --output simulation-reports/${PLAYER_COUNT}p-0551-0600.json
+
+      - name: Simulate games 601–650
+        run: $SIMULATOR --players $PLAYER_COUNT --start 601 --count 50 --output simulation-reports/${PLAYER_COUNT}p-0601-0650.json
+
+      - name: Simulate games 651–700
+        run: $SIMULATOR --players $PLAYER_COUNT --start 651 --count 50 --output simulation-reports/${PLAYER_COUNT}p-0651-0700.json
+
+      - name: Simulate games 701–750
+        run: $SIMULATOR --players $PLAYER_COUNT --start 701 --count 50 --output simulation-reports/${PLAYER_COUNT}p-0701-0750.json
+
+      - name: Simulate games 751–800
+        run: $SIMULATOR --players $PLAYER_COUNT --start 751 --count 50 --output simulation-reports/${PLAYER_COUNT}p-0751-0800.json
+
+      - name: Simulate games 801–850
+        run: $SIMULATOR --players $PLAYER_COUNT --start 801 --count 50 --output simulation-reports/${PLAYER_COUNT}p-0801-0850.json
+
+      - name: Simulate games 851–900
+        run: $SIMULATOR --players $PLAYER_COUNT --start 851 --count 50 --output simulation-reports/${PLAYER_COUNT}p-0851-0900.json
+
+      - name: Simulate games 901–950
+        run: $SIMULATOR --players $PLAYER_COUNT --start 901 --count 50 --output simulation-reports/${PLAYER_COUNT}p-0901-0950.json
+
+      - name: Simulate games 951–1,000
+        run: $SIMULATOR --players $PLAYER_COUNT --start 951 --count 50 --output simulation-reports/${PLAYER_COUNT}p-0951-1000.json
 
       - name: Upload simulation results
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: game-simulation-results-${{ matrix.player_count }}-players
-          path: |
-            simulation-reports/
-            simulation-logs/
+          path: simulation-reports/
           if-no-files-found: warn
