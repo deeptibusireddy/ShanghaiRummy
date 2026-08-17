@@ -116,6 +116,9 @@ struct GameContainerView: View {
         }
 
         guard vm.openingDrawStage == .seating else { return }
+        if CommandLine.arguments.contains("--ui-testing") {
+            return
+        }
         do {
             try await Task.sleep(
                 for: GameViewModel.openingDrawSeatingDuration
