@@ -96,16 +96,40 @@ jobs:
           if-no-files-found: ignore
 
   game-simulation:
-    name: Simulate 1,000 Games (${{ matrix.player_count }} Players)
+    name: Simulate ${{ matrix.player_count }} Players (${{ matrix.batch.start }}-${{ matrix.batch.end }})
     if: ${{ github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 30
     strategy:
       fail-fast: false
+      max-parallel: 20
       matrix:
         player_count: [2, 3, 4, 5, 6]
+        batch:
+          - { start: 1, end: 50, slug: "0001-0050" }
+          - { start: 51, end: 100, slug: "0051-0100" }
+          - { start: 101, end: 150, slug: "0101-0150" }
+          - { start: 151, end: 200, slug: "0151-0200" }
+          - { start: 201, end: 250, slug: "0201-0250" }
+          - { start: 251, end: 300, slug: "0251-0300" }
+          - { start: 301, end: 350, slug: "0301-0350" }
+          - { start: 351, end: 400, slug: "0351-0400" }
+          - { start: 401, end: 450, slug: "0401-0450" }
+          - { start: 451, end: 500, slug: "0451-0500" }
+          - { start: 501, end: 550, slug: "0501-0550" }
+          - { start: 551, end: 600, slug: "0551-0600" }
+          - { start: 601, end: 650, slug: "0601-0650" }
+          - { start: 651, end: 700, slug: "0651-0700" }
+          - { start: 701, end: 750, slug: "0701-0750" }
+          - { start: 751, end: 800, slug: "0751-0800" }
+          - { start: 801, end: 850, slug: "0801-0850" }
+          - { start: 851, end: 900, slug: "0851-0900" }
+          - { start: 901, end: 950, slug: "0901-0950" }
+          - { start: 951, end: 1000, slug: "0951-1000" }
     env:
       PLAYER_COUNT: ${{ matrix.player_count }}
+      BATCH_START: ${{ matrix.batch.start }}
+      BATCH_SLUG: ${{ matrix.batch.slug }}
 
     steps:
       - name: Checkout
@@ -120,87 +144,36 @@ jobs:
           echo "SIMULATOR=$(swift build -c release --show-bin-path)/GameSimulationCLI" \
             >> "$GITHUB_ENV"
 
-      - name: Simulate games 1–50
-        continue-on-error: true
-        run: $SIMULATOR --players $PLAYER_COUNT --start 1 --count 50 --output simulation-reports/${PLAYER_COUNT}p-0001-0050.json
+      - name: Simulate 50 games
+        run: |
+          $SIMULATOR \
+            --players "$PLAYER_COUNT" \
+            --start "$BATCH_START" \
+            --count 50 \
+            --output "simulation-reports/${PLAYER_COUNT}p-${BATCH_SLUG}.json"
 
-      - name: Simulate games 51–100
-        continue-on-error: true
-        run: $SIMULATOR --players $PLAYER_COUNT --start 51 --count 50 --output simulation-reports/${PLAYER_COUNT}p-0051-0100.json
+      - name: Upload simulation batch
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: game-simulation-${{ matrix.player_count }}p-${{ matrix.batch.slug }}
+          path: simulation-reports/
+          if-no-files-found: warn
 
-      - name: Simulate games 101–150
-        continue-on-error: true
-        run: $SIMULATOR --players $PLAYER_COUNT --start 101 --count 50 --output simulation-reports/${PLAYER_COUNT}p-0101-0150.json
+  simulation-summary:
+    name: Verify 5,000 Simulated Games
+    if: ${{ always() && github.event_name == 'workflow_dispatch' }}
+    needs: game-simulation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download simulation batches
+        uses: actions/download-artifact@v4
+        with:
+          pattern: game-simulation-*
+          path: simulation-reports
+          merge-multiple: true
 
-      - name: Simulate games 151–200
-        continue-on-error: true
-        run: $SIMULATOR --players $PLAYER_COUNT --start 151 --count 50 --output simulation-reports/${PLAYER_COUNT}p-0151-0200.json
-
-      - name: Simulate games 201–250
-        continue-on-error: true
-        run: $SIMULATOR --players $PLAYER_COUNT --start 201 --count 50 --output simulation-reports/${PLAYER_COUNT}p-0201-0250.json
-
-      - name: Simulate games 251–300
-        continue-on-error: true
-        run: $SIMULATOR --players $PLAYER_COUNT --start 251 --count 50 --output simulation-reports/${PLAYER_COUNT}p-0251-0300.json
-
-      - name: Simulate games 301–350
-        continue-on-error: true
-        run: $SIMULATOR --players $PLAYER_COUNT --start 301 --count 50 --output simulation-reports/${PLAYER_COUNT}p-0301-0350.json
-
-      - name: Simulate games 351–400
-        continue-on-error: true
-        run: $SIMULATOR --players $PLAYER_COUNT --start 351 --count 50 --output simulation-reports/${PLAYER_COUNT}p-0351-0400.json
-
-      - name: Simulate games 401–450
-        continue-on-error: true
-        run: $SIMULATOR --players $PLAYER_COUNT --start 401 --count 50 --output simulation-reports/${PLAYER_COUNT}p-0401-0450.json
-
-      - name: Simulate games 451–500
-        continue-on-error: true
-        run: $SIMULATOR --players $PLAYER_COUNT --start 451 --count 50 --output simulation-reports/${PLAYER_COUNT}p-0451-0500.json
-
-      - name: Simulate games 501–550
-        continue-on-error: true
-        run: $SIMULATOR --players $PLAYER_COUNT --start 501 --count 50 --output simulation-reports/${PLAYER_COUNT}p-0501-0550.json
-
-      - name: Simulate games 551–600
-        continue-on-error: true
-        run: $SIMULATOR --players $PLAYER_COUNT --start 551 --count 50 --output simulation-reports/${PLAYER_COUNT}p-0551-0600.json
-
-      - name: Simulate games 601–650
-        continue-on-error: true
-        run: $SIMULATOR --players $PLAYER_COUNT --start 601 --count 50 --output simulation-reports/${PLAYER_COUNT}p-0601-0650.json
-
-      - name: Simulate games 651–700
-        continue-on-error: true
-        run: $SIMULATOR --players $PLAYER_COUNT --start 651 --count 50 --output simulation-reports/${PLAYER_COUNT}p-0651-0700.json
-
-      - name: Simulate games 701–750
-        continue-on-error: true
-        run: $SIMULATOR --players $PLAYER_COUNT --start 701 --count 50 --output simulation-reports/${PLAYER_COUNT}p-0701-0750.json
-
-      - name: Simulate games 751–800
-        continue-on-error: true
-        run: $SIMULATOR --players $PLAYER_COUNT --start 751 --count 50 --output simulation-reports/${PLAYER_COUNT}p-0751-0800.json
-
-      - name: Simulate games 801–850
-        continue-on-error: true
-        run: $SIMULATOR --players $PLAYER_COUNT --start 801 --count 50 --output simulation-reports/${PLAYER_COUNT}p-0801-0850.json
-
-      - name: Simulate games 851–900
-        continue-on-error: true
-        run: $SIMULATOR --players $PLAYER_COUNT --start 851 --count 50 --output simulation-reports/${PLAYER_COUNT}p-0851-0900.json
-
-      - name: Simulate games 901–950
-        continue-on-error: true
-        run: $SIMULATOR --players $PLAYER_COUNT --start 901 --count 50 --output simulation-reports/${PLAYER_COUNT}p-0901-0950.json
-
-      - name: Simulate games 951–1,000
-        continue-on-error: true
-        run: $SIMULATOR --players $PLAYER_COUNT --start 951 --count 50 --output simulation-reports/${PLAYER_COUNT}p-0951-1000.json
-
-      - name: Verify 1,000 successful games
+      - name: Verify simulation results
         run: |
           python3 - <<'PY'
           import glob
@@ -220,11 +193,26 @@ jobs:
               for report in reports
               for failure in report["failures"]
           ]
+          by_player = {
+              player_count: sum(
+                  report["gamesCompleted"]
+                  for report in reports
+                  if report["playerCount"] == player_count
+              )
+              for player_count in range(2, 7)
+          }
           print(
               f"{len(reports)} batches, {completed}/{requested} games completed, "
               f"{len(failures)} failures"
           )
-          if len(reports) != 20 or requested != 1000 or completed != 1000 or failures:
+          print(f"Completed by player count: {by_player}")
+          if (
+              len(reports) != 100
+              or requested != 5000
+              or completed != 5000
+              or any(count != 1000 for count in by_player.values())
+              or failures
+          ):
               for failure in failures[:20]:
                   print(
                       f"{failure['playerCount']}p game {failure['gameNumber']}: "
@@ -234,10 +222,10 @@ jobs:
               sys.exit(1)
           PY
 
-      - name: Upload simulation results
+      - name: Upload combined simulation results
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: game-simulation-results-${{ matrix.player_count }}-players
+          name: game-simulation-results
           path: simulation-reports/
           if-no-files-found: warn
