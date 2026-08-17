@@ -907,35 +907,6 @@ public final class GameViewModel: ObservableObject {
         return layoffHandCard(card, to: meldId)
     }
 
-    @discardableResult
-    public func playTappedHandCard(_ card: Card) -> Bool {
-        guard canPlayFromHand(card) else { return false }
-
-        // Prefer the exact-slot redemption when a tap could also extend
-        // another meld; dragging still lets the player choose a specific meld.
-        for meld in state.melds
-            where redemptionWildCardId(for: card, in: meld) != nil {
-            return playHandCard(card, to: meld.id)
-        }
-        for meld in state.melds where canLayOff(card, to: meld) {
-            return layoffHandCard(card, to: meld.id)
-        }
-        return false
-    }
-
-    /// If the player has gone down and `card` extends some existing meld,
-    /// dispatch the `.addToMeld`. Returns true if the layoff succeeded.
-    /// Called from a single-tap on a hand card (not a drag).
-    @discardableResult
-    public func layoffTappedHandCard(_ card: Card) -> Bool {
-        guard currentPlayer.hasGoneDownThisRound,
-              !currentPlayer.laidDownThisTurn else { return false }
-        for meld in state.melds {
-            if layoffHandCard(card, to: meld.id) { return true }
-        }
-        return false
-    }
-
     public func canLayOff(_ card: Card, to meld: Meld) -> Bool {
         guard canPlayFromHand(card) else { return false }
         return canAdd(card, to: meld, atStart: false)

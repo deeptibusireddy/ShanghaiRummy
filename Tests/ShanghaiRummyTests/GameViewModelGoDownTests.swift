@@ -239,7 +239,7 @@ final class GameViewModelGoDownTests: XCTestCase {
                    melds: [existing],
                    hasGoneDown: true,
                    laidDownThisTurn: false)
-        XCTAssertTrue(v.layoffTappedHandCard(extra))
+        XCTAssertTrue(v.layoffHandCard(extra, to: existing.id))
         // The card is gone from hand and meld now has 4 cards.
         XCTAssertFalse(v.currentPlayer.hand.contains { $0.id == extra.id })
         let updated = v.state.melds.first { $0.id == existing.id }
@@ -369,7 +369,7 @@ final class GameViewModelGoDownTests: XCTestCase {
         )
         let extra = c(.clubs, .king)
         let v = vm(hand: [extra], melds: [existing], hasGoneDown: false)
-        XCTAssertFalse(v.layoffTappedHandCard(extra))
+        XCTAssertFalse(v.layoffHandCard(extra, to: existing.id))
     }
 
     func testLayoffRejectsOnGoDownTurn() {
@@ -385,7 +385,7 @@ final class GameViewModelGoDownTests: XCTestCase {
                    melds: [existing],
                    hasGoneDown: true,
                    laidDownThisTurn: true)
-        XCTAssertFalse(v.layoffTappedHandCard(extra))
+        XCTAssertFalse(v.layoffHandCard(extra, to: existing.id))
     }
 
     func testLayoffRejectsBeforeDrawing() {
@@ -416,7 +416,7 @@ final class GameViewModelGoDownTests: XCTestCase {
         let v = vm(hand: [mismatch],
                    melds: [existing],
                    hasGoneDown: true)
-        XCTAssertFalse(v.layoffTappedHandCard(mismatch))
+        XCTAssertFalse(v.layoffHandCard(mismatch, to: existing.id))
     }
 
     func testLayoffCanTargetTheSpecificVisibleMeld() {

@@ -10,9 +10,9 @@ file first, then the scene.
 
 1. **Cards first.** Cards, melds, and the current turn dominate the visual
    hierarchy. Table texture and chrome stay quiet.
-2. **One-tap where possible, drag where it matters.** Draw / discard are
-   taps. Meld staging is drag & drop so the physical act of building a
-   meld matches the mental one.
+2. **One-tap where possible, drag where it matters.** Tap hand cards to
+   stage them and tap staged cards to return them. Drag when choosing a
+   spatial target: staging tray, public meld, or discard pile.
 3. **Independent-contract clarity.** Each seat displays that player's
    current level and running score. You always know where you stand
    relative to the others.
@@ -231,11 +231,11 @@ meld.
 
 Two modes:
 
-1. **Add to an existing meld** — after going down on an earlier turn, tap
-   a compatible hand card for automatic placement or drag it to a specific
-   glowing meld. A successful drop commits immediately unless a wild fits both
-   sequence ends; then a blocking low-end/high-end picker asks for its position.
-   If only one sequence end is legal, placement remains automatic.
+1. **Add to an existing meld** — after going down on an earlier turn, drag
+   a compatible hand card to a specific glowing meld. A successful drop commits
+   immediately unless a wild fits both sequence ends; then a blocking
+   low-end/high-end picker asks for its position. If only one sequence end is
+   legal, placement remains automatic.
 2. **Build a new contract meld** — tap cards or drag them into the persistent
    **staging tray**. Save each valid set/run as a draft chip, then tap
    **Go Down** when the full contract is ready. If a sequence has multiple
@@ -244,6 +244,7 @@ Two modes:
 
 **Staging tray properties:**
 - Visible only to you (hot-seat: only the current player).
+- Tap a hand card to move it into the staging tray.
 - Saved draft cards leave the hand fan and appear as tappable chips; tapping
   a chip returns that meld to the hand.
 - Tap a staged card to return it to the hand.
@@ -262,7 +263,6 @@ with warning feedback.
 ### Discarding
 
 - Drag a card from your hand onto the discard pile → snap.
-- Or: tap-select a card + tap discard button.
 - One card only. Confirm the turn ends after any confirmation modals
   (e.g., "You have unconfirmed staged cards — abandon?").
 - On confirm: card lands on discard, auto-advance triggers pass-and-play

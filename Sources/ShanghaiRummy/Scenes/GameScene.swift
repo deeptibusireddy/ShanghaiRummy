@@ -44,6 +44,7 @@ final class GameScene: SKScene {
     private var dragOriginRotation: CGFloat = 0
     private var dragOriginZ: CGFloat = 0
     private var dragOriginScale: CGFloat = 1
+    private var dragTouchOrigin: CGPoint = .zero
     private var draggingCardId: UUID?
     private var dragAllowsGameplay = false
     private var discardTargetRing: SKShapeNode?
@@ -2054,7 +2055,7 @@ final class GameScene: SKScene {
         ), let hit = handLayer.children.first(where: {
             $0.name == "card:\(uuid.uuidString)"
         }) as? CardNode {
-            beginDrag(card: hit, id: uuid)
+            beginDrag(card: hit, id: uuid, touchPoint: point)
             return
         }
 
@@ -2071,7 +2072,7 @@ final class GameScene: SKScene {
                   let uuid = UUID(uuidString: String(idStr)),
                   vm.currentPlayer.hand.contains(where: { $0.id == uuid })
             else { continue }
-            beginDrag(card: hit, id: uuid)
+            beginDrag(card: hit, id: uuid, touchPoint: point)
             return
         }
     }
@@ -2129,25 +2130,17 @@ final class GameScene: SKScene {
                 return
             }
 
-            let dx = point.x - dragOrigin.x
-            let dy = point.y - dragOrigin.y
-            let tapThreshold: CGFloat = 10
-            if abs(dx) < tapThreshold && abs(dy) < tapThreshold {
-                guard dragAllowsGameplay,
-                      vm.isLocalPlayersTurn,
-                      vm.state.phase == .awaitingMeldOrDiscard else {
-                    warningFeedback()
+            let dx = point.x - dragTouchOrigin.x
+            let dy = point.y - dragTouchOrigin.y
+            if Self.isCardTap(dx: dx, dy: dy) {
+                guard Self.allowsTapToStage(
+                    isLocalPlayersTurn: vm.isLocalPlayersTurn,
+                    phase: vm.state.phase,
+                    isBuyDecisionActive: vm.isBuyDecisionActive,
+                    hasGoneDownThisRound:
+                        vm.currentPlayer.hasGoneDownThisRound
+                ) else {
                     cancelDrag()
-                    return
-                }
-                if vm.currentPlayer.hasGoneDownThisRound {
-                    if vm.playTappedHandCard(card) {
-                        successFeedback()
-                        completeDrag()
-                    } else {
-                        warningFeedback()
-                        cancelDrag()
-                    }
                     return
                 }
                 vm.toggleStaged(cardId: id)
@@ -2441,6 +2434,24 @@ final class GameScene: SKScene {
             && !isBuyDecisionActive
     }
 
+    static func allowsTapToStage(
+        isLocalPlayersTurn: Bool,
+        phase: GameState.Phase,
+        isBuyDecisionActive: Bool,
+        hasGoneDownThisRound: Bool
+    ) -> Bool {
+        allowsGameplayDrop(
+            isLocalPlayersTurn: isLocalPlayersTurn,
+            phase: phase,
+            isBuyDecisionActive: isBuyDecisionActive
+        ) && !hasGoneDownThisRound
+    }
+
+    static func isCardTap(dx: CGFloat, dy: CGFloat) -> Bool {
+        let threshold: CGFloat = 18
+        return dx * dx + dy * dy <= threshold * threshold
+    }
+
     private func reorderTargetId(forDropX x: CGFloat, draggedId: UUID) -> UUID? {
         let slots = handSlots.filter { $0.id != draggedId }
         for slot in slots where x < slot.x {
@@ -2451,13 +2462,18 @@ final class GameScene: SKScene {
 
     // MARK: - Drag helpers
 
-    private func beginDrag(card: CardNode, id: UUID) {
+    private func beginDrag(
+        card: CardNode,
+        id: UUID,
+        touchPoint: CGPoint
+    ) {
         draggingCard = card
         draggingCardId = id
         dragOrigin = card.position
         dragOriginRotation = card.zRotation
         dragOriginZ = card.zPosition
         dragOriginScale = card.xScale
+        dragTouchOrigin = touchPoint
         dragAllowsGameplay = Self.allowsGameplayDrop(
             isLocalPlayersTurn: vm.isLocalPlayersTurn,
             phase: vm.state.phase,
@@ -2497,6 +2513,7 @@ final class GameScene: SKScene {
         }
         draggingCard = nil
         draggingCardId = nil
+        dragTouchOrigin = .zero
         dragAllowsGameplay = false
         clearDragTargets()
     }
@@ -2504,6 +2521,7 @@ final class GameScene: SKScene {
     private func completeDrag() {
         draggingCard = nil
         draggingCardId = nil
+        dragTouchOrigin = .zero
         dragAllowsGameplay = false
         clearDragTargets()
     }
@@ -2513,6 +2531,7 @@ final class GameScene: SKScene {
         draggingCard?.removeAllActions()
         draggingCard = nil
         draggingCardId = nil
+        dragTouchOrigin = .zero
         dragAllowsGameplay = false
         clearDragTargets()
     }
@@ -2521,6 +2540,7 @@ final class GameScene: SKScene {
         isAnimatingTurnAction = true
         draggingCard = nil
         draggingCardId = nil
+        dragTouchOrigin = .zero
         dragAllowsGameplay = false
         clearDragTargets()
 
