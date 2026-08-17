@@ -30,13 +30,16 @@
   - 5–6 players: **3 standard decks + 6 jokers** (162 cards).
 - **Wilds:** All jokers and all 2s are wild — they can substitute for any card
   in a triplet or sequence.
+- **Opening seating draw:** Before the first hand, every player draws a
+  non-joker card. Ace is high. Players with the same rank redraw until every
+  rank is unique, then sit highest to lowest clockwise.
 - **Deal:** **11 cards** to each player at the start of every round, regardless
   of contract. Top card of the remaining stock is flipped face-up to start the
   discard pile.
-- **Dealer:** The opening dealer is chosen randomly. After every hand, dealing
-  moves exactly one seat clockwise, regardless of who went out.
+- **Dealer:** The player with the lowest opening draw deals first. After every
+  hand, dealing moves exactly one seat clockwise, regardless of who went out.
 - **First to act:** The player one seat clockwise from the dealer (the player
-  to the dealer's left).
+  to the dealer's left). On the opening hand, this is the highest-card player.
 
 ## The 10 contract levels (per player)
 

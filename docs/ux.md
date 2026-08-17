@@ -1,6 +1,6 @@
 # Shanghai Rummy Nights — UX & Interaction Design
 
-> Owner: @deeptibusireddy · Updated: 2026-08-16 · Style: contemporary family game night
+> Owner: @deeptibusireddy · Updated: 2026-08-17 · Style: contemporary family game night
 
 This doc is the source of truth for how the game *feels*. The SpriteKit scene
 in M2b implements what's specified here. Any UX change should update this
@@ -44,9 +44,19 @@ file first, then the scene.
 - **Single-purpose seat cards:** Human or Bot is chosen when the seat is
   added. Configured cards expose only the X removal action; changing a seat
   type means removing it and adding the intended type.
+- **Bot strength:** Every Bot card includes an Easy, Medium, or Hard menu.
+  Hard is selected by default. Easy makes relaxed local choices, Medium
+  protects its contract without advanced opponent-aware tactics, and Hard
+  uses the full existing strategy.
 - **Starting play:** Bot-only tables begin immediately. Tables with Human
   seats authenticate with Game Center when needed, then request exactly the
   selected number of remote players.
+- **Opening draw:** Once the roster is complete, every player receives a
+  face-up random non-joker card. After a short reveal, the cards animate into
+  highest-to-lowest clockwise order. Ace is high, tied ranks redraw, the
+  lowest-card player is marked as dealer, and the highest-card player is
+  marked to play first. The game remains blocked until the seating animation
+  completes or the user taps **Take Your Seats**.
 - **Safe exit:** Back closes setup without starting a table or changing the
   current game state.
 
@@ -348,13 +358,14 @@ with warning feedback.
 - Active turn: the current player's seat uses a bright pulsing amber halo,
   amber avatar/name treatment. The local seat always retains its own level and
   contract description, including while another player has the turn.
-- Bot pacing: automated actions are separated by a 550 ms presentation beat.
-  A normal draw-and-discard turn therefore remains visible for at least about
-  one second, while longer meld sequences progress one readable step at a time.
+- Bot pacing: automated actions are separated by a 900 ms presentation beat.
+  A normal draw-and-discard turn therefore remains visible for about two
+  seconds, while longer meld sequences progress one readable step at a time.
 
 Haptics (M4):
-- Turn handoff: short two-note chime plus a medium impact on supported devices,
-  emitted once when control passes to the local human player.
+- Player prompt: short two-note chime plus a medium impact on supported devices,
+  emitted once when a local human receives a draw, buy, or meld/discard prompt.
+  Repeated state updates within the same prompt stay silent.
 - Draw: `.light`
 - Discard: `.rigid`
 - Go Down / Go Out: `.success`

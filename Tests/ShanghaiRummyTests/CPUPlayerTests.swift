@@ -255,6 +255,181 @@ final class CPUPlayerTests: XCTestCase {
         )
     }
 
+    // MARK: - Difficulty
+
+    func testHardRemainsTheDefaultDifficulty() {
+        let hand = [
+            c(.hearts, .ace),
+            c(.spades, .ace),
+            c(.hearts, .king),
+            c(.spades, .king),
+            c(.hearts, .queen),
+            c(.diamonds, .three),
+            c(.clubs, .four),
+        ]
+        let (state, bot) = state(
+            hand: hand,
+            phase: .awaitingMeldOrDiscard
+        )
+
+        XCTAssertEqual(
+            CPUPlayer.nextAction(for: bot.id, in: state),
+            CPUPlayer.nextAction(
+                for: bot.id,
+                in: state,
+                difficulty: .hard
+            )
+        )
+    }
+
+    func testEasyDiscardsHighPointsWithoutProtectingContractPairs() {
+        let hand = [
+            c(.hearts, .ace),
+            c(.spades, .ace),
+            c(.hearts, .king),
+            c(.spades, .king),
+            c(.hearts, .queen),
+            c(.diamonds, .three),
+            c(.clubs, .four),
+        ]
+        let (state, bot) = state(
+            hand: hand,
+            phase: .awaitingMeldOrDiscard
+        )
+
+        let easy = CPUPlayer.nextAction(
+            for: bot.id,
+            in: state,
+            difficulty: .easy
+        )
+        let hard = CPUPlayer.nextAction(
+            for: bot.id,
+            in: state,
+            difficulty: .hard
+        )
+
+        guard case .discard(_, let easyCard) = easy,
+              case .discard(_, let hardCard) = hard else {
+            return XCTFail("Both difficulties should discard")
+        }
+        XCTAssertEqual(easyCard.rank, .ace)
+        XCTAssertEqual(hardCard.rank, .queen)
+    }
+
+    func testMediumProtectsContractButNotAgainstPublicMeldRisk() {
+        let publicQueens = Meld(
+            kind: .triplet,
+            cards: [
+                c(.clubs, .queen),
+                c(.diamonds, .queen),
+                c(.spades, .queen),
+            ],
+            ownerId: UUID()
+        )
+        let hand = [
+            c(.hearts, .ace),
+            c(.spades, .ace),
+            c(.hearts, .king),
+            c(.spades, .king),
+            c(.hearts, .queen),
+            c(.clubs, .jack),
+        ]
+        let (state, bot) = state(
+            hand: hand,
+            phase: .awaitingMeldOrDiscard,
+            melds: [publicQueens]
+        )
+
+        let medium = CPUPlayer.nextAction(
+            for: bot.id,
+            in: state,
+            difficulty: .medium
+        )
+        let hard = CPUPlayer.nextAction(
+            for: bot.id,
+            in: state,
+            difficulty: .hard
+        )
+
+        guard case .discard(_, let mediumCard) = medium,
+              case .discard(_, let hardCard) = hard else {
+            return XCTFail("Both difficulties should discard")
+        }
+        XCTAssertEqual(mediumCard.rank, .queen)
+        XCTAssertEqual(hardCard.rank, .jack)
+    }
+
+    func testAllDifficultiesMakeRequiredLateLevelCapacityBuys() {
+        let hand = (0..<11).map { _ in c(.clubs, .king) }
+        var (state, bot) = state(
+            hand: hand,
+            discard: [c(.diamonds, .seven)],
+            level: 10
+        )
+        state.currentTurnIndex = 1
+        state.buyDecisionPlayerId = bot.id
+
+        XCTAssertEqual(
+            CPUPlayer.nextAction(
+                for: bot.id,
+                in: state,
+                difficulty: .hard
+            ),
+            .acceptBuyOffer(playerId: bot.id)
+        )
+        XCTAssertEqual(
+            CPUPlayer.nextAction(
+                for: bot.id,
+                in: state,
+                difficulty: .medium
+            ),
+            .acceptBuyOffer(playerId: bot.id)
+        )
+        XCTAssertEqual(
+            CPUPlayer.nextAction(
+                for: bot.id,
+                in: state,
+                difficulty: .easy
+            ),
+            .acceptBuyOffer(playerId: bot.id)
+        )
+    }
+
+    func testOnlyHardBuysForSmallPatternImprovement() {
+        var (state, bot) = state(
+            hand: [c(.hearts, .four)],
+            discard: [c(.hearts, .five)],
+            level: 3
+        )
+        state.currentTurnIndex = 1
+        state.buyDecisionPlayerId = bot.id
+
+        XCTAssertEqual(
+            CPUPlayer.nextAction(
+                for: bot.id,
+                in: state,
+                difficulty: .hard
+            ),
+            .acceptBuyOffer(playerId: bot.id)
+        )
+        XCTAssertEqual(
+            CPUPlayer.nextAction(
+                for: bot.id,
+                in: state,
+                difficulty: .medium
+            ),
+            .passBuyOffer(playerId: bot.id)
+        )
+        XCTAssertEqual(
+            CPUPlayer.nextAction(
+                for: bot.id,
+                in: state,
+                difficulty: .easy
+            ),
+            .passBuyOffer(playerId: bot.id)
+        )
+    }
+
     // MARK: - Discard selection
 
     func testDiscardsHighestPenaltyNonWild() {
@@ -663,6 +838,41 @@ final class CPUPlayerTests: XCTestCase {
 
     // MARK: - VM integration
 
+    func testDefaultBotActionBeatIsReadable() {
+        XCTAssertEqual(
+            GameViewModel.defaultCPUActionDelay,
+            .milliseconds(900)
+        )
+    }
+
+    @MainActor
+    func testViewModelKeepsConfiguredDifficultyByBotIdentity() {
+        let human = Player(name: "You")
+        let bot = Player(name: "Bot")
+        let state = GameState(
+            players: [human, bot],
+            currentRound: 1,
+            currentTurnIndex: 0,
+            dealerIndex: 1,
+            stock: [c(.clubs, .four)],
+            discard: [c(.hearts, .five)],
+            melds: [],
+            phase: .awaitingDraw,
+            stockReshufflesUsed: 0,
+            randomSeed: 1
+        )
+        let vm = GameViewModel(
+            state: state,
+            localPlayerId: human.id
+        )
+
+        vm.configureCPUPlayers([bot.id: .medium])
+
+        XCTAssertEqual(vm.cpuPlayerIds, Set([bot.id]))
+        XCTAssertEqual(vm.cpuDifficulty(for: bot.id), .medium)
+        XCTAssertEqual(vm.cpuDifficulty(for: human.id), .hard)
+    }
+
     @MainActor
     func testAssigningCPUPlayersPacesPendingBotBuyOffer() {
         var state = GameFactory.newGame(
@@ -761,23 +971,31 @@ final class CPUPlayerTests: XCTestCase {
                                          cpuNames: ["Bot"],
                                          seed: 7)
         var initial = built.state
-        initial.dealerIndex = 0
-        initial.currentTurnIndex = 1
-        initial.buyDecisionPlayerId = initial.players[1].id
+        let youId = built.localPlayerId
+        let botId = built.cpuIds.first!
+        let youIndex = initial.players.firstIndex {
+            $0.id == youId
+        }!
+        let botIndex = initial.players.firstIndex {
+            $0.id == botId
+        }!
+        initial.dealerIndex = youIndex
+        initial.currentTurnIndex = botIndex
+        initial.buyDecisionPlayerId = botId
         let vm = GameViewModel(state: initial)
         vm.cpuPlayerIds = built.cpuIds
         // Put the Bot up first. A non-wild discard pauses its turn to offer
         // You a buy.
         vm.runAllCPUTurns()
-        if vm.state.currentPlayerId != built.state.players[0].id {
+        if vm.state.currentPlayerId != youId {
             XCTAssertEqual(
                 vm.state.buyDecisionPlayerId,
-                built.state.players[0].id
+                youId
             )
             vm.passBuyOffer()
             vm.runAllCPUTurns()
         }
-        XCTAssertEqual(vm.state.currentPlayerId, built.state.players[0].id)
+        XCTAssertEqual(vm.state.currentPlayerId, youId)
         XCTAssertFalse(vm.isCurrentPlayerCPU)
 
         // Resolve You's purchase round, discard, and decline any buy offered
@@ -798,5 +1016,79 @@ final class CPUPlayerTests: XCTestCase {
             || vm.state.phase == .gameEnded,
             "After You's discard the auto-pump should have played the Bot's turn"
         )
+    }
+
+    @MainActor
+    func testOpeningDrawCeremonyMovesThroughBothStages() {
+        let built = GameFactory.newVsCPU(
+            you: "You",
+            cpuNames: ["Bot"],
+            seed: 7
+        )
+        let vm = GameViewModel(
+            state: built.state,
+            localPlayerId: built.localPlayerId,
+            presentsOpeningDraw: true
+        )
+
+        XCTAssertEqual(vm.openingDrawStage, .drawing)
+        vm.showOpeningSeatOrder()
+        XCTAssertEqual(vm.openingDrawStage, .seating)
+        vm.completeOpeningDrawCeremony()
+        XCTAssertNil(vm.openingDrawStage)
+    }
+
+    @MainActor
+    func testOpeningDrawDoesNotReplayAfterPlayHasStarted() {
+        let built = GameFactory.newVsCPU(
+            you: "You",
+            cpuNames: ["Bot"],
+            seed: 7
+        )
+        var progressed = built.state
+        progressed.currentTurnIndex = 1
+        progressed.buyDecisionPlayerId = progressed.players[1].id
+
+        let vm = GameViewModel(
+            state: progressed,
+            localPlayerId: built.localPlayerId,
+            presentsOpeningDraw: true
+        )
+
+        XCTAssertNil(vm.openingDrawStage)
+    }
+
+    func testVsCPUTracksHumanIdentityAfterOpeningDrawReordersSeats() {
+        let built = GameFactory.newVsCPU(
+            you: "You",
+            cpuNames: ["Bot 1", "Bot 2", "Bot 3"],
+            cpuDifficulties: [.easy, .medium, .hard],
+            seed: 7
+        )
+
+        XCTAssertEqual(
+            built.state.players.first {
+                $0.id == built.localPlayerId
+            }?.name,
+            "You"
+        )
+        XCTAssertEqual(
+            Set(
+                built.state.players
+                    .filter { built.cpuIds.contains($0.id) }
+                    .map(\.name)
+            ),
+            Set(["Bot 1", "Bot 2", "Bot 3"])
+        )
+        let difficultyByName = Dictionary(
+            uniqueKeysWithValues: built.state.players.compactMap { player in
+                built.cpuDifficulties[player.id].map {
+                    (player.name, $0)
+                }
+            }
+        )
+        XCTAssertEqual(difficultyByName["Bot 1"], .easy)
+        XCTAssertEqual(difficultyByName["Bot 2"], .medium)
+        XCTAssertEqual(difficultyByName["Bot 3"], .hard)
     }
 }

@@ -20,21 +20,36 @@ public enum CPUPlayer {
     /// or the active buyer during a purchase round.
     /// If the phase is `.roundEnded` / `.gameEnded`, returns a harmless
     /// stock draw (the caller should not be asking on those phases).
-    public static func nextAction(for playerId: UUID,
-                                  in state: GameState) -> TurnEngine.Action {
+    public static func nextAction(
+        for playerId: UUID,
+        in state: GameState,
+        difficulty: BotDifficulty = .hard
+    ) -> TurnEngine.Action {
         guard let player = state.players.first(where: { $0.id == playerId }) else {
             return .draw(playerId: playerId, source: .stock)
         }
         switch state.phase {
         case .awaitingDraw:
             if state.buyDecisionPlayerId != state.currentPlayerId {
-                return shouldBuyDiscard(player: player, state: state)
+                return shouldBuyDiscard(
+                    player: player,
+                    state: state,
+                    difficulty: difficulty
+                )
                     ? .acceptBuyOffer(playerId: player.id)
                     : .passBuyOffer(playerId: player.id)
             }
-            return chooseDraw(player: player, state: state)
+            return chooseDraw(
+                player: player,
+                state: state,
+                difficulty: difficulty
+            )
         case .awaitingMeldOrDiscard:
-            return chooseMeldOrDiscard(player: player, state: state)
+            return chooseMeldOrDiscard(
+                player: player,
+                state: state,
+                difficulty: difficulty
+            )
         case .roundEnded, .gameEnded:
             return .draw(playerId: playerId, source: .stock)
         }
@@ -42,9 +57,18 @@ public enum CPUPlayer {
 
     // MARK: - Draw phase
 
-    static func chooseDraw(player: Player, state: GameState) -> TurnEngine.Action {
+    static func chooseDraw(
+        player: Player,
+        state: GameState,
+        difficulty: BotDifficulty = .hard
+    ) -> TurnEngine.Action {
         if let top = state.discard.last,
-           shouldTakeDiscard(top, player: player, state: state) {
+           shouldTakeDiscard(
+               top,
+               player: player,
+               state: state,
+               difficulty: difficulty
+           ) {
             return .draw(playerId: player.id, source: .discard)
         }
         return .draw(playerId: player.id, source: .stock)
@@ -53,8 +77,26 @@ public enum CPUPlayer {
     static func shouldTakeDiscard(
         _ card: Card,
         player: Player,
-        state: GameState
+        state: GameState,
+        difficulty: BotDifficulty = .hard
     ) -> Bool {
+        switch difficulty {
+        case .easy:
+            return shouldTakeDiscardEasy(
+                card,
+                player: player,
+                state: state
+            )
+        case .medium:
+            return shouldTakeDiscardMedium(
+                card,
+                player: player,
+                state: state
+            )
+        case .hard:
+            break
+        }
+
         if player.hasGoneDownThisRound {
             return canLayOff(card: card, on: state.melds)
                 || redemptionCreatesPlayableWild(
@@ -88,10 +130,76 @@ public enum CPUPlayer {
                 ))
     }
 
-    static func shouldBuyDiscard(
+    private static func shouldTakeDiscardEasy(
+        _ card: Card,
         player: Player,
         state: GameState
     ) -> Bool {
+        if player.hasGoneDownThisRound {
+            return canLayOff(card: card, on: state.melds)
+        }
+        if card.isWild { return true }
+        if card.isDead2 { return false }
+        return player.hand.contains {
+            !$0.isWild
+                && (
+                    $0.rank == card.rank
+                        || ($0.suit == card.suit
+                            && rankDistance($0, card) <= 1)
+                )
+        }
+    }
+
+    private static func shouldTakeDiscardMedium(
+        _ card: Card,
+        player: Player,
+        state: GameState
+    ) -> Bool {
+        if player.hasGoneDownThisRound {
+            return canLayOff(card: card, on: state.melds)
+        }
+        guard let contract = state.contract(forPlayer: player.id) else {
+            return card.isWild
+        }
+        if card.isWild { return true }
+
+        let improvedHand = player.hand + [card]
+        if improvedHand.count > contract.totalCards,
+           findContractSatisfaction(
+               hand: improvedHand,
+               contract: contract
+           ) != nil {
+            return true
+        }
+        let improvement =
+            contractProgressScore(hand: improvedHand, contract: contract)
+            - contractProgressScore(hand: player.hand, contract: contract)
+        return improvement >= 300
+    }
+
+    private static func rankDistance(_ lhs: Card, _ rhs: Card) -> Int {
+        guard let lhsRank = lhs.rank, let rhsRank = rhs.rank else {
+            return Int.max
+        }
+        let lhsValue = lhsRank == .ace ? 14 : lhsRank.rawValue
+        let rhsValue = rhsRank == .ace ? 14 : rhsRank.rawValue
+        return abs(lhsValue - rhsValue)
+    }
+
+    static func shouldBuyDiscard(
+        player: Player,
+        state: GameState,
+        difficulty: BotDifficulty = .hard
+    ) -> Bool {
+        switch difficulty {
+        case .easy:
+            return shouldBuyDiscardEasy(player: player, state: state)
+        case .medium:
+            return shouldBuyDiscardMedium(player: player, state: state)
+        case .hard:
+            break
+        }
+
         guard let card = state.discard.last,
               let contract = state.contract(forPlayer: player.id),
               !player.hasGoneDownThisRound else {
@@ -119,10 +227,6 @@ public enum CPUPlayer {
         if card.isDead2 && !supportsPattern {
             return false
         }
-        let buysRemaining = max(
-            0,
-            RulesConfig.maxBuysPerRound - player.buysUsedThisRound
-        )
         let strategicBuyBudget: Int
         switch player.currentLevel {
         case ...4: strategicBuyBudget = 1
@@ -135,26 +239,106 @@ public enum CPUPlayer {
             return true
         }
 
-        // An off-turn buyer will still receive its normal draw before it can
-        // go down, so only the remaining contract-card deficit must be bought.
-        let handShortage = max(
-            0,
-            contract.totalCards - player.hand.count
-        )
-        let minimumBuysNeeded = (handShortage + 1) / 2
-        if player.currentLevel >= 7,
-           minimumBuysNeeded > 0,
-           minimumBuysNeeded <= buysRemaining {
+        if needsBuyForContractCapacity(
+            player: player,
+            contract: contract
+        ) {
             return true
         }
 
         return false
     }
 
+    private static func shouldBuyDiscardEasy(
+        player: Player,
+        state: GameState
+    ) -> Bool {
+        guard let card = state.discard.last,
+              let contract = state.contract(forPlayer: player.id),
+              !player.hasGoneDownThisRound else {
+            return false
+        }
+        if needsBuyForContractCapacity(
+            player: player,
+            contract: contract
+        ) {
+            return true
+        }
+        guard player.buysUsedThisRound == 0 else { return false }
+        if card.isWild { return true }
+        let improvedHand = player.hand + [card]
+        return improvedHand.count >= contract.totalCards
+            && findContractSatisfaction(
+                hand: improvedHand,
+                contract: contract
+            ) != nil
+    }
+
+    private static func shouldBuyDiscardMedium(
+        player: Player,
+        state: GameState
+    ) -> Bool {
+        guard let card = state.discard.last,
+              let contract = state.contract(forPlayer: player.id),
+              !player.hasGoneDownThisRound else {
+            return false
+        }
+        if needsBuyForContractCapacity(
+            player: player,
+            contract: contract
+        ) {
+            return true
+        }
+        guard player.buysUsedThisRound < 2 else { return false }
+        if card.isWild { return true }
+
+        let improvedHand = player.hand + [card]
+        if improvedHand.count >= contract.totalCards,
+           findContractSatisfaction(
+               hand: improvedHand,
+               contract: contract
+           ) != nil {
+            return true
+        }
+        let supportsPattern = supportsRequiredPattern(
+            card,
+            in: player.hand,
+            contract: contract
+        )
+        if card.isDead2 && !supportsPattern {
+            return false
+        }
+        let improvement =
+            contractProgressScore(hand: improvedHand, contract: contract)
+            - contractProgressScore(hand: player.hand, contract: contract)
+        return improvement >= 300 && supportsPattern
+    }
+
+    private static func needsBuyForContractCapacity(
+        player: Player,
+        contract: Contract
+    ) -> Bool {
+        guard player.currentLevel >= 7 else { return false }
+        let buysRemaining = max(
+            0,
+            RulesConfig.maxBuysPerRound - player.buysUsedThisRound
+        )
+        let handShortage = max(
+            0,
+            contract.totalCards - player.hand.count
+        )
+        let minimumBuysNeeded = (handShortage + 1) / 2
+        return minimumBuysNeeded > 0
+            && minimumBuysNeeded <= buysRemaining
+    }
+
     // MARK: - Meld / discard phase
 
-    static func chooseMeldOrDiscard(player: Player,
-                                    state: GameState) -> TurnEngine.Action {
+    static func chooseMeldOrDiscard(
+        player: Player,
+        state: GameState,
+        difficulty: BotDifficulty = .hard
+    ) -> TurnEngine.Action {
         // 1. Try to go down on this player's own contract.
         if !player.hasGoneDownThisRound,
            let contract = state.contract(forPlayer: player.id),
@@ -167,7 +351,8 @@ public enum CPUPlayer {
         }
         // 2. Redeem a useful wild when the returned wild can immediately be
         //    played elsewhere.
-        if player.hasGoneDownThisRound, !player.laidDownThisTurn,
+        if difficulty == .hard,
+           player.hasGoneDownThisRound, !player.laidDownThisTurn,
            let action = findWildRedemption(
                playerId: player.id,
                hand: player.hand,
@@ -176,17 +361,27 @@ public enum CPUPlayer {
             return action
         }
         // 3. Already down — lay off the highest-penalty playable card.
+        let layOff = difficulty == .easy
+            ? findEasyLayOff(
+                playerId: player.id,
+                hand: player.hand,
+                melds: state.melds
+            )
+            : findLayOff(
+                playerId: player.id,
+                hand: player.hand,
+                melds: state.melds
+            )
         if player.hasGoneDownThisRound, !player.laidDownThisTurn,
-           let action = findLayOff(playerId: player.id,
-                                   hand: player.hand,
-                                   melds: state.melds) {
+           let action = layOff {
             return action
         }
         // 4. Discard.
         return .discard(playerId: player.id,
                         card: chooseDiscard(hand: player.hand,
                                             player: player,
-                                            state: state))
+                                            state: state,
+                                            difficulty: difficulty))
     }
 
     // MARK: - Discard selection
@@ -196,7 +391,8 @@ public enum CPUPlayer {
     /// shed the highest penalty card that cannot currently be laid off.
     static func chooseDiscard(hand: [Card],
                               player: Player,
-                              state: GameState) -> Card {
+                              state: GameState,
+                              difficulty: BotDifficulty = .hard) -> Card {
         precondition(!hand.isEmpty, "CPU asked to discard from an empty hand")
         let uselessForLayoff: (Card) -> Bool = { card in
             if !player.hasGoneDownThisRound { return true }
@@ -206,6 +402,9 @@ public enum CPUPlayer {
         let pool = candidates.isEmpty ? hand : candidates
         let nonWilds = pool.filter { !$0.isWild }
         let discardable = nonWilds.isEmpty ? pool : nonWilds
+        if difficulty == .easy {
+            return discardable.min(by: discardTieBreaker) ?? hand[0]
+        }
 
         guard !player.hasGoneDownThisRound,
               let contract = state.contract(forPlayer: player.id) else {
@@ -233,10 +432,12 @@ public enum CPUPlayer {
                 return lhsLoss < rhsLoss
             }
 
-            let lhsRisk = publicDiscardRisk(lhs, state: state)
-            let rhsRisk = publicDiscardRisk(rhs, state: state)
-            if lhsRisk != rhsRisk {
-                return lhsRisk < rhsRisk
+            if difficulty == .hard {
+                let lhsRisk = publicDiscardRisk(lhs, state: state)
+                let rhsRisk = publicDiscardRisk(rhs, state: state)
+                if lhsRisk != rhsRisk {
+                    return lhsRisk < rhsRisk
+                }
             }
             return discardTieBreaker(lhs, rhs)
         } ?? hand[0]
@@ -556,6 +757,34 @@ public enum CPUPlayer {
             }
         }
         return best?.action
+    }
+
+    private static func findEasyLayOff(
+        playerId: UUID,
+        hand: [Card],
+        melds: [Meld]
+    ) -> TurnEngine.Action? {
+        for card in hand where !card.isWild {
+            for meld in melds {
+                if canAdd(card, to: meld, atStart: false) {
+                    return .addToMeld(
+                        playerId: playerId,
+                        meldId: meld.id,
+                        cardsAtStart: [],
+                        cardsAtEnd: [card]
+                    )
+                }
+                if canAdd(card, to: meld, atStart: true) {
+                    return .addToMeld(
+                        playerId: playerId,
+                        meldId: meld.id,
+                        cardsAtStart: [card],
+                        cardsAtEnd: []
+                    )
+                }
+            }
+        }
+        return nil
     }
 
     /// Redeem a positional wild only when that wild can be laid off after the

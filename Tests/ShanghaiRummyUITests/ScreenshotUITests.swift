@@ -53,10 +53,24 @@ final class ScreenshotUITests: XCTestCase {
         start.tap()
 
         XCTAssertTrue(app.buttons["quit-game"].waitForExistence(timeout: 5))
+        XCTAssertTrue(
+            app.descendants(matching: .any)["opening-seat-draw"]
+                .waitForExistence(timeout: 5)
+        )
+        XCTAssertTrue(app.staticTexts["DRAW FOR SEATS"].exists)
+        Thread.sleep(forTimeInterval: 0.8)
+        snapshot(named: "03-opening-seat-draw")
+
+        let takeSeats = app.buttons["opening-seat-draw-continue"]
+        XCTAssertTrue(takeSeats.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["THE TABLE IS SET"].exists)
+        snapshot(named: "03-clockwise-seating")
+        takeSeats.tap()
+
         XCTAssertTrue(app.staticTexts["Your Draw"].waitForExistence(timeout: 5))
         // Small pause so the scene finishes its first frame.
         Thread.sleep(forTimeInterval: 0.5)
-        snapshot(named: "03-hand-1-scaffold")
+        snapshot(named: "04-hand-1-scaffold")
     }
 
     func testCaptureFamilyTableSetup() throws {
@@ -112,6 +126,14 @@ final class ScreenshotUITests: XCTestCase {
         addBot.tap()
         XCTAssertTrue(app.staticTexts["Bot 1"].waitForExistence(timeout: 2))
         XCTAssertTrue(app.buttons["Remove Bot 1"].exists)
+        let botDifficulty = app.buttons["bot-1-difficulty"]
+        XCTAssertTrue(botDifficulty.exists)
+        XCTAssertTrue(botDifficulty.label.contains("Hard"))
+        botDifficulty.tap()
+        let medium = app.buttons["Medium"]
+        XCTAssertTrue(medium.waitForExistence(timeout: 2))
+        medium.tap()
+        XCTAssertTrue(botDifficulty.label.contains("Medium"))
         XCTAssertTrue(start.isEnabled)
         for botNumber in 2...5 {
             addBot.tap()
@@ -153,6 +175,9 @@ final class ScreenshotUITests: XCTestCase {
 
         let quit = app.buttons["quit-game"]
         XCTAssertTrue(quit.waitForExistence(timeout: 5))
+        let takeSeats = app.buttons["opening-seat-draw-continue"]
+        XCTAssertTrue(takeSeats.waitForExistence(timeout: 5))
+        takeSeats.tap()
         tapCenter(of: quit)
 
         let alert = app.alerts["Leave Game?"]

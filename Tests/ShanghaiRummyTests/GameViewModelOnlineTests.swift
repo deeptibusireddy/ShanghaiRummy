@@ -209,6 +209,12 @@ final class GameViewModelOnlineTests: XCTestCase {
             playerNames: ["Observer", "Turn Player", "Buyer"],
             seed: 112
         )
+        let byName = Dictionary(
+            uniqueKeysWithValues: state.players.map { ($0.name, $0) }
+        )
+        state.players = ["Observer", "Turn Player", "Buyer"].map {
+            byName[$0]!
+        }
         let observerId = state.players[0].id
         state.currentTurnIndex = 1
         let turnPlayerId = state.players[1].id
@@ -235,20 +241,26 @@ final class GameViewModelOnlineTests: XCTestCase {
             playerNames: ["Winner", "Next Dealer"],
             seed: 114
         )
+        let winnerIndex = state.players.firstIndex {
+            $0.name == "Winner"
+        }!
+        let nextDealerId = state.players.first {
+            $0.name == "Next Dealer"
+        }!.id
         state.phase = .roundEnded
-        state.dealerIndex = 0
-        state.currentTurnIndex = 0
+        state.dealerIndex = winnerIndex
+        state.currentTurnIndex = winnerIndex
         state.buyDecisionPlayerId = nil
-        state.players[0].hasGoneDownThisRound = true
-        state.players[0].hand = []
+        state.players[winnerIndex].hasGoneDownThisRound = true
+        state.players[winnerIndex].hand = []
 
         let winnerViewModel = GameViewModel(
             state: state,
-            localPlayerId: state.players[0].id
+            localPlayerId: state.players[winnerIndex].id
         )
         let dealerViewModel = GameViewModel(
             state: state,
-            localPlayerId: state.players[1].id
+            localPlayerId: nextDealerId
         )
 
         XCTAssertEqual(winnerViewModel.nextDealerName, "Next Dealer")
@@ -265,7 +277,7 @@ final class GameViewModelOnlineTests: XCTestCase {
         dealerViewModel.advanceHand()
         XCTAssertEqual(
             submittedAction,
-            .advanceHand(playerId: state.players[1].id)
+            .advanceHand(playerId: nextDealerId)
         )
     }
 
@@ -274,16 +286,24 @@ final class GameViewModelOnlineTests: XCTestCase {
             playerNames: ["Local", "Remote", "Bot 1"],
             seed: 115
         )
+        let localIndex = state.players.firstIndex {
+            $0.name == "Local"
+        }!
+        let botIndex = state.players.firstIndex {
+            $0.name == "Bot 1"
+        }!
+        let botId = state.players[botIndex].id
         state.phase = .roundEnded
-        state.dealerIndex = 1
-        state.currentTurnIndex = 0
+        state.dealerIndex = (
+            botIndex - 1 + state.players.count
+        ) % state.players.count
+        state.currentTurnIndex = localIndex
         state.buyDecisionPlayerId = nil
-        state.players[0].hasGoneDownThisRound = true
-        state.players[0].hand = []
-        let botId = state.players[2].id
+        state.players[localIndex].hasGoneDownThisRound = true
+        state.players[localIndex].hand = []
         let viewModel = GameViewModel(
             state: state,
-            localPlayerId: state.players[0].id
+            localPlayerId: state.players[localIndex].id
         )
         viewModel.cpuPlayerIds = [botId]
         var submittedAction: TurnEngine.Action?
@@ -306,10 +326,15 @@ final class GameViewModelOnlineTests: XCTestCase {
             playerNames: ["Local", "Bot 1"],
             seed: 116
         )
-        state.currentTurnIndex = 0
-        state.buyDecisionPlayerId = state.players[0].id
-        let localId = state.players[0].id
-        let botId = state.players[1].id
+        let localIndex = state.players.firstIndex {
+            $0.name == "Local"
+        }!
+        let localId = state.players[localIndex].id
+        let botId = state.players.first {
+            $0.name == "Bot 1"
+        }!.id
+        state.currentTurnIndex = localIndex
+        state.buyDecisionPlayerId = localId
         let viewModel = GameViewModel(
             state: state,
             localPlayerId: localId
