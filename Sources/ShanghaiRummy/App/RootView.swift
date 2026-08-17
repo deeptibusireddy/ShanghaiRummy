@@ -179,7 +179,7 @@ struct RootView: View {
                             localPlayerId: built.localPlayerId,
                             cpuActionDelay: .seconds(30)
                         )
-                        vm.cpuPlayerIds = built.cpuIds
+                        vm.configureCPUPlayers(built.cpuDifficulties)
                         activeGame = vm
                     } else if activeGame == nil,
                               CommandLine.arguments.contains("--demo-vs-cpu") {
@@ -193,7 +193,7 @@ struct RootView: View {
                             state: built.state,
                             localPlayerId: built.localPlayerId
                         )
-                        vm.cpuPlayerIds = built.cpuIds
+                        vm.configureCPUPlayers(built.cpuDifficulties)
                         activeGame = vm
                     } else if activeGame == nil,
                               CommandLine.arguments.contains("--demo-hand-over") {
@@ -246,16 +246,21 @@ struct RootView: View {
         pendingFamilyTable = nil
 
         if configuration.invitedHumanCount == 0 {
-            startBotOnlyGame(botCount: configuration.botCount)
+            startBotOnlyGame(
+                botDifficulties: configuration.botDifficulties
+            )
         } else {
             gameCenter.beginMatchmaking(
                 invitedHumanCount: configuration.invitedHumanCount,
-                botCount: configuration.botCount
+                botDifficulties: configuration.botDifficulties
             )
         }
     }
 
-    private func startBotOnlyGame(botCount: Int) {
+    private func startBotOnlyGame(
+        botDifficulties: [BotDifficulty]
+    ) {
+        let botCount = botDifficulties.count
         let botNames = (0..<botCount).map { "Bot \($0 + 1)" }
         var seed = CommandLine.arguments.contains("--ui-testing")
             ? UInt64(0)
@@ -263,6 +268,7 @@ struct RootView: View {
         var built = GameFactory.newVsCPU(
             you: "You",
             cpuNames: botNames,
+            cpuDifficulties: botDifficulties,
             seed: seed
         )
         if CommandLine.arguments.contains("--ui-testing") {
@@ -272,6 +278,7 @@ struct RootView: View {
                 built = GameFactory.newVsCPU(
                     you: "You",
                     cpuNames: botNames,
+                    cpuDifficulties: botDifficulties,
                     seed: seed
                 )
             }
@@ -281,7 +288,7 @@ struct RootView: View {
             localPlayerId: built.localPlayerId,
             presentsOpeningDraw: true
         )
-        viewModel.cpuPlayerIds = built.cpuIds
+        viewModel.configureCPUPlayers(built.cpuDifficulties)
         activeGame = viewModel
     }
 

@@ -734,10 +734,17 @@ private struct EntryRosterPanel: View {
                     EntryConfigurableSeatCard(
                         seat: seat,
                         title: configuration.label(for: seat.id),
-                        palette: palette
-                    ) {
-                        configuration.removeSeat(id: seat.id)
-                    }
+                        palette: palette,
+                        onDifficultyChange: { difficulty in
+                            configuration.setBotDifficulty(
+                                difficulty,
+                                for: seat.id
+                            )
+                        },
+                        onRemove: {
+                            configuration.removeSeat(id: seat.id)
+                        }
+                    )
                 }
 
                 ForEach(
@@ -907,6 +914,7 @@ private struct EntryConfigurableSeatCard: View {
     let seat: FamilyTableSeat
     let title: String
     let palette: EntryFinalistPalette
+    let onDifficultyChange: (BotDifficulty) -> Void
     let onRemove: () -> Void
 
     var body: some View {
@@ -920,13 +928,18 @@ private struct EntryConfigurableSeatCard: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
                     .font(.subheadline.weight(.bold))
-                Text(
-                    seat.kind == .human
-                        ? "Game Center invite"
-                        : "Ready immediately"
-                )
-                .font(.caption)
-                .foregroundStyle(palette.muted)
+                if seat.kind == .human {
+                    Text("Game Center invite")
+                        .font(.caption)
+                        .foregroundStyle(palette.muted)
+                } else {
+                    EntryBotDifficultyMenu(
+                        title: title,
+                        selection: seat.botDifficulty ?? .hard,
+                        palette: palette,
+                        onChange: onDifficultyChange
+                    )
+                }
             }
 
             Spacer(minLength: 4)
@@ -959,6 +972,46 @@ private struct EntryConfigurableSeatCard: View {
                         .frame(width: 3)
                         .padding(.vertical, 12)
                 }
+        )
+    }
+}
+
+private struct EntryBotDifficultyMenu: View {
+    let title: String
+    let selection: BotDifficulty
+    let palette: EntryFinalistPalette
+    let onChange: (BotDifficulty) -> Void
+
+    var body: some View {
+        Menu {
+            ForEach(BotDifficulty.allCases, id: \.self) { difficulty in
+                Button {
+                    onChange(difficulty)
+                } label: {
+                    if difficulty == selection {
+                        Label(difficulty.displayName, systemImage: "checkmark")
+                    } else {
+                        Text(difficulty.displayName)
+                    }
+                }
+            }
+        } label: {
+            HStack(spacing: 4) {
+                Text(selection.displayName.uppercased())
+                    .font(.caption2.weight(.black))
+                    .tracking(0.8)
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(.system(size: 8, weight: .black))
+            }
+            .foregroundStyle(palette.gold)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(
+            "\(title) strength, \(selection.displayName)"
+        )
+        .accessibilityIdentifier(
+            title.lowercased().replacingOccurrences(of: " ", with: "-")
+                + "-difficulty"
         )
     }
 }

@@ -15,10 +15,18 @@ enum FamilyTableSeatKind: String {
 struct FamilyTableSeat: Identifiable, Equatable {
     let id: UUID
     var kind: FamilyTableSeatKind
+    var botDifficulty: BotDifficulty?
 
-    init(id: UUID = UUID(), kind: FamilyTableSeatKind) {
+    init(
+        id: UUID = UUID(),
+        kind: FamilyTableSeatKind,
+        botDifficulty: BotDifficulty? = nil
+    ) {
         self.id = id
         self.kind = kind
+        self.botDifficulty = kind == .bot
+            ? botDifficulty ?? .hard
+            : nil
     }
 }
 
@@ -40,6 +48,12 @@ struct FamilyTableConfiguration: Equatable {
     var humanCount: Int { invitedHumanCount + 1 }
     var botCount: Int {
         seats.filter { $0.kind == .bot }.count
+    }
+    var botDifficulties: [BotDifficulty] {
+        seats.compactMap {
+            guard $0.kind == .bot else { return nil }
+            return $0.botDifficulty ?? .hard
+        }
     }
     var gameCenterPlayerCount: Int { invitedHumanCount + 1 }
     var canAddSeat: Bool { totalPlayerCount < RulesConfig.maxPlayers }
@@ -91,6 +105,20 @@ struct FamilyTableConfiguration: Equatable {
         return true
     }
 
+    @discardableResult
+    mutating func setBotDifficulty(
+        _ difficulty: BotDifficulty,
+        for seatId: UUID
+    ) -> Bool {
+        guard let index = seats.firstIndex(where: {
+            $0.id == seatId && $0.kind == .bot
+        }) else {
+            return false
+        }
+        seats[index].botDifficulty = difficulty
+        return true
+    }
+
     func label(for seatId: UUID) -> String {
         guard let index = seats.firstIndex(where: { $0.id == seatId }) else {
             return "Player"
@@ -123,13 +151,53 @@ struct FamilyTableSetupView: View {
 
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(configuration.label(for: seat.id))
-                                Text(
-                                    seat.kind == .human
-                                        ? "Game Center invite"
-                                        : "Ready immediately"
-                                )
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                                if seat.kind == .human {
+                                    Text("Game Center invite")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                } else {
+                                    Menu {
+                                        ForEach(
+                                            BotDifficulty.allCases,
+                                            id: \.self
+                                        ) { difficulty in
+                                            Button {
+                                                configuration
+                                                    .setBotDifficulty(
+                                                        difficulty,
+                                                        for: seat.id
+                                                    )
+                                            } label: {
+                                                difficultyLabel(
+                                                    difficulty,
+                                                    selected:
+                                                        seat.botDifficulty
+                                                        ?? .hard
+                                                )
+                                            }
+                                        }
+                                    } label: {
+                                        Label(
+                                            (seat.botDifficulty ?? .hard)
+                                                .displayName,
+                                            systemImage: "gauge.with.dots.needle.50percent"
+                                        )
+                                        .font(.caption.weight(.semibold))
+                                    }
+                                    .accessibilityLabel(
+                                        "\(configuration.label(for: seat.id)) "
+                                            + "strength, "
+                                            + (seat.botDifficulty ?? .hard)
+                                                .displayName
+                                    )
+                                    .accessibilityIdentifier(
+                                        botDifficultyIdentifier(
+                                            for: configuration.label(
+                                                for: seat.id
+                                            )
+                                        )
+                                    )
+                                }
                             }
 
                             Spacer()
@@ -224,6 +292,23 @@ struct FamilyTableSetupView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
+    }
+
+    @ViewBuilder
+    private func difficultyLabel(
+        _ difficulty: BotDifficulty,
+        selected: BotDifficulty
+    ) -> some View {
+        if difficulty == selected {
+            Label(difficulty.displayName, systemImage: "checkmark")
+        } else {
+            Text(difficulty.displayName)
+        }
+    }
+
+    private func botDifficultyIdentifier(for title: String) -> String {
+        title.lowercased().replacingOccurrences(of: " ", with: "-")
+            + "-difficulty"
     }
 
     private var footerMessage: String {

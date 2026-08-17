@@ -24,6 +24,10 @@ final class FamilyTableConfigurationTests: XCTestCase {
 
         XCTAssertEqual(configuration.totalPlayerCount, 6)
         XCTAssertEqual(configuration.botCount, 5)
+        XCTAssertEqual(
+            configuration.botDifficulties,
+            Array(repeating: .hard, count: 5)
+        )
         XCTAssertEqual(configuration.openSeatCount, 0)
         XCTAssertEqual(configuration.estimatedDurationMinutes, 90)
         XCTAssertFalse(configuration.canAddSeat)
@@ -83,5 +87,35 @@ final class FamilyTableConfigurationTests: XCTestCase {
         )
         XCTAssertEqual(configuration.totalPlayerCount, 1)
         XCTAssertFalse(configuration.canStart)
+    }
+
+    func testBotStrengthDefaultsToHardAndCanBeChangedPerSeat() {
+        var configuration = FamilyTableConfiguration(
+            seatKinds: [.bot, .human, .bot]
+        )
+        let botSeats = configuration.seats.filter { $0.kind == .bot }
+
+        XCTAssertEqual(configuration.botDifficulties, [.hard, .hard])
+        XCTAssertTrue(
+            configuration.setBotDifficulty(
+                .easy,
+                for: botSeats[0].id
+            )
+        )
+        XCTAssertTrue(
+            configuration.setBotDifficulty(
+                .medium,
+                for: botSeats[1].id
+            )
+        )
+        XCTAssertEqual(configuration.botDifficulties, [.easy, .medium])
+        XCTAssertFalse(
+            configuration.setBotDifficulty(
+                .hard,
+                for: configuration.seats.first {
+                    $0.kind == .human
+                }!.id
+            )
+        )
     }
 }

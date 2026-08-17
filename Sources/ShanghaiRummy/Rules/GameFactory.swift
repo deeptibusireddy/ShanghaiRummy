@@ -156,13 +156,23 @@ public enum GameFactory {
     /// Build a fresh "You vs N CPUs" match ready to play. The opening draw
     /// determines seating; `localPlayerId` keeps the human at the bottom of
     /// the screen after the array is reordered.
-    public static func newVsCPU(you: String,
-                                cpuNames: [String],
-                                seed: UInt64) -> (
-                                    state: GameState,
-                                    cpuIds: Set<UUID>,
-                                    localPlayerId: UUID
-                                ) {
+    public static func newVsCPU(
+        you: String,
+        cpuNames: [String],
+        cpuDifficulties: [BotDifficulty]? = nil,
+        seed: UInt64
+    ) -> (
+        state: GameState,
+        cpuIds: Set<UUID>,
+        cpuDifficulties: [UUID: BotDifficulty],
+        localPlayerId: UUID
+    ) {
+        let difficulties = cpuDifficulties
+            ?? Array(repeating: .hard, count: cpuNames.count)
+        precondition(
+            difficulties.count == cpuNames.count,
+            "Every CPU player needs one difficulty"
+        )
         let localPlayer = Player(name: you)
         let cpuPlayers = cpuNames.map { Player(name: $0) }
         let state = newGame(
@@ -172,6 +182,12 @@ public enum GameFactory {
         return (
             state,
             Set(cpuPlayers.map(\.id)),
+            Dictionary(
+                uniqueKeysWithValues: zip(
+                    cpuPlayers.map(\.id),
+                    difficulties
+                )
+            ),
             localPlayer.id
         )
     }

@@ -126,6 +126,14 @@ final class ScreenshotUITests: XCTestCase {
         addBot.tap()
         XCTAssertTrue(app.staticTexts["Bot 1"].waitForExistence(timeout: 2))
         XCTAssertTrue(app.buttons["Remove Bot 1"].exists)
+        let botDifficulty = app.buttons["bot-1-difficulty"]
+        XCTAssertTrue(botDifficulty.exists)
+        XCTAssertTrue(botDifficulty.label.contains("Hard"))
+        botDifficulty.tap()
+        let medium = app.buttons["Medium"]
+        XCTAssertTrue(medium.waitForExistence(timeout: 2))
+        medium.tap()
+        XCTAssertTrue(botDifficulty.label.contains("Medium"))
         XCTAssertTrue(start.isEnabled)
         for botNumber in 2...5 {
             addBot.tap()

@@ -56,12 +56,21 @@ public final class GameViewModel: ObservableObject {
     /// IDs of players controlled by the CPU, in practice or mixed online games.
     @Published public var cpuPlayerIds: Set<UUID> = [] {
         didSet {
+            cpuPlayerDifficulties = cpuPlayerDifficulties.filter {
+                cpuPlayerIds.contains($0.key)
+            }
+            for id in cpuPlayerIds
+                where cpuPlayerDifficulties[id] == nil {
+                cpuPlayerDifficulties[id] = .hard
+            }
             if !isCurrentPlayerCPU {
                 cancelPacedCPUActions()
             }
             runLocalCPUActionsIfNeeded()
         }
     }
+    @Published public private(set) var cpuPlayerDifficulties:
+        [UUID: BotDifficulty] = [:]
     @Published public private(set) var isSubmittingOnlineAction = false
     @Published public private(set) var pendingSequenceEndChoice:
         PendingSequenceEndChoice? = nil
@@ -175,6 +184,9 @@ public final class GameViewModel: ObservableObject {
     public var isOnlineGame: Bool { localPlayerId != nil }
     public var isOpeningDrawPresented: Bool {
         openingDrawStage != nil
+    }
+    public func cpuDifficulty(for playerId: UUID) -> BotDifficulty {
+        cpuPlayerDifficulties[playerId] ?? .hard
     }
     public var isLocalActivePlayer: Bool {
         localPlayerId == nil || state.activePlayerId == localPlayerId
@@ -330,6 +342,13 @@ public final class GameViewModel: ObservableObject {
         localBuyOfferTimeoutTask?.cancel()
         localBuyOfferTimeoutTask = nil
         onlineActionSubmitter = submitter
+    }
+
+    public func configureCPUPlayers(
+        _ difficulties: [UUID: BotDifficulty]
+    ) {
+        cpuPlayerDifficulties = difficulties
+        cpuPlayerIds = Set(difficulties.keys)
     }
 
     public func configureOpeningDrawCompletion(
@@ -1234,7 +1253,11 @@ public final class GameViewModel: ObservableObject {
         guard isCurrentPlayerCPU else { return false }
         guard state.phase == .awaitingDraw
                 || state.phase == .awaitingMeldOrDiscard else { return false }
-        let action = CPUPlayer.nextAction(for: state.activePlayerId, in: state)
+        let action = CPUPlayer.nextAction(
+            for: state.activePlayerId,
+            in: state,
+            difficulty: cpuDifficulty(for: state.activePlayerId)
+        )
         return dispatch(action)
     }
 

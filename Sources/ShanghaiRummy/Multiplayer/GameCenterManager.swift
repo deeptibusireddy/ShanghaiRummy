@@ -78,14 +78,20 @@ final class GameCenterManager: NSObject, ObservableObject {
         }
     }
 
-    func beginMatchmaking(invitedHumanCount: Int, botCount: Int) {
+    func beginMatchmaking(
+        invitedHumanCount: Int,
+        botDifficulties: [BotDifficulty]
+    ) {
+        let botCount = botDifficulties.count
         guard invitedHumanCount >= 1,
               botCount >= 0,
               invitedHumanCount + botCount + 1 <= RulesConfig.maxPlayers else {
             lastError = "Choose 2–6 total human and bot players"
             return
         }
-        gameSetup = RealtimeGameSetup(botCount: botCount)
+        gameSetup = RealtimeGameSetup(
+            botDifficulties: botDifficulties
+        )
         requestedRemoteHumanCount = invitedHumanCount
         shouldBroadcastGameSetup = true
         lastError = nil
@@ -316,7 +322,7 @@ final class GameCenterManager: NSObject, ObservableObject {
                     }
                     self.startHostedGame(
                         players: players,
-                        botCount: gameSetup.botCount,
+                        botDifficulties: gameSetup.botDifficulties,
                         hostGamePlayerId: hostId
                     )
                 } else {
@@ -337,9 +343,10 @@ final class GameCenterManager: NSObject, ObservableObject {
 
     private func startHostedGame(
         players: [GKPlayer],
-        botCount: Int,
+        botDifficulties: [BotDifficulty],
         hostGamePlayerId: String
     ) {
+        let botCount = botDifficulties.count
         guard players.count >= RulesConfig.minPlayers,
               players.count + botCount <= RulesConfig.maxPlayers else {
             failOnlineSession("Online games require 2–6 connected players")
@@ -364,11 +371,18 @@ final class GameCenterManager: NSObject, ObservableObject {
             )
         }
         let botPlayerIds = botStatePlayers.map(\.id)
+        let botDifficultiesByPlayer = Dictionary(
+            uniqueKeysWithValues: zip(
+                botPlayerIds,
+                botDifficulties
+            )
+        )
         let snapshot = RealtimeGameSnapshot(
             revision: 0,
             state: state,
             participants: bindings,
             botPlayerIds: botPlayerIds,
+            botDifficultiesByPlayer: botDifficultiesByPlayer,
             hostGamePlayerId: hostGamePlayerId
         )
         authority = RealtimeGameAuthority(snapshot: snapshot)
@@ -392,7 +406,9 @@ final class GameCenterManager: NSObject, ObservableObject {
 
         currentSnapshot = snapshot
         if let onlineGame {
-            onlineGame.cpuPlayerIds = Set(snapshot.botPlayerIds)
+            onlineGame.configureCPUPlayers(
+                snapshot.botDifficultiesByPlayer
+            )
             let completesPendingAction =
                 snapshot.lastAppliedRequestId == pendingLocalRequestId
                 && pendingLocalRequestId != nil
@@ -415,7 +431,9 @@ final class GameCenterManager: NSObject, ObservableObject {
             viewModel.configureOpeningDrawCompletion { [weak self] in
                 self?.runHostedBotsIfNeeded()
             }
-            viewModel.cpuPlayerIds = Set(snapshot.botPlayerIds)
+            viewModel.configureCPUPlayers(
+                snapshot.botDifficultiesByPlayer
+            )
             onlineGame = viewModel
         }
         onlineStatusMessage = "Connected"
@@ -573,13 +591,16 @@ final class GameCenterManager: NSObject, ObservableObject {
             tryStartMatchIfReady()
         case .start(let snapshot):
             guard sender.gamePlayerID == snapshot.hostGamePlayerId else { return }
+            let snapshotDifficulties = snapshot.botPlayerIds.map {
+                snapshot.botDifficulty(for: $0)
+            }
             if let gameSetup,
-               gameSetup.botCount != snapshot.botPlayerIds.count {
+               gameSetup.botDifficulties != snapshotDifficulties {
                 abortOnlineSession("The host started with different table options")
                 return
             }
             gameSetup = RealtimeGameSetup(
-                botCount: snapshot.botPlayerIds.count
+                botDifficulties: snapshotDifficulties
             )
             shouldBroadcastGameSetup = false
             install(snapshot)

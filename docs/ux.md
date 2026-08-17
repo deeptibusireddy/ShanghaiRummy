@@ -44,6 +44,10 @@ file first, then the scene.
 - **Single-purpose seat cards:** Human or Bot is chosen when the seat is
   added. Configured cards expose only the X removal action; changing a seat
   type means removing it and adding the intended type.
+- **Bot strength:** Every Bot card includes an Easy, Medium, or Hard menu.
+  Hard is selected by default. Easy makes relaxed local choices, Medium
+  protects its contract without advanced opponent-aware tactics, and Hard
+  uses the full existing strategy.
 - **Starting play:** Bot-only tables begin immediately. Tables with Human
   seats authenticate with Game Center when needed, then request exactly the
   selected number of remote players.

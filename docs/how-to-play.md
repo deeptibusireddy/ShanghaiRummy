@@ -31,6 +31,10 @@ Use **Create Table** to build any 2–6 player mix. You can play immediately wit
 Human or Bot; the app reserves the bots and opens Game Center only for the exact
 number of people selected.
 
+Each bot can be set to **Easy**, **Medium**, or **Hard** before the table
+starts. Hard is the default. The selected strength stays with that bot in
+local and Game Center games.
+
 ---
 
 ## Drawing for seats
