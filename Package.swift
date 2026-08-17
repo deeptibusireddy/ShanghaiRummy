@@ -26,7 +26,6 @@ let package = Package(
                 "Scenes",
                 "ShanghaiRummy.entitlements",
                 "ViewModels",
-                "Views",
             ],
             sources: [
                 "Models",

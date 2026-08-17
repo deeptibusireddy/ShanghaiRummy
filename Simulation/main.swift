@@ -7,7 +7,7 @@ import Glibc
 import Darwin
 #endif
 
-private struct Arguments {
+struct Arguments {
     let playerCount: Int
     let firstGameNumber: Int
     let gameCount: Int
@@ -40,7 +40,7 @@ private struct Arguments {
     }
 }
 
-private struct ActionTotals: Codable {
+struct ActionTotals: Codable {
     var stockChoices = 0
     var discardTakes = 0
     var contractsLaid = 0
@@ -84,7 +84,7 @@ private struct ActionTotals: Codable {
     }
 }
 
-private struct GameRecord: Codable {
+struct GameRecord: Codable {
     let playerCount: Int
     let gameNumber: Int
     let seed: UInt64
@@ -101,7 +101,7 @@ private struct GameRecord: Codable {
     let actions: ActionTotals
 }
 
-private struct GameFailure: Codable {
+struct GameFailure: Codable {
     let playerCount: Int
     let gameNumber: Int
     let seed: UInt64
@@ -110,7 +110,7 @@ private struct GameFailure: Codable {
     let message: String
 }
 
-private struct BatchReport: Codable {
+struct BatchReport: Codable {
     let generatedAt: String
     let playerCount: Int
     let firstGameNumber: Int
@@ -121,12 +121,12 @@ private struct BatchReport: Codable {
     let failures: [GameFailure]
 }
 
-private enum GameOutcome {
+enum GameOutcome {
     case success(GameRecord)
     case failure(GameFailure)
 }
 
-private func simulateGame(
+func simulateGame(
     playerCount: Int,
     gameNumber: Int,
     seed: UInt64,
