@@ -348,13 +348,14 @@ with warning feedback.
 - Active turn: the current player's seat uses a bright pulsing amber halo,
   amber avatar/name treatment. The local seat always retains its own level and
   contract description, including while another player has the turn.
-- Bot pacing: automated actions are separated by a 550 ms presentation beat.
-  A normal draw-and-discard turn therefore remains visible for at least about
-  one second, while longer meld sequences progress one readable step at a time.
+- Bot pacing: automated actions are separated by a 900 ms presentation beat.
+  A normal draw-and-discard turn therefore remains visible for about two
+  seconds, while longer meld sequences progress one readable step at a time.
 
 Haptics (M4):
-- Turn handoff: short two-note chime plus a medium impact on supported devices,
-  emitted once when control passes to the local human player.
+- Player prompt: short two-note chime plus a medium impact on supported devices,
+  emitted once when a local human receives a draw, buy, or meld/discard prompt.
+  Repeated state updates within the same prompt stay silent.
 - Draw: `.light`
 - Discard: `.rigid`
 - Go Down / Go Out: `.success`

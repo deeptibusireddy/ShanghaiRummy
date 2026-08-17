@@ -663,6 +663,13 @@ final class CPUPlayerTests: XCTestCase {
 
     // MARK: - VM integration
 
+    func testDefaultBotActionBeatIsReadable() {
+        XCTAssertEqual(
+            GameViewModel.defaultCPUActionDelay,
+            .milliseconds(900)
+        )
+    }
+
     @MainActor
     func testAssigningCPUPlayersPacesPendingBotBuyOffer() {
         var state = GameFactory.newGame(

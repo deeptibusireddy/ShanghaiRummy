@@ -9,7 +9,7 @@ import Combine
 /// authoritative Game Center host and publishes the returned snapshots.
 @MainActor
 public final class GameViewModel: ObservableObject {
-    public static let defaultCPUActionDelay: Duration = .milliseconds(550)
+    public static let defaultCPUActionDelay: Duration = .milliseconds(900)
 
     public enum SequenceEnd: Equatable {
         case start

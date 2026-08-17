@@ -55,7 +55,8 @@ final class GameScene: SKScene {
     private var lastRenderedHandIds: Set<UUID> = []
     private var isAnimatingTurnAction = false
     private var lastObservedTurnRound: Int?
-    private var lastObservedTurnPlayerId: UUID?
+    private var lastObservedActivePlayerId: UUID?
+    private var lastObservedTurnPhase: GameState.Phase?
 
     /// Slot centers captured during `buildHand`, used for drag reordering.
     private var handSlots: [(id: UUID, x: CGFloat, y: CGFloat)] = []
@@ -189,18 +190,20 @@ final class GameScene: SKScene {
 
     private func playTurnAlertIfNeeded(for state: GameState) {
         let currentRound = state.currentRound
-        let currentPlayerId = state.currentPlayerId
+        let activePlayerId = state.activePlayerId
         let shouldPlay = Self.shouldPlayTurnAlert(
             previousRound: lastObservedTurnRound,
-            previousPlayerId: lastObservedTurnPlayerId,
+            previousActivePlayerId: lastObservedActivePlayerId,
+            previousPhase: lastObservedTurnPhase,
             currentRound: currentRound,
-            currentPlayerId: currentPlayerId,
+            currentActivePlayerId: activePlayerId,
             localPlayerId: vm.localPlayerId,
             cpuPlayerIds: vm.cpuPlayerIds,
             phase: state.phase
         )
         lastObservedTurnRound = currentRound
-        lastObservedTurnPlayerId = currentPlayerId
+        lastObservedActivePlayerId = activePlayerId
+        lastObservedTurnPhase = state.phase
 
         guard shouldPlay,
               UIApplication.shared.applicationState == .active else {
@@ -213,23 +216,26 @@ final class GameScene: SKScene {
 
     static func shouldPlayTurnAlert(
         previousRound: Int?,
-        previousPlayerId: UUID?,
+        previousActivePlayerId: UUID?,
+        previousPhase: GameState.Phase?,
         currentRound: Int,
-        currentPlayerId: UUID,
+        currentActivePlayerId: UUID,
         localPlayerId: UUID?,
         cpuPlayerIds: Set<UUID>,
         phase: GameState.Phase
     ) -> Bool {
         guard let previousRound,
-              let previousPlayerId,
+              let previousActivePlayerId,
+              let previousPhase,
               (previousRound != currentRound
-                || previousPlayerId != currentPlayerId),
+                || previousActivePlayerId != currentActivePlayerId
+                || previousPhase != phase),
               (phase == .awaitingDraw
                 || phase == .awaitingMeldOrDiscard),
-              !cpuPlayerIds.contains(currentPlayerId) else {
+              !cpuPlayerIds.contains(currentActivePlayerId) else {
             return false
         }
-        return localPlayerId == nil || localPlayerId == currentPlayerId
+        return localPlayerId == nil || localPlayerId == currentActivePlayerId
     }
 
     private func buildHeader() {
