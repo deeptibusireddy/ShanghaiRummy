@@ -101,16 +101,14 @@ jobs:
     runs-on: macos-15
     timeout-minutes: 120
     env:
-      RUN_GAME_SIMULATIONS: "1"
-      GAMES_PER_PLAYER_COUNT: "1000"
       RESULT_BUNDLE: GameSimulationResults.xcresult
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install XcodeGen and xcbeautify
-        run: brew install xcodegen xcbeautify
+      - name: Install XcodeGen, xcbeautify, and xcparse
+        run: brew install xcodegen xcbeautify chargepoint/xcparse/xcparse
 
       - name: Generate Xcode project
         run: xcodegen generate
@@ -130,6 +128,7 @@ jobs:
             -configuration Debug \
             -resultBundlePath "$RESULT_BUNDLE" \
             -only-testing:ShanghaiRummyTests/GameSimulationTests/testFiveThousandBotGamesComplete \
+            SWIFT_ACTIVE_COMPILATION_CONDITIONS='$(inherited) RUN_GAME_SIMULATIONS' \
             CODE_SIGNING_ALLOWED=NO \
             test \
             | tee game-simulation.log \
@@ -138,25 +137,17 @@ jobs:
       - name: Extract simulation report
         if: always()
         run: |
-          python3 - <<'PY'
-          import base64
-          import pathlib
-          import re
-
-          log = pathlib.Path("game-simulation.log").read_text(
-              encoding="utf-8",
-              errors="replace",
-          )
-          matches = re.findall(
-              r"SIMULATION_REPORT_BASE64:([A-Za-z0-9+/=]+)",
-              log,
-          )
-          if not matches:
-              raise SystemExit("Simulation report was not found in the test log")
-          pathlib.Path("game-simulation-report.json").write_bytes(
-              base64.b64decode(matches[-1])
-          )
-          PY
+          mkdir -p simulation-attachments
+          xcparse attachments \
+            "$RESULT_BUNDLE" \
+            simulation-attachments \
+            --uti public.json
+          REPORT=$(find simulation-attachments -type f | head -1)
+          if [ -z "$REPORT" ]; then
+            echo "Simulation report attachment was not found"
+            exit 1
+          fi
+          cp "$REPORT" game-simulation-report.json
 
       - name: Upload simulation results
         if: always()
@@ -166,5 +157,6 @@ jobs:
           path: |
             game-simulation-report.json
             game-simulation.log
+            simulation-attachments/
             ${{ env.RESULT_BUNDLE }}
           if-no-files-found: warn

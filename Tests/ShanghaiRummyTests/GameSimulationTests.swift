@@ -237,19 +237,17 @@ final class GameSimulationTests: XCTestCase {
     }
 
     func testFiveThousandBotGamesComplete() throws {
-        guard ProcessInfo.processInfo.environment[
-            "RUN_GAME_SIMULATIONS"
-        ] == "1" else {
+        #if RUN_GAME_SIMULATIONS
+        let shouldRunSimulations = true
+        #else
+        let shouldRunSimulations = false
+        #endif
+        guard shouldRunSimulations else {
             throw XCTSkip(
-                "Set RUN_GAME_SIMULATIONS=1 to run the 2–6 player soak suite"
+                "Run the manual simulation workflow to execute the soak suite"
             )
         }
-
-        let gamesPerPlayerCount = Int(
-            ProcessInfo.processInfo.environment[
-                "GAMES_PER_PLAYER_COUNT"
-            ] ?? ""
-        ) ?? 1_000
+        let gamesPerPlayerCount = 1_000
         let actionLimitPerGame = 100_000
         var failures: [SimulationFailure] = []
         var results: [PlayerCountResult] = []
@@ -322,10 +320,6 @@ final class GameSimulationTests: XCTestCase {
         attachment.name = "game-simulation-report.json"
         attachment.lifetime = .keepAlways
         add(attachment)
-        print(
-            "SIMULATION_REPORT_BASE64:"
-                + data.base64EncodedString()
-        )
 
         XCTAssertEqual(
             report.totalGamesCompleted,

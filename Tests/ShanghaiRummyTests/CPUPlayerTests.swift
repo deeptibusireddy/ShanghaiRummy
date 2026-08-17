@@ -714,6 +714,7 @@ final class CPUPlayerTests: XCTestCase {
                 built.state.players[0].id
             )
             vm.passBuyOffer()
+            vm.runAllCPUTurns()
         }
         XCTAssertEqual(vm.state.currentPlayerId, built.state.players[0].id)
         XCTAssertFalse(vm.isCurrentPlayerCPU)
@@ -722,6 +723,7 @@ final class CPUPlayerTests: XCTestCase {
         // during the Bot's following turn.
         let you = vm.currentPlayer
         _ = vm.dispatch(.draw(playerId: you.id, source: .stock))
+        vm.runAllCPUTurns()
         let card = vm.currentPlayer.hand.max(by: { $0.points < $1.points })!
         _ = vm.dispatch(.discard(playerId: you.id, card: card))
         vm.runAllCPUTurns()
