@@ -198,7 +198,8 @@ meld.
   level; amber border, avatar, and halo styling identify the active player
   without replacing useful details with another turn label.
 - The bottom-left local HUD remains the persistent personal reference for name,
-  score, level, and contract.
+  score, level, and contract. On full-height iPad layouts, these details use a
+  larger semibold treatment so they remain readable at a glance.
 - The bottom-right area is reserved for real enabled actions. Passive prompts
   and duplicated "[name]'s turn" boxes are omitted because guidance already
   lives in the top banner.

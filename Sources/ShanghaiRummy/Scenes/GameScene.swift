@@ -1164,7 +1164,11 @@ final class GameScene: SKScene {
         colorIndex: Int,
         isActive: Bool
     ) {
-        let panelSize = CGSize(width: currentPlayerHUDWidth, height: 62)
+        let usesRoomyLayout = usesExpandedIPadLayout
+        let panelSize = CGSize(
+            width: currentPlayerHUDWidth,
+            height: usesRoomyLayout ? 76 : 62
+        )
         let center = CGPoint(x: horizontalEdgeInset + panelSize.width / 2,
                              y: stagingTrayY + 8)
         let panel = SKShapeNode(
@@ -1183,7 +1187,7 @@ final class GameScene: SKScene {
         panel.zPosition = 2
         seatsLayer.addChild(panel)
 
-        let avatarRadius: CGFloat = 15
+        let avatarRadius: CGFloat = usesRoomyLayout ? 17 : 15
         let avatarPosition = CGPoint(x: center.x - panelSize.width / 2 + 24,
                                      y: center.y + 3)
         let avatarColor = theme.avatarColors[colorIndex % theme.avatarColors.count]
@@ -1198,7 +1202,7 @@ final class GameScene: SKScene {
         seatsLayer.addChild(avatar)
         let initial = SKLabelNode(text: String(player.name.prefix(1)).uppercased())
         initial.fontName = theme.titleFont
-        initial.fontSize = 15
+        initial.fontSize = usesRoomyLayout ? 17 : 15
         initial.fontColor = .white
         initial.horizontalAlignmentMode = .center
         initial.verticalAlignmentMode = .center
@@ -1209,23 +1213,24 @@ final class GameScene: SKScene {
         let textX = avatarPosition.x + avatarRadius + 8
         let name = SKLabelNode(text: player.name)
         name.fontName = theme.titleFont
-        name.fontSize = 12
+        name.fontSize = usesRoomyLayout ? 15 : 13
         name.fontColor = isActive ? theme.turnGlow : theme.seatTitle
         name.horizontalAlignmentMode = .left
         name.verticalAlignmentMode = .center
-        name.position = CGPoint(x: textX, y: center.y + 16)
+        let topLineY = center.y + (usesRoomyLayout ? 20 : 16)
+        name.position = CGPoint(x: textX, y: topLineY)
         name.zPosition = 3
         seatsLayer.addChild(name)
 
         let score = SKLabelNode(text: "\(player.totalScore) pts")
-        score.fontName = theme.bodyFont
-        score.fontSize = 8
-        score.fontColor = theme.seatSub
+        score.fontName = theme.titleFont
+        score.fontSize = usesRoomyLayout ? 11.5 : 9.5
+        score.fontColor = isActive ? theme.turnGlow : theme.seatTitle
         score.horizontalAlignmentMode = .right
         score.verticalAlignmentMode = .center
         score.position = CGPoint(
             x: center.x + panelSize.width / 2 - 12,
-            y: center.y + 16
+            y: topLineY
         )
         score.zPosition = 3
         seatsLayer.addChild(score)
@@ -1234,12 +1239,15 @@ final class GameScene: SKScene {
         let detail = SKLabelNode(
             text: "LV \(player.currentLevel)  •  \(contract)"
         )
-        detail.fontName = theme.bodyFont
-        detail.fontSize = size.width < 720 ? 7.5 : 8.5
-        detail.fontColor = isActive ? theme.turnGlow : theme.seatSub
+        detail.fontName = theme.titleFont
+        detail.fontSize = usesRoomyLayout ? 11.5 : 9.5
+        detail.fontColor = isActive ? theme.turnGlow : theme.contractPillText
         detail.horizontalAlignmentMode = .left
         detail.verticalAlignmentMode = .center
-        detail.position = CGPoint(x: textX, y: center.y)
+        detail.position = CGPoint(
+            x: textX,
+            y: center.y + (usesRoomyLayout ? 1 : 0)
+        )
         detail.zPosition = 3
         seatsLayer.addChild(detail)
 
@@ -1247,7 +1255,7 @@ final class GameScene: SKScene {
         let counterSize = CGSize(width: 94, height: 20)
         let counterCenter = CGPoint(
             x: center.x + panelSize.width / 2 - counterSize.width / 2 - 10,
-            y: center.y - 20
+            y: center.y - (usesRoomyLayout ? 24 : 20)
         )
         let counter = SKShapeNode(
             rectOf: counterSize,
@@ -1266,7 +1274,7 @@ final class GameScene: SKScene {
 
         let buysLabel = SKLabelNode(text: "BUYS LEFT")
         buysLabel.fontName = theme.titleFont
-        buysLabel.fontSize = 7.5
+        buysLabel.fontSize = usesRoomyLayout ? 9 : 7.5
         buysLabel.fontColor = buysRemaining > 0
             ? theme.contractPillText
             : theme.scoreChipText
@@ -1281,7 +1289,7 @@ final class GameScene: SKScene {
 
         let buysCount = SKLabelNode(text: "\(buysRemaining)")
         buysCount.fontName = theme.titleFont
-        buysCount.fontSize = 13
+        buysCount.fontSize = usesRoomyLayout ? 14 : 13
         buysCount.fontColor = buysRemaining > 0
             ? theme.turnGlow
             : theme.scoreChipText
@@ -1612,7 +1620,7 @@ final class GameScene: SKScene {
     }
 
     private var currentPlayerHUDWidth: CGFloat {
-        size.width < 720 ? 190 : 224
+        size.width < 720 ? 190 : 240
     }
 
     private var stagingTrayY: CGFloat {
