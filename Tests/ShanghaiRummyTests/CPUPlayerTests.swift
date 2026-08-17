@@ -200,6 +200,39 @@ final class CPUPlayerTests: XCTestCase {
         )
     }
 
+    func testLateLevelBotBuysEnoughCardsToHoldItsContract() {
+        let hand = (0..<11).map { _ in c(.clubs, .king) }
+        var (s, me) = state(
+            hand: hand,
+            discard: [c(.diamonds, .seven)],
+            level: 10
+        )
+        s.currentTurnIndex = 1
+        s.buyDecisionPlayerId = me.id
+
+        XCTAssertEqual(
+            CPUPlayer.nextAction(for: me.id, in: s),
+            .acceptBuyOffer(playerId: me.id)
+        )
+    }
+
+    func testLateLevelBotPassesOnceContractFitsWithNextDraw() {
+        let hand = (0..<15).map { _ in c(.clubs, .king) }
+        var (s, me) = state(
+            hand: hand,
+            discard: [c(.diamonds, .seven)],
+            buysUsed: 2,
+            level: 10
+        )
+        s.currentTurnIndex = 1
+        s.buyDecisionPlayerId = me.id
+
+        XCTAssertEqual(
+            CPUPlayer.nextAction(for: me.id, in: s),
+            .passBuyOffer(playerId: me.id)
+        )
+    }
+
     func testBuysDiscardThatCompletesExactSizeContract() {
         let hand = [
             c(.hearts, .king),
@@ -598,6 +631,34 @@ final class CPUPlayerTests: XCTestCase {
         guard case .discard = action else {
             return XCTFail("Expected .discard, got \(action)")
         }
+    }
+
+    func testTwoPlayerSeed591CompletesWithoutStalling() throws {
+        var state = GameFactory.newGame(
+            playerNames: ["Bot 1", "Bot 2"],
+            seed: 2_000_591
+        )
+
+        for _ in 0..<3_000 {
+            if state.phase == .gameEnded {
+                return
+            }
+            let action: TurnEngine.Action
+            if state.phase == .roundEnded {
+                action = .advanceHand(playerId: state.nextDealer.id)
+            } else {
+                action = CPUPlayer.nextAction(
+                    for: state.activePlayerId,
+                    in: state
+                )
+            }
+            state = try TurnEngine.apply(action, to: state).get()
+        }
+
+        XCTFail(
+            "Seed 591 stalled at hand \(state.currentRound), "
+                + "levels \(state.players.map(\.currentLevel))"
+        )
     }
 
     // MARK: - VM integration

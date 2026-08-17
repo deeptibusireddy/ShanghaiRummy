@@ -106,7 +106,16 @@ struct GameFailure: Codable {
     let gameNumber: Int
     let seed: UInt64
     let actionCount: Int
+    let currentRound: Int
     let phase: String
+    let playerLevels: [Int]
+    let playerHandSizes: [Int]
+    let playerBuysUsed: [Int]
+    let playersGoneDown: [Bool]
+    let stockCount: Int
+    let discardCount: Int
+    let meldCount: Int
+    let stockReshufflesUsed: Int
     let message: String
 }
 
@@ -126,11 +135,38 @@ enum GameOutcome {
     case failure(GameFailure)
 }
 
+func gameFailure(
+    playerCount: Int,
+    gameNumber: Int,
+    seed: UInt64,
+    actionCount: Int,
+    state: GameState,
+    message: String
+) -> GameFailure {
+    GameFailure(
+        playerCount: playerCount,
+        gameNumber: gameNumber,
+        seed: seed,
+        actionCount: actionCount,
+        currentRound: state.currentRound,
+        phase: state.phase.rawValue,
+        playerLevels: state.players.map(\.currentLevel),
+        playerHandSizes: state.players.map(\.hand.count),
+        playerBuysUsed: state.players.map(\.buysUsedThisRound),
+        playersGoneDown: state.players.map(\.hasGoneDownThisRound),
+        stockCount: state.stock.count,
+        discardCount: state.discard.count,
+        meldCount: state.melds.count,
+        stockReshufflesUsed: state.stockReshufflesUsed,
+        message: message
+    )
+}
+
 func simulateGame(
     playerCount: Int,
     gameNumber: Int,
     seed: UInt64,
-    actionLimit: Int = 100_000
+    actionLimit: Int = 10_000
 ) -> GameOutcome {
     let names = (1...playerCount).map { "Bot \($0)" }
     var state = GameFactory.newGame(
@@ -163,12 +199,12 @@ func simulateGame(
         switch TurnEngine.apply(action, to: previous) {
         case .failure(let error):
             return .failure(
-                GameFailure(
+                gameFailure(
                     playerCount: playerCount,
                     gameNumber: gameNumber,
                     seed: seed,
                     actionCount: actionCount,
-                    phase: previous.phase.rawValue,
+                    state: previous,
                     message: "\(error.description); action: \(action)"
                 )
             )
@@ -208,12 +244,12 @@ func simulateGame(
 
     guard state.phase == .gameEnded else {
         return .failure(
-            GameFailure(
+            gameFailure(
                 playerCount: playerCount,
                 gameNumber: gameNumber,
                 seed: seed,
                 actionCount: actionCount,
-                phase: state.phase.rawValue,
+                state: state,
                 message: "Exceeded \(actionLimit) actions"
             )
         )
