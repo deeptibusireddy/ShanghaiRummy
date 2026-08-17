@@ -158,6 +158,118 @@ final class GameSceneHitTestingTests: XCTestCase {
         )
     }
 
+    func testTurnAlertPlaysOnlyWhenControlPassesToLocalHuman() {
+        let local = UUID()
+        let remote = UUID()
+        let bot = UUID()
+
+        XCTAssertFalse(
+            GameScene.shouldPlayTurnAlert(
+                previousRound: nil,
+                previousPlayerId: nil,
+                currentRound: 1,
+                currentPlayerId: local,
+                localPlayerId: local,
+                cpuPlayerIds: [bot],
+                phase: .awaitingDraw
+            )
+        )
+        XCTAssertTrue(
+            GameScene.shouldPlayTurnAlert(
+                previousRound: 1,
+                previousPlayerId: remote,
+                currentRound: 1,
+                currentPlayerId: local,
+                localPlayerId: local,
+                cpuPlayerIds: [bot],
+                phase: .awaitingDraw
+            )
+        )
+        XCTAssertFalse(
+            GameScene.shouldPlayTurnAlert(
+                previousRound: 1,
+                previousPlayerId: local,
+                currentRound: 1,
+                currentPlayerId: remote,
+                localPlayerId: local,
+                cpuPlayerIds: [bot],
+                phase: .awaitingDraw
+            )
+        )
+        XCTAssertFalse(
+            GameScene.shouldPlayTurnAlert(
+                previousRound: 1,
+                previousPlayerId: local,
+                currentRound: 1,
+                currentPlayerId: bot,
+                localPlayerId: nil,
+                cpuPlayerIds: [bot],
+                phase: .awaitingDraw
+            )
+        )
+        XCTAssertTrue(
+            GameScene.shouldPlayTurnAlert(
+                previousRound: 1,
+                previousPlayerId: bot,
+                currentRound: 1,
+                currentPlayerId: local,
+                localPlayerId: nil,
+                cpuPlayerIds: [bot],
+                phase: .awaitingDraw
+            )
+        )
+        XCTAssertFalse(
+            GameScene.shouldPlayTurnAlert(
+                previousRound: 1,
+                previousPlayerId: local,
+                currentRound: 1,
+                currentPlayerId: local,
+                localPlayerId: local,
+                cpuPlayerIds: [bot],
+                phase: .awaitingMeldOrDiscard
+            )
+        )
+    }
+
+    func testTurnAlertHandlesHotSeatAndNewRounds() {
+        let first = UUID()
+        let second = UUID()
+
+        XCTAssertTrue(
+            GameScene.shouldPlayTurnAlert(
+                previousRound: 1,
+                previousPlayerId: first,
+                currentRound: 1,
+                currentPlayerId: second,
+                localPlayerId: nil,
+                cpuPlayerIds: [],
+                phase: .awaitingMeldOrDiscard
+            )
+        )
+        XCTAssertTrue(
+            GameScene.shouldPlayTurnAlert(
+                previousRound: 1,
+                previousPlayerId: first,
+                currentRound: 2,
+                currentPlayerId: first,
+                localPlayerId: nil,
+                cpuPlayerIds: [],
+                phase: .awaitingDraw
+            )
+        )
+        XCTAssertFalse(
+            GameScene.shouldPlayTurnAlert(
+                previousRound: 1,
+                previousPlayerId: first,
+                currentRound: 1,
+                currentPlayerId: second,
+                localPlayerId: nil,
+                cpuPlayerIds: [],
+                phase: .roundEnded
+            )
+        )
+    }
+
     func testFiveAndSixPlayerSeatsUseCompactWidth() {
         XCTAssertEqual(
             GameScene.opponentSeatWidth(sceneWidth: 852, playerCount: 4),

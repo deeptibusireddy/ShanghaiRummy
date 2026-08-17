@@ -54,6 +54,8 @@ final class GameScene: SKScene {
     private var lastRenderedHandOwnerId: UUID?
     private var lastRenderedHandIds: Set<UUID> = []
     private var isAnimatingTurnAction = false
+    private var lastObservedTurnRound: Int?
+    private var lastObservedTurnPlayerId: UUID?
 
     /// Slot centers captured during `buildHand`, used for drag reordering.
     private var handSlots: [(id: UUID, x: CGFloat, y: CGFloat)] = []
@@ -154,6 +156,13 @@ final class GameScene: SKScene {
     // MARK: - Dynamic layers (rebuild on state change)
 
     private func subscribeToViewModel() {
+        vm.$state
+            .receive(on: RunLoop.main)
+            .sink { [weak self] state in
+                self?.playTurnAlertIfNeeded(for: state)
+            }
+            .store(in: &cancellables)
+
         // Rebuild on any published change (state, staging, etc.).
         vm.objectWillChange
             .receive(on: RunLoop.main)
@@ -176,6 +185,51 @@ final class GameScene: SKScene {
         buildStagingTray()
         buildHand()
         buildContextActions()
+    }
+
+    private func playTurnAlertIfNeeded(for state: GameState) {
+        let currentRound = state.currentRound
+        let currentPlayerId = state.currentPlayerId
+        let shouldPlay = Self.shouldPlayTurnAlert(
+            previousRound: lastObservedTurnRound,
+            previousPlayerId: lastObservedTurnPlayerId,
+            currentRound: currentRound,
+            currentPlayerId: currentPlayerId,
+            localPlayerId: vm.localPlayerId,
+            cpuPlayerIds: vm.cpuPlayerIds,
+            phase: state.phase
+        )
+        lastObservedTurnRound = currentRound
+        lastObservedTurnPlayerId = currentPlayerId
+
+        guard shouldPlay,
+              UIApplication.shared.applicationState == .active else {
+            return
+        }
+        run(.playSoundFileNamed("turn-chime.wav", waitForCompletion: false))
+        UIImpactFeedbackGenerator(style: .medium)
+            .impactOccurred(intensity: 0.75)
+    }
+
+    static func shouldPlayTurnAlert(
+        previousRound: Int?,
+        previousPlayerId: UUID?,
+        currentRound: Int,
+        currentPlayerId: UUID,
+        localPlayerId: UUID?,
+        cpuPlayerIds: Set<UUID>,
+        phase: GameState.Phase
+    ) -> Bool {
+        guard let previousRound,
+              let previousPlayerId,
+              (previousRound != currentRound
+                || previousPlayerId != currentPlayerId),
+              (phase == .awaitingDraw
+                || phase == .awaitingMeldOrDiscard),
+              !cpuPlayerIds.contains(currentPlayerId) else {
+            return false
+        }
+        return localPlayerId == nil || localPlayerId == currentPlayerId
     }
 
     private func buildHeader() {

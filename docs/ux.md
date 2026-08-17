@@ -342,6 +342,8 @@ with warning feedback.
   contract description, including while another player has the turn.
 
 Haptics (M4):
+- Turn handoff: short two-note chime plus a medium impact on supported devices,
+  emitted once when control passes to the local human player.
 - Draw: `.light`
 - Discard: `.rigid`
 - Go Down / Go Out: `.success`
