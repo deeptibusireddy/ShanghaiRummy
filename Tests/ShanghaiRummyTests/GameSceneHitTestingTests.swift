@@ -154,7 +154,7 @@ final class GameSceneHitTestingTests: XCTestCase {
                 isLocalPlayersTurn: true,
                 isCPU: true
             ),
-            "BOT'S TURN"
+            "BOT  •  BOT TURN"
         )
     }
 

@@ -194,6 +194,9 @@ meld.
 
 - The top banner is the single glanceable active-turn summary: active name,
   hand count, level/contract, and current guidance.
+- Bot turns use the same banner without adding another table overlay. The
+  banner explicitly labels **BOT TURN**, shows action-specific guidance, and
+  animates progress dots while the active bot seat remains highlighted.
 - Seat pills are the spatial roster. They always retain name, hand count, and
   level; amber border, avatar, and halo styling identify the active player
   without replacing useful details with another turn label.
@@ -345,6 +348,9 @@ with warning feedback.
 - Active turn: the current player's seat uses a bright pulsing amber halo,
   amber avatar/name treatment. The local seat always retains its own level and
   contract description, including while another player has the turn.
+- Bot pacing: automated actions are separated by a 550 ms presentation beat.
+  A normal draw-and-discard turn therefore remains visible for at least about
+  one second, while longer meld sequences progress one readable step at a time.
 
 Haptics (M4):
 - Turn handoff: short two-note chime plus a medium impact on supported devices,
@@ -368,7 +374,7 @@ Haptics (M4):
 ## Local bot tables vs online
 
 - Local bot table: your seat stays anchored at the bottom and every bot action,
-  including draw and buy decisions, runs automatically.
+  including draw and buy decisions, runs automatically with visible pacing.
 - Online: scene stays anchored to *you* (your seat always bottom); opponent
   hands stay hidden, and the turn banner shows whose turn or buy decision is
   active.
@@ -386,7 +392,8 @@ Haptics (M4):
   exact selected human count. A noninteractive notice over Apple's screen keeps
   the reserved bot count visible.
 - Bot identities are shared with every device, but only the authoritative host
-  runs their decisions. Humans cannot submit normal turn actions for bots.
+  runs their decisions. The host applies the same pacing before broadcasting
+  each bot action, and humans cannot submit normal turn actions for bots.
 - Bot draw and buy decisions resolve automatically; a human is never asked to
   accept or pass on a bot's behalf.
 - On non-final hands, when clockwise dealer rotation assigns the next deal to a

@@ -180,6 +180,15 @@ final class ScreenshotUITests: XCTestCase {
         snapshot(named: "04-mid-game-game-night")
     }
 
+    func testCapturePacedBotTurn() throws {
+        app.launchArguments += ["--demo-bot-turn"]
+        app.launch()
+
+        XCTAssertTrue(app.buttons["quit-game"].waitForExistence(timeout: 5))
+        Thread.sleep(forTimeInterval: 0.7)
+        snapshot(named: "04-bot-turn-progress")
+    }
+
     func testCaptureFourPlayerBuyDecision() throws {
         app.launchArguments += ["--demo-mid-game", "--demo-buy-decision"]
         app.launch()

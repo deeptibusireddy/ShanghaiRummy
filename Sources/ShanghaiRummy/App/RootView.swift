@@ -157,6 +157,26 @@ struct RootView: View {
                         }
                         activeGame = vm
                     } else if activeGame == nil,
+                              CommandLine.arguments.contains(
+                                "--demo-bot-turn"
+                              ) {
+                        activeTheme = themeFromArgs()
+                        let built = GameFactory.newVsCPU(
+                            you: "You",
+                            cpuNames: ["Alex", "Jordan", "Sam"],
+                            seed: 42
+                        )
+                        var state = built.state
+                        state.currentTurnIndex = 1
+                        state.buyDecisionPlayerId = state.players[1].id
+                        let vm = GameViewModel(
+                            state: state,
+                            localPlayerId: state.players[0].id,
+                            cpuActionDelay: .seconds(30)
+                        )
+                        vm.cpuPlayerIds = built.cpuIds
+                        activeGame = vm
+                    } else if activeGame == nil,
                               CommandLine.arguments.contains("--demo-vs-cpu") {
                         activeTheme = themeFromArgs()
                         let built = GameFactory.newVsCPU(

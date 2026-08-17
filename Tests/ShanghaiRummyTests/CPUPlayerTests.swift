@@ -603,7 +603,7 @@ final class CPUPlayerTests: XCTestCase {
     // MARK: - VM integration
 
     @MainActor
-    func testAssigningCPUPlayersImmediatelyResolvesPendingBotBuyOffer() {
+    func testAssigningCPUPlayersPacesPendingBotBuyOffer() {
         var state = GameFactory.newGame(
             playerNames: ["You", "Bot"],
             seed: 71
@@ -617,6 +617,12 @@ final class CPUPlayerTests: XCTestCase {
         let vm = GameViewModel(state: state, localPlayerId: humanId)
 
         vm.cpuPlayerIds = [botId]
+
+        XCTAssertEqual(vm.state.phase, .awaitingDraw)
+        XCTAssertEqual(vm.state.buyDecisionPlayerId, botId)
+        XCTAssertEqual(vm.botTurnActivityText, "Considering the discard…")
+
+        vm.runAllCPUTurns()
 
         XCTAssertEqual(vm.state.currentPlayerId, humanId)
         XCTAssertEqual(vm.state.phase, .awaitingMeldOrDiscard)
@@ -642,6 +648,7 @@ final class CPUPlayerTests: XCTestCase {
         vm.cpuPlayerIds = [botId]
 
         vm.passBuyOffer()
+        vm.runAllCPUTurns()
 
         XCTAssertEqual(vm.state.currentPlayerId, humanId)
         XCTAssertEqual(vm.state.phase, .awaitingMeldOrDiscard)
@@ -672,6 +679,7 @@ final class CPUPlayerTests: XCTestCase {
         vm.cpuPlayerIds = [botId]
 
         vm.passBuyOffer()
+        vm.runAllCPUTurns()
 
         XCTAssertEqual(vm.state.currentPlayerId, humanId)
         XCTAssertEqual(vm.state.phase, .awaitingMeldOrDiscard)
@@ -716,8 +724,10 @@ final class CPUPlayerTests: XCTestCase {
         _ = vm.dispatch(.draw(playerId: you.id, source: .stock))
         let card = vm.currentPlayer.hand.max(by: { $0.points < $1.points })!
         _ = vm.dispatch(.discard(playerId: you.id, card: card))
+        vm.runAllCPUTurns()
         if vm.state.buyDecisionPlayerId == you.id {
             vm.passBuyOffer()
+            vm.runAllCPUTurns()
         }
         XCTAssertTrue(
             vm.state.currentPlayerId == you.id

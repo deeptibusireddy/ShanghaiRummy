@@ -235,7 +235,7 @@ final class GameScene: SKScene {
     private func buildHeader() {
         headerLayer.removeAllChildren()
 
-        let activePlayer = vm.turnPlayer
+        let activePlayer = vm.activePlayer
         let frame = Self.turnBannerFrame(
             sceneSize: size,
             horizontalEdgeInset: horizontalEdgeInset
@@ -260,15 +260,16 @@ final class GameScene: SKScene {
                                      y: center.y + 9)
         activeDot.zPosition = 31
         headerLayer.addChild(activeDot)
+        let pulseDuration = vm.isCurrentPlayerCPU ? 0.32 : 0.65
         let pulse = SKAction.sequence([
-            .fadeAlpha(to: 0.45, duration: 0.65),
-            .fadeAlpha(to: 1.0, duration: 0.65),
+            .fadeAlpha(to: 0.45, duration: pulseDuration),
+            .fadeAlpha(to: 1.0, duration: pulseDuration),
         ])
         activeDot.run(.repeatForever(pulse))
 
         let turn = SKLabelNode(text: Self.turnTitle(
             playerName: activePlayer.name,
-            isLocalPlayersTurn: vm.isLocalPlayersTurn,
+            isLocalPlayersTurn: vm.isLocalActivePlayer,
             isCPU: vm.isCurrentPlayerCPU
         ))
         turn.fontName = theme.titleFont
@@ -291,6 +292,10 @@ final class GameScene: SKScene {
         phase.zPosition = 31
         headerLayer.addChild(phase)
 
+        if vm.isCurrentPlayerCPU {
+            addBotProgressDots(at: CGPoint(x: center.x, y: center.y - 10))
+        }
+
         let handCount = SKLabelNode(
             text: Self.cardCountLabel(activePlayer.hand.count).uppercased()
         )
@@ -305,7 +310,7 @@ final class GameScene: SKScene {
         headerLayer.addChild(handCount)
 
         let contract = SKLabelNode(
-            text: "LV \(activePlayer.currentLevel)  •  \(vm.turnPlayerContractDescription)"
+            text: "LV \(activePlayer.currentLevel)  •  \(vm.activePlayerContractDescription)"
         )
         contract.fontName = theme.titleFont
         contract.fontSize = size.width < 720 ? 9 : 10
@@ -319,11 +324,11 @@ final class GameScene: SKScene {
     }
 
     private var phaseInstruction: String {
+        if let botTurnActivityText = vm.botTurnActivityText {
+            return botTurnActivityText
+        }
         if vm.isBuyDecisionActive {
             return "Purchase round in progress"
-        }
-        if vm.isCurrentPlayerCPU {
-            return "Playing automatically"
         }
         if vm.isOnlineGame && !vm.isLocalPlayersTurn {
             return "Waiting for their move"
@@ -343,6 +348,27 @@ final class GameScene: SKScene {
             return "Hand complete"
         case .gameEnded:
             return "Match complete"
+        }
+    }
+
+    private func addBotProgressDots(at position: CGPoint) {
+        for index in 0..<3 {
+            let dot = SKShapeNode(circleOfRadius: 2.2)
+            dot.fillColor = theme.turnGlow
+            dot.strokeColor = .clear
+            dot.position = CGPoint(
+                x: position.x + CGFloat(index - 1) * 9,
+                y: position.y
+            )
+            dot.alpha = 0.35
+            dot.zPosition = 31
+            headerLayer.addChild(dot)
+            dot.run(.repeatForever(.sequence([
+                .wait(forDuration: Double(index) * 0.12),
+                .fadeAlpha(to: 1, duration: 0.18),
+                .fadeAlpha(to: 0.35, duration: 0.35),
+                .wait(forDuration: Double(2 - index) * 0.12),
+            ])))
         }
     }
 
@@ -449,7 +475,7 @@ final class GameScene: SKScene {
                 buildCurrentPlayerHUD(
                     player: player,
                     colorIndex: i,
-                    isActive: i == vm.state.currentTurnIndex
+                    isActive: player.id == vm.state.activePlayerId
                 )
                 continue
             }
@@ -459,7 +485,7 @@ final class GameScene: SKScene {
             let bgHeight: CGFloat = usesCompactSeat ? 38 : 42
             let bg = SKShapeNode(rectOf: CGSize(width: bgWidth, height: bgHeight),
                                  cornerRadius: bgHeight / 2)
-            let isActive = i == vm.state.currentTurnIndex
+            let isActive = player.id == vm.state.activePlayerId
             if isActive {
                 addActiveTurnHalo(
                     at: seat.anchor,
@@ -2313,6 +2339,9 @@ final class GameScene: SKScene {
         isLocalPlayersTurn: Bool,
         isCPU: Bool
     ) -> String {
+        if isCPU {
+            return "\(playerName.uppercased())  •  BOT TURN"
+        }
         if isLocalPlayersTurn && !isCPU {
             return "YOUR TURN"
         }

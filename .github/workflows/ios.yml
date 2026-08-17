@@ -94,3 +94,77 @@ jobs:
           name: test-results-iPad
           path: ${{ env.RESULT_BUNDLE }}
           if-no-files-found: ignore
+
+  game-simulation:
+    name: Simulate 5,000 Games
+    if: ${{ github.event_name == 'workflow_dispatch' }}
+    runs-on: macos-15
+    timeout-minutes: 120
+    env:
+      RUN_GAME_SIMULATIONS: "1"
+      GAMES_PER_PLAYER_COUNT: "1000"
+      RESULT_BUNDLE: GameSimulationResults.xcresult
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install XcodeGen and xcbeautify
+        run: brew install xcodegen xcbeautify
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Run 2–6 player simulations
+        run: |
+          set -o pipefail
+          DEVICE_ID=$(xcrun simctl list devices available -j \
+            | python3 -c 'import json,sys; d=json.load(sys.stdin)["devices"]; \
+              picks=[dev for k,v in d.items() if "iOS" in k for dev in v if "iPad" in dev["name"]]; \
+              print(picks[0]["udid"])')
+          xcodebuild \
+            -project ShanghaiRummy.xcodeproj \
+            -scheme ShanghaiRummy \
+            -sdk iphonesimulator \
+            -destination "platform=iOS Simulator,id=$DEVICE_ID" \
+            -configuration Debug \
+            -resultBundlePath "$RESULT_BUNDLE" \
+            -only-testing:ShanghaiRummyTests/GameSimulationTests/testFiveThousandBotGamesComplete \
+            CODE_SIGNING_ALLOWED=NO \
+            test \
+            | tee game-simulation.log \
+            | xcbeautify --renderer github-actions
+
+      - name: Extract simulation report
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import base64
+          import pathlib
+          import re
+
+          log = pathlib.Path("game-simulation.log").read_text(
+              encoding="utf-8",
+              errors="replace",
+          )
+          matches = re.findall(
+              r"SIMULATION_REPORT_BASE64:([A-Za-z0-9+/=]+)",
+              log,
+          )
+          if not matches:
+              raise SystemExit("Simulation report was not found in the test log")
+          pathlib.Path("game-simulation-report.json").write_bytes(
+              base64.b64decode(matches[-1])
+          )
+          PY
+
+      - name: Upload simulation results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: game-simulation-results
+          path: |
+            game-simulation-report.json
+            game-simulation.log
+            ${{ env.RESULT_BUNDLE }}
+          if-no-files-found: warn
