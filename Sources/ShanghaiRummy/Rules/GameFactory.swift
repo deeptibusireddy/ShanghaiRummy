@@ -7,18 +7,46 @@ public enum GameFactory {
     /// cards to each player, and flips the initial discard card. Uses a
     /// deterministic RNG so multiplayer clients agree.
     public static func newGame(playerNames: [String], seed: UInt64) -> GameState {
-        precondition(playerNames.count >= RulesConfig.minPlayers, "Too few players")
-        precondition(playerNames.count <= RulesConfig.maxPlayers, "Too many players")
+        newGame(
+            players: playerNames.map { Player(name: $0) },
+            seed: seed
+        )
+    }
 
-        var rng = SeededRNG(seed: seed)
-        var deck = Deck(playerCount: playerNames.count)
-        deck.shuffle(using: &rng)
-        let dealerIndex = Int.random(
-            in: 0..<playerNames.count,
-            using: &rng
+    /// Builds a game while preserving caller-created player identities. The
+    /// opening draw reorders these players from highest to lowest clockwise.
+    static func newGame(players originalPlayers: [Player], seed: UInt64) -> GameState {
+        precondition(
+            originalPlayers.count >= RulesConfig.minPlayers,
+            "Too few players"
+        )
+        precondition(
+            originalPlayers.count <= RulesConfig.maxPlayers,
+            "Too many players"
         )
 
-        var players = playerNames.map { Player(name: $0) }
+        var openingRNG = SeededRNG(
+            seed: seed ^ 0xD1B54A32D192ED03
+        )
+        let openingDraws = drawOpeningCards(
+            for: originalPlayers,
+            using: &openingRNG
+        )
+        let drawByPlayerId = Dictionary(
+            uniqueKeysWithValues: openingDraws.map {
+                ($0.playerId, $0.seatingValue)
+            }
+        )
+        var players = originalPlayers.sorted {
+            drawByPlayerId[$0.id, default: 0]
+                > drawByPlayerId[$1.id, default: 0]
+        }
+
+        var deck = Deck(playerCount: players.count)
+        var rng = SeededRNG(seed: seed)
+        deck.shuffle(using: &rng)
+        let dealerIndex = players.count - 1
+
         for pi in players.indices {
             for _ in 0..<RulesConfig.handSizeAtDeal {
                 if let c = deck.draw() { players[pi].hand.append(c) }
@@ -36,8 +64,38 @@ public enum GameFactory {
             melds: [],
             phase: .awaitingDraw,
             stockReshufflesUsed: 0,
-            randomSeed: seed
+            randomSeed: seed,
+            openingDraws: openingDraws
         )
+    }
+
+    private static func drawOpeningCards<RNG: RandomNumberGenerator>(
+        for players: [Player],
+        using rng: inout RNG
+    ) -> [OpeningDraw] {
+        var deck = Deck(playerCount: players.count)
+        deck.shuffle(using: &rng)
+        var usedRanks: Set<Rank> = []
+        var draws: [OpeningDraw] = []
+
+        for player in players {
+            while let card = deck.draw() {
+                guard let rank = card.rank,
+                      usedRanks.insert(rank).inserted else {
+                    continue
+                }
+                draws.append(
+                    OpeningDraw(playerId: player.id, card: card)
+                )
+                break
+            }
+        }
+
+        precondition(
+            draws.count == players.count,
+            "Opening draw could not assign every player a unique rank"
+        )
+        return draws
     }
 
     /// Deal the next hand while carrying forward player identities, cumulative
@@ -88,26 +146,50 @@ public enum GameFactory {
             phase: .awaitingDraw,
             stockReshufflesUsed: 0,
             randomSeed: state.randomSeed,
-            gameWinnerIds: []
+            gameWinnerIds: [],
+            openingDraws: state.openingDraws
         )
     }
 
     // MARK: - Convenience factories
 
-    /// Build a fresh "You vs N CPUs" match ready to play. `you` seats at
-    /// index 0 so their hand is always the bottom-of-screen hand. Returns
-    /// the game state plus the set of CPU-controlled player IDs (feed into
-    /// `GameViewModel.cpuPlayerIds`).
-    public static func newVsCPU(you: String,
-                                cpuNames: [String],
-                                seed: UInt64) -> (state: GameState, cpuIds: Set<UUID>) {
-        let names = [you] + cpuNames
-        let state = newGame(playerNames: names, seed: seed)
-        var cpuIds: Set<UUID> = []
-        for (i, p) in state.players.enumerated() where i != 0 {
-            cpuIds.insert(p.id)
-        }
-        return (state, cpuIds)
+    /// Build a fresh "You vs N CPUs" match ready to play. The opening draw
+    /// determines seating; `localPlayerId` keeps the human at the bottom of
+    /// the screen after the array is reordered.
+    public static func newVsCPU(
+        you: String,
+        cpuNames: [String],
+        cpuDifficulties: [BotDifficulty]? = nil,
+        seed: UInt64
+    ) -> (
+        state: GameState,
+        cpuIds: Set<UUID>,
+        cpuDifficulties: [UUID: BotDifficulty],
+        localPlayerId: UUID
+    ) {
+        let difficulties = cpuDifficulties
+            ?? Array(repeating: .hard, count: cpuNames.count)
+        precondition(
+            difficulties.count == cpuNames.count,
+            "Every CPU player needs one difficulty"
+        )
+        let localPlayer = Player(name: you)
+        let cpuPlayers = cpuNames.map { Player(name: $0) }
+        let state = newGame(
+            players: [localPlayer] + cpuPlayers,
+            seed: seed
+        )
+        return (
+            state,
+            Set(cpuPlayers.map(\.id)),
+            Dictionary(
+                uniqueKeysWithValues: zip(
+                    cpuPlayers.map(\.id),
+                    difficulties
+                )
+            ),
+            localPlayer.id
+        )
     }
 
     // MARK: - Demo state (for design previews)
@@ -202,6 +284,30 @@ public enum GameFactory {
         )
     }
 
+    /// Seventeen-card hand with several persistent new-card markers. Used to
+    /// keep the crowded-hand treatment readable in CI screenshots.
+    public static func demoCrowdedHighlightedHand() -> GameState {
+        func c(_ suit: Suit, _ rank: Rank) -> Card {
+            Card(suit: suit, rank: rank)
+        }
+
+        var state = demoMidGame()
+        let addedCards = [
+            c(.clubs, .ace), c(.diamonds, .four),
+            c(.hearts, .five), c(.spades, .seven),
+            c(.clubs, .nine), c(.diamonds, .ten),
+            c(.hearts, .jack), c(.clubs, .queen),
+        ]
+        state.players[state.currentTurnIndex].hand.append(
+            contentsOf: addedCards
+        )
+        let playerId = state.currentPlayerId
+        state.highlightedCardIdsByPlayer[playerId] = addedCards.suffix(3).map(
+            \.id
+        )
+        return state
+    }
+
     /// Six-player online-style status fixture for crowded-layout screenshots.
     /// "You" stays at the bottom while Sam is active at the center-top seat.
     public static func demoSixPlayerStatus() -> GameState {
@@ -233,6 +339,29 @@ public enum GameFactory {
             currentLevel: 3
         ))
         state.currentTurnIndex = 3
+        state.players[state.currentTurnIndex].hasGoneDownThisRound = true
+        let activePlayerId = state.currentPlayerId
+        state.melds.append(contentsOf: [
+            Meld(
+                kind: .triplet,
+                cards: [
+                    c(.spades, .ace),
+                    c(.hearts, .ace),
+                    c(.diamonds, .ace),
+                ],
+                ownerId: activePlayerId
+            ),
+            Meld(
+                kind: .sequence,
+                cards: [
+                    c(.clubs, .three),
+                    c(.clubs, .four),
+                    c(.clubs, .five),
+                    c(.clubs, .six),
+                ],
+                ownerId: activePlayerId
+            ),
+        ])
         return state
     }
 

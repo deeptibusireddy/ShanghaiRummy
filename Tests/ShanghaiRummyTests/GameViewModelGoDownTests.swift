@@ -44,6 +44,21 @@ final class GameViewModelGoDownTests: XCTestCase {
         return GameViewModel(state: s)
     }
 
+    private func readyRoundOneVM() -> (vm: GameViewModel, discard: Card) {
+        let discard = c(.clubs, .three)
+        let hand = [
+            c(.hearts, .king), c(.spades, .king), c(.diamonds, .king),
+            c(.hearts, .seven), c(.spades, .seven), c(.clubs, .seven),
+            discard,
+        ]
+        let v = vm(hand: hand)
+        for card in hand.prefix(3) { v.toggleStaged(cardId: card.id) }
+        _ = v.saveStagedAsMeld()
+        for card in hand[3..<6] { v.toggleStaged(cardId: card.id) }
+        _ = v.saveStagedAsMeld()
+        return (v, discard)
+    }
+
     // MARK: - Draft mechanics
 
     func testSaveStagedRequiresValidMeld() {
@@ -91,6 +106,7 @@ final class GameViewModelGoDownTests: XCTestCase {
         for card in hand { v.toggleStaged(cardId: card.id) }
         _ = v.saveStagedAsMeld()
         XCTAssertFalse(v.canConfirmGoDown)
+        XCTAssertNil(v.contractReadyPrompt)
     }
 
     func testCanConfirmWithFullDraftForRound1() {
@@ -106,6 +122,7 @@ final class GameViewModelGoDownTests: XCTestCase {
         for card in hand[3..<6] { v.toggleStaged(cardId: card.id) }
         _ = v.saveStagedAsMeld()
         XCTAssertTrue(v.canConfirmGoDown)
+        XCTAssertEqual(v.contractReadyPrompt, .readyToPutDown)
     }
 
     func testCannotConfirmGoDownWithoutAFinalDiscard() {
@@ -121,6 +138,62 @@ final class GameViewModelGoDownTests: XCTestCase {
 
         XCTAssertFalse(v.canConfirmGoDown)
         XCTAssertEqual(v.goDownProgressText, "Keep 1 card to discard")
+        XCTAssertNil(v.contractReadyPrompt)
+    }
+
+    // MARK: - Contract-ready safeguard
+
+    func testReviewingReadyContractPreservesDraft() {
+        let (v, _) = readyRoundOneVM()
+
+        v.reviewContractMelds()
+
+        XCTAssertNil(v.contractReadyPrompt)
+        XCTAssertTrue(v.canConfirmGoDown)
+        XCTAssertEqual(v.contractDraft.count, 2)
+    }
+
+    func testReadyContractInterceptsDiscardWithoutAdvancingTurn() throws {
+        let (v, discard) = readyRoundOneVM()
+        let originalPlayerId = v.state.currentPlayerId
+        v.reviewContractMelds()
+
+        XCTAssertFalse(v.requestDiscard(discard))
+
+        guard case .some(.confirmDiscard(let pendingCard)) =
+                v.contractReadyPrompt else {
+            return XCTFail("Expected a discard confirmation")
+        }
+        XCTAssertEqual(pendingCard.id, discard.id)
+        XCTAssertEqual(v.state.currentPlayerId, originalPlayerId)
+        XCTAssertTrue(v.currentPlayer.hand.contains { $0.id == discard.id })
+        XCTAssertEqual(v.contractDraft.count, 2)
+    }
+
+    func testDiscardAnywayAdvancesTurnAndClearsDraft() {
+        let (v, discard) = readyRoundOneVM()
+        let originalPlayerId = v.state.currentPlayerId
+        _ = v.requestDiscard(discard)
+
+        XCTAssertTrue(v.discardAnyway())
+
+        XCTAssertNotEqual(v.state.currentPlayerId, originalPlayerId)
+        XCTAssertTrue(v.contractDraft.isEmpty)
+        XCTAssertNil(v.contractReadyPrompt)
+    }
+
+    func testDirectEngineDiscardBypassesHumanConfirmation() {
+        let (v, discard) = readyRoundOneVM()
+        let originalPlayerId = v.state.currentPlayerId
+
+        XCTAssertTrue(
+            v.dispatch(
+                .discard(playerId: originalPlayerId, card: discard)
+            )
+        )
+
+        XCTAssertNotEqual(v.state.currentPlayerId, originalPlayerId)
+        XCTAssertNil(v.contractReadyPrompt)
     }
 
     // MARK: - Commit
@@ -140,6 +213,7 @@ final class GameViewModelGoDownTests: XCTestCase {
         XCTAssertTrue(v.currentPlayer.hasGoneDownThisRound)
         XCTAssertEqual(v.state.melds.count, 2)
         XCTAssertTrue(v.contractDraft.isEmpty)
+        XCTAssertNil(v.contractReadyPrompt)
     }
 
     func testConfirmGoDownNoOpWhenIncomplete() {
@@ -165,7 +239,7 @@ final class GameViewModelGoDownTests: XCTestCase {
                    melds: [existing],
                    hasGoneDown: true,
                    laidDownThisTurn: false)
-        XCTAssertTrue(v.layoffTappedHandCard(extra))
+        XCTAssertTrue(v.layoffHandCard(extra, to: existing.id))
         // The card is gone from hand and meld now has 4 cards.
         XCTAssertFalse(v.currentPlayer.hand.contains { $0.id == extra.id })
         let updated = v.state.melds.first { $0.id == existing.id }
@@ -295,7 +369,7 @@ final class GameViewModelGoDownTests: XCTestCase {
         )
         let extra = c(.clubs, .king)
         let v = vm(hand: [extra], melds: [existing], hasGoneDown: false)
-        XCTAssertFalse(v.layoffTappedHandCard(extra))
+        XCTAssertFalse(v.layoffHandCard(extra, to: existing.id))
     }
 
     func testLayoffRejectsOnGoDownTurn() {
@@ -311,7 +385,7 @@ final class GameViewModelGoDownTests: XCTestCase {
                    melds: [existing],
                    hasGoneDown: true,
                    laidDownThisTurn: true)
-        XCTAssertFalse(v.layoffTappedHandCard(extra))
+        XCTAssertFalse(v.layoffHandCard(extra, to: existing.id))
     }
 
     func testLayoffRejectsBeforeDrawing() {
@@ -342,7 +416,7 @@ final class GameViewModelGoDownTests: XCTestCase {
         let v = vm(hand: [mismatch],
                    melds: [existing],
                    hasGoneDown: true)
-        XCTAssertFalse(v.layoffTappedHandCard(mismatch))
+        XCTAssertFalse(v.layoffHandCard(mismatch, to: existing.id))
     }
 
     func testLayoffCanTargetTheSpecificVisibleMeld() {

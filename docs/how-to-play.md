@@ -24,12 +24,29 @@ level 10 wins.**
 - Patience — a full game takes several hands (typically 10–15)
 
 The app deals the cards, tracks scoring, enforces rules, and lets everyone
-play from their own iPhone via Game Center.
+play from their own iPad via Game Center.
 
 Use **Create Table** to build any 2–6 player mix. You can play immediately with
 1–5 bots and no human invitation. For a mixed table, mark each added seat as
 Human or Bot; the app reserves the bots and opens Game Center only for the exact
 number of people selected.
+
+Each bot can be set to **Easy**, **Medium**, or **Hard** before the table
+starts. Hard is the default. The selected strength stays with that bot in
+local and Game Center games.
+
+---
+
+## Drawing for seats
+
+Before the first hand, everyone draws a random card. Jokers are skipped and
+Ace is high. If two players draw the same rank, the app redraws those ties
+automatically until every rank is unique.
+
+Players sit from highest card to lowest card clockwise around the table. The
+lowest-card player deals first, so the highest-card player receives the first
+chance at the opening discard. The dealer then moves one seat clockwise after
+each hand.
 
 ---
 
@@ -46,9 +63,9 @@ The **first player to empty their hand** ends the hand for everyone. Then:
 - Anyone who didn't stays put and tries the same level again next hand.
 - Everyone counts penalty points for cards left in hand (running total).
 
-The opening dealer is chosen randomly, and the player one seat clockwise goes
-first. After that, the deal moves one player clockwise every hand, regardless
-of who emptied their hand.
+The lowest opening draw deals first, and the highest opening draw goes first.
+After that, the deal moves one player clockwise every hand, regardless of who
+emptied their hand.
 
 **Winner = the first player to complete level 10.** If two people finish
 level 10 in the same hand, lowest cumulative penalty score breaks the tie.
@@ -326,13 +343,15 @@ those wilds!
 
 ## Winning the game
 
-The **first player to complete level 10** wins the match — as soon as you
-lay down the level-10 contract, you win, even if someone else has a lower
-cumulative penalty score.
+The match ends when a hand closes with at least one player having completed
+level 10. Final penalties are counted immediately, and the winner screen
+appears without dealing another hand.
 
 - If two or more players finish level 10 in the **same hand**, the winner
   is the one with the **lowest cumulative penalty score** at that point.
-  If they're still tied, they're co-winners.
+  If they're still tied, they're co-champions.
+- Final standings rank finishers first, then remaining players by contract
+  progress; lower cumulative score breaks ties at the same progress.
 - The game typically runs 10–15 hands: everyone starts on level 1, but
   people fall behind on hands where they can't go down, so the total
   number of hands depends on how the deals go.

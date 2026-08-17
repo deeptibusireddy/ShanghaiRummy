@@ -5,6 +5,7 @@ import SwiftUI
 /// errors, and end-of-hand summaries.
 struct GameContainerView: View {
     @StateObject var vm: GameViewModel
+    @State private var isConfirmingExit = false
     let theme: VisualTheme
     let onExit: () -> Void
 
@@ -20,7 +21,9 @@ struct GameContainerView: View {
                 .background(Color(theme.background))
                 .accessibilityIdentifier("game-table")
 
-            Button(action: onExit) {
+            Button {
+                isConfirmingExit = true
+            } label: {
                 Image(systemName: "xmark")
                     .font(.system(size: 15, weight: .bold, design: .rounded))
                     .foregroundStyle(.white.opacity(0.9))
@@ -28,8 +31,11 @@ struct GameContainerView: View {
                     .background(.ultraThinMaterial, in: Circle())
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("Quit game")
+            .accessibilityLabel("Leave game")
             .accessibilityIdentifier("quit-game")
+            .opacity(vm.isGameOver ? 0 : 1)
+            .disabled(vm.isGameOver)
+            .accessibilityHidden(vm.isGameOver)
             .padding(.leading, 14)
             .padding(.top, 8)
 
@@ -54,20 +60,153 @@ struct GameContainerView: View {
             }
             .interactiveDismissDisabled(true)
         }
+        .alert(
+            "Leave Game?",
+            isPresented: $isConfirmingExit
+        ) {
+            Button("Keep Playing", role: .cancel) {}
+            Button("Leave Game", role: .destructive) {
+                onExit()
+            }
+        } message: {
+            Text(exitConfirmationMessage)
+        }
         .overlay {
-            if let choice = vm.pendingInitialSequenceChoice {
+            if let stage = vm.openingDrawStage {
+                OpeningDrawView(
+                    stage: stage,
+                    draws: vm.state.openingDraws,
+                    players: vm.state.players,
+                    theme: theme
+                ) {
+                    vm.completeOpeningDrawCeremony()
+                }
+            } else if let choice = vm.pendingInitialSequenceChoice {
                 initialSequenceChoiceOverlay(choice)
             } else if let choice = vm.pendingSequenceEndChoice {
                 sequenceEndChoiceOverlay(choice)
-            } else if vm.isHandOver {
-                handOverOverlay
             } else if vm.isGameOver {
                 gameOverOverlay
+            } else if vm.isHandOver {
+                handOverOverlay
+            } else if let prompt = vm.contractReadyPrompt {
+                contractReadyOverlay(prompt)
             } else if vm.isScorecardPresented {
                 liveScorecardOverlay
             } else if vm.isBuyDecisionActive {
                 buyDecisionOverlay
             }
+        }
+        .task {
+            await runOpeningDrawCeremony()
+        }
+    }
+
+    private func runOpeningDrawCeremony() async {
+        if vm.openingDrawStage == .drawing {
+            do {
+                try await Task.sleep(
+                    for: GameViewModel.openingDrawRevealDuration
+                )
+            } catch {
+                return
+            }
+            guard vm.openingDrawStage == .drawing else { return }
+            vm.showOpeningSeatOrder()
+        }
+
+        guard vm.openingDrawStage == .seating else { return }
+        if CommandLine.arguments.contains("--ui-testing") {
+            return
+        }
+        do {
+            try await Task.sleep(
+                for: GameViewModel.openingDrawSeatingDuration
+            )
+        } catch {
+            return
+        }
+        guard vm.openingDrawStage == .seating else { return }
+        vm.completeOpeningDrawCeremony()
+    }
+
+    private var exitConfirmationMessage: String {
+        if vm.isOnlineGame {
+            return "You will leave this online table and may not be able to "
+                + "rejoin."
+        }
+        return "Your current game will end and its progress will be lost."
+    }
+
+    private func contractReadyOverlay(
+        _ prompt: GameViewModel.ContractReadyPrompt
+    ) -> some View {
+        ZStack {
+            Color.black.opacity(0.48)
+                .ignoresSafeArea()
+                .contentShape(Rectangle())
+
+            VStack(spacing: 14) {
+                Text(contractReadyTitle(for: prompt))
+                    .font(.system(.title2, design: .rounded, weight: .bold))
+                    .multilineTextAlignment(.center)
+
+                Text(contractReadyMessage(for: prompt))
+                    .font(.system(.body, design: .rounded))
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+
+                Button("PUT DOWN NOW") {
+                    vm.confirmGoDown()
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+                .accessibilityIdentifier("contract-ready-put-down")
+
+                switch prompt {
+                case .readyToPutDown:
+                    Button("REVIEW MELDS") {
+                        vm.reviewContractMelds()
+                    }
+                    .buttonStyle(.bordered)
+                    .accessibilityIdentifier("contract-ready-review")
+                case .confirmDiscard:
+                    Button("DISCARD ANYWAY") {
+                        vm.discardAnyway()
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(.red)
+                    .accessibilityIdentifier("contract-ready-discard-anyway")
+                }
+            }
+            .padding(22)
+            .frame(maxWidth: 440)
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 22))
+            .padding(28)
+        }
+        .accessibilityIdentifier("contract-ready-overlay")
+        .accessibilityAddTraits(.isModal)
+    }
+
+    private func contractReadyTitle(
+        for prompt: GameViewModel.ContractReadyPrompt
+    ) -> String {
+        switch prompt {
+        case .readyToPutDown:
+            return "Contract Ready"
+        case .confirmDiscard:
+            return "Put Down First?"
+        }
+    }
+
+    private func contractReadyMessage(
+        for prompt: GameViewModel.ContractReadyPrompt
+    ) -> String {
+        switch prompt {
+        case .readyToPutDown:
+            return "Your saved melds complete this round's contract. Would you like to put them down now?"
+        case .confirmDiscard(let card):
+            return "Your contract is ready. Put it down before discarding \(CardNode.shortName(card))?"
         }
     }
 
@@ -301,16 +440,18 @@ struct GameContainerView: View {
                 .allowsHitTesting(false)
 
             VStack(spacing: 8) {
-                HStack(spacing: 8) {
+                HStack(spacing: 10) {
                     if !vm.isLocalBuyDecision {
                         ProgressView()
-                            .controlSize(.small)
+                            .controlSize(.regular)
+                            .tint(Color(theme.turnGlow))
                     }
 
                     Text(vm.buyDecisionTitle ?? "Choose How to Draw")
-                        .font(.system(.subheadline, design: .rounded, weight: .bold))
+                        .font(.system(.headline, design: .rounded, weight: .bold))
+                        .foregroundStyle(Color(theme.bannerText))
                         .lineLimit(2)
-                        .minimumScaleFactor(0.8)
+                        .minimumScaleFactor(0.85)
                         .multilineTextAlignment(.center)
                 }
 
@@ -318,11 +459,18 @@ struct GameContainerView: View {
                     localBuyDecision
                 }
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 9)
-            .frame(width: 192)
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
-            .shadow(color: .black.opacity(0.22), radius: 12, y: 5)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .frame(width: 216)
+            .background(
+                Color(theme.scoreChipBg),
+                in: RoundedRectangle(cornerRadius: 18)
+            )
+            .overlay {
+                RoundedRectangle(cornerRadius: 18)
+                    .stroke(Color(theme.turnGlow).opacity(0.9), lineWidth: 2)
+            }
+            .shadow(color: .black.opacity(0.42), radius: 16, y: 7)
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier("buy-decision-panel")
         }
@@ -331,44 +479,181 @@ struct GameContainerView: View {
 
     @ViewBuilder
     private var localBuyDecision: some View {
-        let discardName = vm.state.discard.last.map(CardNode.shortName) ?? "discard"
-        let acceptTitle = vm.isTurnPlayersFirstRefusal
-            ? "Take \(discardName)"
-            : "Buy \(discardName) + 1"
-        let passTitle = vm.isTurnPlayersFirstRefusal
-            ? "Offer Clockwise"
-            : "Pass"
-        HStack(spacing: 8) {
-            Button {
-                vm.acceptBuyOffer()
-            } label: {
-                Text(acceptTitle)
-                    .font(.system(.caption, design: .rounded, weight: .semibold))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.72)
-                    .frame(maxWidth: .infinity)
+        let discard = vm.state.discard.last
+        let acceptDisabled =
+            !vm.canAcceptBuyOffer || vm.isSubmittingOnlineAction
+        let passDisabled =
+            !vm.canPassBuyOffer || vm.isSubmittingOnlineAction
+        VStack(spacing: 7) {
+            if !vm.isTurnPlayersFirstRefusal {
+                Text("BUYS LEFT: \(vm.currentPlayerBuysRemaining)")
+                    .font(.system(
+                        .caption,
+                        design: .rounded,
+                        weight: .bold
+                    ))
+                    .foregroundStyle(Color(theme.turnGlow))
+                    .accessibilityIdentifier("buy-count")
             }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.small)
-            .frame(maxWidth: .infinity)
-            .disabled(!vm.canAcceptBuyOffer || vm.isSubmittingOnlineAction)
-            .accessibilityIdentifier("accept-buy-offer")
 
-            Button {
-                vm.passBuyOffer()
-            } label: {
-                Text(passTitle)
-                    .font(.system(.caption, design: .rounded, weight: .semibold))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.72)
-                    .frame(maxWidth: .infinity)
+            HStack(spacing: 8) {
+                Button {
+                    vm.acceptBuyOffer()
+                } label: {
+                    buyActionLabel(discard: discard)
+                        .background(
+                            Color(theme.turnGlow),
+                            in: RoundedRectangle(cornerRadius: 12)
+                        )
+                }
+                .buttonStyle(.plain)
+                .frame(maxWidth: .infinity)
+                .opacity(acceptDisabled ? 0.45 : 1)
+                .disabled(acceptDisabled)
+                .accessibilityLabel(
+                    acceptBuyOfferAccessibilityLabel(for: discard)
+                )
+                .accessibilityIdentifier("accept-buy-offer")
+
+                Button {
+                    vm.passBuyOffer()
+                } label: {
+                    Text("Pass")
+                        .font(.system(
+                            .subheadline,
+                            design: .rounded,
+                            weight: .bold
+                        ))
+                        .lineLimit(1)
+                        .frame(maxWidth: .infinity, minHeight: 42)
+                        .foregroundStyle(Color(theme.bannerText))
+                        .background(
+                            Color(theme.scoreChipBg),
+                            in: RoundedRectangle(cornerRadius: 12)
+                        )
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(
+                                    Color(theme.bannerText).opacity(0.75),
+                                    lineWidth: 1
+                                )
+                        }
+                }
+                .buttonStyle(.plain)
+                .frame(width: 64)
+                .opacity(passDisabled ? 0.45 : 1)
+                .disabled(passDisabled)
+                .accessibilityIdentifier("pass-buy-offer")
             }
-            .buttonStyle(.bordered)
-            .controlSize(.small)
-            .frame(maxWidth: .infinity)
-            .disabled(!vm.canPassBuyOffer || vm.isSubmittingOnlineAction)
-            .accessibilityIdentifier("pass-buy-offer")
         }
+    }
+
+    private func buyActionLabel(discard: Card?) -> some View {
+        HStack(spacing: 3) {
+            Text(vm.isTurnPlayersFirstRefusal ? "Take" : "Buy")
+                .font(.system(size: 12, weight: .bold, design: .rounded))
+
+            if let discard {
+                compactCardChip(discard)
+            } else {
+                Text("discard")
+                    .font(.system(size: 11, weight: .bold, design: .rounded))
+            }
+
+            if !vm.isTurnPlayersFirstRefusal {
+                Text("+1")
+                    .font(.system(size: 12, weight: .bold, design: .rounded))
+            }
+        }
+        .foregroundStyle(.black.opacity(0.84))
+        .lineLimit(1)
+        .frame(maxWidth: .infinity, minHeight: 42)
+    }
+
+    private func compactCardChip(_ card: Card) -> some View {
+        HStack(spacing: 2) {
+            if card.isPrintedJoker {
+                Text("J")
+                    .font(.system(size: 15, weight: .black, design: .rounded))
+                    .foregroundStyle(Color(theme.blackSuit))
+                Image(systemName: "star.fill")
+                    .font(.system(size: 17, weight: .black))
+                    .foregroundStyle(Color(theme.jokerAccent))
+            } else if let rank = card.rank, let suit = card.suit {
+                Text(rankGlyph(rank))
+                    .font(.system(size: 15, weight: .black, design: .rounded))
+                    .foregroundStyle(Color(theme.blackSuit))
+                Image(systemName: suitSystemImageName(suit))
+                    .font(.system(size: 20, weight: .black))
+                    .foregroundStyle(suitColor(suit))
+            }
+        }
+        .padding(.horizontal, 4)
+        .frame(height: 28)
+        .background(
+            Color(theme.cardFace),
+            in: RoundedRectangle(cornerRadius: 6)
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: 6)
+                .stroke(Color(theme.cardStroke), lineWidth: 1)
+        }
+        .fixedSize(horizontal: true, vertical: false)
+    }
+
+    private func rankGlyph(_ rank: Rank) -> String {
+        switch rank {
+        case .ace: return "A"
+        case .jack: return "J"
+        case .queen: return "Q"
+        case .king: return "K"
+        default: return "\(rank.rawValue)"
+        }
+    }
+
+    private func suitSystemImageName(_ suit: Suit) -> String {
+        switch suit {
+        case .clubs: return "suit.club.fill"
+        case .diamonds: return "suit.diamond.fill"
+        case .hearts: return "suit.heart.fill"
+        case .spades: return "suit.spade.fill"
+        }
+    }
+
+    private func suitColor(_ suit: Suit) -> Color {
+        switch suit {
+        case .diamonds, .hearts:
+            return Color(theme.redSuit)
+        case .clubs, .spades:
+            return Color(theme.blackSuit)
+        }
+    }
+
+    private func acceptBuyOfferAccessibilityLabel(
+        for discard: Card?
+    ) -> String {
+        let action = vm.isTurnPlayersFirstRefusal ? "Take" : "Buy"
+        let cardName = discard.map(accessibilityName) ?? "discard"
+        if vm.isTurnPlayersFirstRefusal {
+            return "\(action) \(cardName)"
+        }
+        return "\(action) \(cardName) plus 1 penalty card"
+    }
+
+    private func accessibilityName(_ card: Card) -> String {
+        if card.isPrintedJoker { return "joker" }
+        guard let rank = card.rank, let suit = card.suit else {
+            return "discard"
+        }
+        let rankName: String
+        switch rank {
+        case .ace: rankName = "ace"
+        case .jack: rankName = "jack"
+        case .queen: rankName = "queen"
+        case .king: rankName = "king"
+        default: rankName = "\(rank.rawValue)"
+        }
+        return "\(rankName) of \(suit.rawValue)"
     }
 
     private var handOverOverlay: some View {
@@ -452,62 +737,11 @@ struct GameContainerView: View {
     }
 
     private var gameOverOverlay: some View {
-        VStack(spacing: 14) {
-            Text("🎉 Game Over")
-                .font(.title).bold()
-            let names = vm.winnerNames
-            if names.count > 1 {
-                Text("Co-winners: " + names.joined(separator: ", "))
-                    .font(.headline)
-            } else {
-                Text((names.first ?? "Someone") + " wins!")
-                    .font(.headline)
-            }
-            finalTable
-            Button("Back to Menu") { onExit() }
-                .buttonStyle(.borderedProminent)
-                .padding(.top, 4)
-        }
-        .padding(20)
-        .frame(maxWidth: 460)
-        .background(RoundedRectangle(cornerRadius: 16).fill(.regularMaterial))
-        .padding()
-    }
-
-    @ViewBuilder
-    private var finalTable: some View {
-        let rows = vm.finalScoreboard ?? []
-        VStack(spacing: 6) {
-            HStack {
-                Text("Rank").frame(width: 44, alignment: .leading)
-                Text("Player").frame(maxWidth: .infinity, alignment: .leading)
-                Text("Lvl").frame(width: 44, alignment: .trailing)
-                Text("Total").frame(width: 60, alignment: .trailing)
-            }
-            .font(.caption.bold())
-            .foregroundStyle(.secondary)
-            Divider()
-            ForEach(Array(rows.enumerated()), id: \.element.id) { i, row in
-                HStack {
-                    Text("\(i + 1)")
-                        .frame(width: 44, alignment: .leading)
-                        .foregroundStyle(row.isWinner ? .yellow : .primary)
-                    HStack(spacing: 6) {
-                        Text(row.name).bold()
-                        if row.isWinner {
-                            Image(systemName: "crown.fill")
-                                .foregroundStyle(.yellow)
-                        }
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    Text("\(row.currentLevel)")
-                        .frame(width: 44, alignment: .trailing)
-                    Text("\(row.totalScore)")
-                        .frame(width: 60, alignment: .trailing)
-                        .bold()
-                }
-                .font(.body)
-            }
-        }
+        GameOverCelebrationView(
+            rows: vm.finalScoreboard ?? [],
+            winnerNames: vm.winnerNames,
+            theme: theme,
+            onExit: onExit
+        )
     }
 }

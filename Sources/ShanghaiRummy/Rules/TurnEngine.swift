@@ -120,14 +120,21 @@ public enum TurnEngine {
     /// Independent-contract variant:
     /// 1. Add end-of-hand penalty points to every player's `totalScore`.
     /// 2. Every player who went down THIS HAND advances their `currentLevel`.
-    /// 3. If any player has `currentLevel > RulesConfig.maxLevel`, the game ends;
-    ///    winner = that player. If multiple players finished level 10 in the
-    ///    same hand, tiebreaker is lowest `totalScore`.
+    /// 3. If any player has completed level 10, the game ends. Normal gameplay
+    ///    reaches that state automatically as soon as the final hand closes;
+    ///    this check remains here for older/manual round-ended snapshots.
     /// 4. Otherwise, deal a new hand via `GameFactory.newHand`.
     public static func advanceHand(state: GameState) -> Result<GameState, ActionError> {
         guard state.phase == .roundEnded else { return .failure(.wrongPhase(state.phase)) }
 
-        // 1. Score.
+        var s = applyingRoundResults(to: state)
+        if finishGameIfNeeded(state: &s) {
+            return .success(s)
+        }
+        return .success(GameFactory.newHand(from: s))
+    }
+
+    private static func applyingRoundResults(to state: GameState) -> GameState {
         let wentOutId = state.players.first {
             $0.hand.isEmpty && $0.hasGoneDownThisRound
         }?.id
@@ -138,23 +145,40 @@ public enum TurnEngine {
             s.players[i].totalScore += handScores[s.players[i].id] ?? 0
         }
 
-        // 2. Advance levels for players who went down this hand.
         for i in s.players.indices where s.players[i].hasGoneDownThisRound {
             s.players[i].currentLevel += 1
         }
+        return s
+    }
 
-        // 3. Check win condition.
-        let finishers = s.players.filter { $0.currentLevel > RulesConfig.maxLevel }
-        if !finishers.isEmpty {
-            let minScore = finishers.map(\.totalScore).min() ?? 0
-            let winners = finishers.filter { $0.totalScore == minScore }
-            s.gameWinnerIds = winners.map(\.id)
-            s.phase = .gameEnded
-            return .success(s)
+    @discardableResult
+    private static func finishGameIfNeeded(state: inout GameState) -> Bool {
+        let finishers = state.players.filter {
+            $0.currentLevel > RulesConfig.maxLevel
         }
+        guard !finishers.isEmpty else { return false }
 
-        // 4. Deal next hand.
-        return .success(GameFactory.newHand(from: s))
+        let minScore = finishers.map(\.totalScore).min() ?? 0
+        state.gameWinnerIds = finishers
+            .filter { $0.totalScore == minScore }
+            .map(\.id)
+        state.phase = .gameEnded
+        state.buyDecisionPlayerId = nil
+        state.buyRequestPlayerIds.removeAll()
+        return true
+    }
+
+    private static func finalizeGameAfterLastHandIfNeeded(
+        state: inout GameState
+    ) {
+        let completedLevelTen = state.players.contains {
+            $0.currentLevel >= RulesConfig.maxLevel
+                && $0.hasGoneDownThisRound
+        }
+        guard completedLevelTen else { return }
+
+        state = applyingRoundResults(to: state)
+        _ = finishGameIfNeeded(state: &state)
     }
 
     // MARK: - Handlers
@@ -297,7 +321,7 @@ public enum TurnEngine {
         guard wildsAfter == wildsBefore - 1 else {
             return .failure(.invalidRedemption(reason: "Replacement does not reduce wild count by one"))
         }
-        switch MeldValidator.validateSequence(proposed) {
+        switch MeldValidator.validateEstablishedSequence(proposed) {
         case .failure(let e):
             return .failure(.invalidRedemption(reason: "Result would be an illegal sequence (\(e))"))
         case .success:
@@ -338,6 +362,7 @@ public enum TurnEngine {
         s.phase = .awaitingDraw
         s.buyDecisionPlayerId = s.currentPlayerId
         s.buyRequestPlayerIds.removeAll()
+        _ = prepareStockIfNeeded(state: &s)
         return .success(s)
     }
 
@@ -352,7 +377,19 @@ public enum TurnEngine {
         guard let playerIndex = state.players.firstIndex(where: { $0.id == playerId }) else {
             return .failure(.notYourTurn)
         }
+        if playerId != state.currentPlayerId {
+            let buyer = state.players[playerIndex]
+            guard !buyer.hasGoneDownThisRound else {
+                return .failure(.buyNotAllowedAfterGoingDown)
+            }
+            guard buyer.buysUsedThisRound < RulesConfig.maxBuysPerRound else {
+                return .failure(.buysExhausted)
+            }
+        }
         var s = state
+        guard prepareStockIfNeeded(state: &s) else {
+            return .success(s)
+        }
 
         if playerId == state.currentPlayerId {
             guard let discard = s.discard.popLast() else {
@@ -369,13 +406,6 @@ public enum TurnEngine {
             return .success(s)
         }
 
-        let buyer = state.players[playerIndex]
-        guard !buyer.hasGoneDownThisRound else {
-            return .failure(.buyNotAllowedAfterGoingDown)
-        }
-        guard buyer.buysUsedThisRound < RulesConfig.maxBuysPerRound else {
-            return .failure(.buysExhausted)
-        }
         guard let discard = s.discard.popLast() else {
             return .failure(.emptyDiscard)
         }
@@ -386,14 +416,14 @@ public enum TurnEngine {
         var purchasedCards = [discard]
         s.players[playerIndex].hand.append(discard)
         for _ in 0..<RulesConfig.penaltyCardsOnBuy {
-            guard let penalty = s.stock.popLast() else {
-                return .failure(.emptyStock)
+            guard let penalty = drawStockCard(state: &s) else {
+                return .success(s)
             }
             s.players[playerIndex].hand.append(penalty)
             purchasedCards.append(penalty)
         }
-        guard let turnCard = s.stock.popLast() else {
-            return .failure(.emptyStock)
+        guard let turnCard = drawStockCard(state: &s) else {
+            return .success(s)
         }
         s.players[s.currentTurnIndex].hand.append(turnCard)
         s.appendHighlightedCards(
@@ -420,13 +450,16 @@ public enum TurnEngine {
             return .failure(.buyDecisionNotOffered)
         }
         var s = state
+        guard prepareStockIfNeeded(state: &s) else {
+            return .success(s)
+        }
         if let nextBuyerId = s.nextEligibleBuyer(after: playerId) {
             s.buyDecisionPlayerId = nextBuyerId
             s.buyRequestPlayerIds.removeAll()
             return .success(s)
         }
-        guard let turnCard = s.stock.popLast() else {
-            return .failure(.emptyStock)
+        guard let turnCard = drawStockCard(state: &s) else {
+            return .success(s)
         }
         s.players[s.currentTurnIndex].hand.append(turnCard)
         s.replaceHighlightedCards(
@@ -441,6 +474,56 @@ public enum TurnEngine {
 
     // MARK: - Helpers
 
+    /// Makes the next stock draw possible. The first exhaustion recycles every
+    /// discard except the top card; the next exhaustion ends the hand.
+    private static func prepareStockIfNeeded(
+        state: inout GameState
+    ) -> Bool {
+        guard state.stock.isEmpty else { return true }
+        guard state.stockReshufflesUsed == 0, state.discard.count > 1 else {
+            endRoundForStockExhaustion(state: &state)
+            return false
+        }
+
+        let topDiscard = state.discard.removeLast()
+        var recycledCards = state.discard
+        var rng = SeededRNG(seed: stockReshuffleSeed(for: state))
+        recycledCards.shuffle(using: &rng)
+
+        state.stock = recycledCards
+        state.discard = [topDiscard]
+        state.stockReshufflesUsed += 1
+        return true
+    }
+
+    private static func drawStockCard(
+        state: inout GameState
+    ) -> Card? {
+        guard prepareStockIfNeeded(state: &state) else { return nil }
+        guard let card = state.stock.popLast() else {
+            endRoundForStockExhaustion(state: &state)
+            return nil
+        }
+        return card
+    }
+
+    private static func stockReshuffleSeed(for state: GameState) -> UInt64 {
+        let handComponent =
+            UInt64(state.currentRound) &* 0x9E3779B97F4A7C15
+        let reshuffleComponent =
+            UInt64(state.stockReshufflesUsed + 1) &* 0xD1B54A32D192ED03
+        return state.randomSeed &+ handComponent &+ reshuffleComponent
+    }
+
+    private static func endRoundForStockExhaustion(
+        state: inout GameState
+    ) {
+        state.phase = .roundEnded
+        state.buyDecisionPlayerId = nil
+        state.buyRequestPlayerIds.removeAll()
+        finalizeGameAfterLastHandIfNeeded(state: &state)
+    }
+
     private static func endRoundIfCurrentPlayerWentOut(
         state: inout GameState
     ) -> Bool {
@@ -452,6 +535,7 @@ public enum TurnEngine {
         state.phase = .roundEnded
         state.buyDecisionPlayerId = nil
         state.buyRequestPlayerIds.removeAll()
+        finalizeGameAfterLastHandIfNeeded(state: &state)
         return true
     }
 

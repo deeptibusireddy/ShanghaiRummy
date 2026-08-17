@@ -30,13 +30,16 @@
   - 5–6 players: **3 standard decks + 6 jokers** (162 cards).
 - **Wilds:** All jokers and all 2s are wild — they can substitute for any card
   in a triplet or sequence.
+- **Opening seating draw:** Before the first hand, every player draws a
+  non-joker card. Ace is high. Players with the same rank redraw until every
+  rank is unique, then sit highest to lowest clockwise.
 - **Deal:** **11 cards** to each player at the start of every round, regardless
   of contract. Top card of the remaining stock is flipped face-up to start the
   discard pile.
-- **Dealer:** The opening dealer is chosen randomly. After every hand, dealing
-  moves exactly one seat clockwise, regardless of who went out.
+- **Dealer:** The player with the lowest opening draw deals first. After every
+  hand, dealing moves exactly one seat clockwise, regardless of who went out.
 - **First to act:** The player one seat clockwise from the dealer (the player
-  to the dealer's left).
+  to the dealer's left). On the opening hand, this is the highest-card player.
 
 ## The 10 contract levels (per player)
 
@@ -95,6 +98,9 @@ final round in this variant.
   suits, even when a wild completes it. A wild card's printed suit does not
   consume a suit.
 - Initial contract: ♠7 ♥7 ♦7 (legal) • ♠7 ♠7 ♥7 (illegal).
+- A 2 may be used naturally as rank 2 in a triplet. Three 2s of different
+  suits are legal, as are two different-suit 2s plus a joker. A 2 used this
+  way counts as a natural card, not against the meld's wild limit.
 - Later extension: ♠7 ♥7 ♦7 + ♠7 (legal).
 
 ### Sequence (4+ cards, same suit, consecutive)
@@ -110,8 +116,10 @@ final round in this variant.
 - Example: ♣5 ♣6 ♣7 ♣8 (legal) • ♥Q ♥K ♥A (illegal, only 3 cards; a sequence needs 4).
 
 ### Wild card rules
-- Jokers and 2s are wild — they can substitute for any card. When initially
-  laying down a triplet, natural cards must still have different suits.
+- Jokers and 2s are wild — they can substitute for any card. The exception is
+  a rank-2 triplet, where printed 2s may instead be used as natural 2s. When
+  initially laying down a triplet, natural cards must still have different
+  suits.
 - **When initially going down, maximum wilds per meld =
   floor(meld size / 2).**
   - Triplet (3 cards) → max **1** wild
@@ -228,13 +236,15 @@ someone finishes level 10.
 
 ## Winning
 
-Play continues hand after hand until a player **finishes level 10**. The first
-player to lay down the level-10 contract wins the game outright — even if
-their cumulative penalty score is higher than someone else's.
+Play continues hand after hand until at least one player **finishes level 10**.
+When that hand closes, final penalties and level progress are applied
+immediately and the game ends — there is no extra deal.
 
-- If two or more players finish level 10 in the **same hand**, the winner is
-  the one with the **lowest cumulative score**. If they're still tied, both
-  are declared co-winners.
+- If one player finished level 10, that player is the champion even if another
+  player has a lower cumulative penalty score.
+- If two or more players finish level 10 in the **same hand**, the finisher
+  with the **lowest cumulative score** wins. If they're still tied, they are
+  declared co-champions.
 - Cumulative scores are tracked throughout the match for tiebreakers and
   bragging rights, but the primary win condition is "first to level 10."
 

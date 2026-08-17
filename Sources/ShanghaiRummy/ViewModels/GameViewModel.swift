@@ -9,9 +9,18 @@ import Combine
 /// authoritative Game Center host and publishes the returned snapshots.
 @MainActor
 public final class GameViewModel: ObservableObject {
+    public static let defaultCPUActionDelay: Duration = .milliseconds(900)
+    public static let openingDrawRevealDuration: Duration = .milliseconds(2400)
+    public static let openingDrawSeatingDuration: Duration = .milliseconds(2400)
+
     public enum SequenceEnd: Equatable {
         case start
         case end
+    }
+
+    public enum OpeningDrawStage: Equatable {
+        case drawing
+        case seating
     }
 
     public struct PendingSequenceEndChoice: Equatable {
@@ -23,6 +32,11 @@ public final class GameViewModel: ObservableObject {
 
     public struct PendingInitialSequenceChoice: Equatable {
         let options: [[Card]]
+    }
+
+    public enum ContractReadyPrompt: Equatable {
+        case readyToPutDown
+        case confirmDiscard(Card)
     }
 
     // MARK: - Published state
@@ -40,13 +54,32 @@ public final class GameViewModel: ObservableObject {
     @Published public private(set) var stagedCardIds: Set<UUID> = []
 
     /// IDs of players controlled by the CPU, in practice or mixed online games.
-    @Published public var cpuPlayerIds: Set<UUID> = []
+    @Published public var cpuPlayerIds: Set<UUID> = [] {
+        didSet {
+            cpuPlayerDifficulties = cpuPlayerDifficulties.filter {
+                cpuPlayerIds.contains($0.key)
+            }
+            for id in cpuPlayerIds
+                where cpuPlayerDifficulties[id] == nil {
+                cpuPlayerDifficulties[id] = .hard
+            }
+            if !isCurrentPlayerCPU {
+                cancelPacedCPUActions()
+            }
+            runLocalCPUActionsIfNeeded()
+        }
+    }
+    @Published public private(set) var cpuPlayerDifficulties:
+        [UUID: BotDifficulty] = [:]
     @Published public private(set) var isSubmittingOnlineAction = false
     @Published public private(set) var pendingSequenceEndChoice:
         PendingSequenceEndChoice? = nil
     @Published public private(set) var pendingInitialSequenceChoice:
         PendingInitialSequenceChoice? = nil
+    @Published public private(set) var contractReadyPrompt:
+        ContractReadyPrompt? = nil
     @Published public private(set) var isScorecardPresented = false
+    @Published public private(set) var openingDrawStage: OpeningDrawStage?
 
     /// Non-nil in online mode. The local hand remains at the bottom even while
     /// another participant owns the turn.
@@ -54,26 +87,69 @@ public final class GameViewModel: ObservableObject {
 
     /// Re-entrancy guard for the CPU auto-play loop (see `dispatch`).
     private var isRunningCPUTurns: Bool = false
+    private var cpuTurnTask: Task<Void, Never>?
+    private var cpuTurnTaskId: UUID?
+    private let cpuActionDelay: Duration
     private var onlineActionSubmitter: ((TurnEngine.Action) -> Bool)?
     private var localBuyOfferTimeoutTask: Task<Void, Never>?
+    private var hasPresentedContractReadyPrompt = false
+    private var openingDrawCompletionHandler: (() -> Void)?
 
     // MARK: - Init
 
-    public init(state: GameState, localPlayerId: UUID? = nil) {
+    public init(
+        state: GameState,
+        localPlayerId: UUID? = nil,
+        cpuActionDelay: Duration = GameViewModel.defaultCPUActionDelay,
+        presentsOpeningDraw: Bool = false
+    ) {
         self.state = state
         self.localPlayerId = localPlayerId
+        self.cpuActionDelay = cpuActionDelay
+        openingDrawStage = presentsOpeningDraw
+            && Self.shouldPresentOpeningDraw(for: state)
+            ? .drawing
+            : nil
         scheduleLocalBuyOfferTimeout()
+    }
+
+    private static func shouldPresentOpeningDraw(
+        for state: GameState
+    ) -> Bool {
+        state.players.count >= RulesConfig.minPlayers
+            && state.currentRound == 1
+            && state.phase == .awaitingDraw
+            && state.currentTurnIndex == 0
+            && state.dealerIndex == state.players.count - 1
+            && state.buyDecisionPlayerId == state.currentPlayerId
+            && state.openingDraws.count == state.players.count
+            && state.discard.count == 1
+            && state.melds.isEmpty
+            && state.highlightedCardIdsByPlayer.isEmpty
+            && state.players.allSatisfy {
+                $0.hand.count == RulesConfig.handSizeAtDeal
+                    && $0.buysUsedThisRound == 0
+                    && !$0.hasGoneDownThisRound
+                    && !$0.laidDownThisTurn
+            }
     }
 
     /// Convenience factory: build a fresh match from names.
     public static func newHotSeat(playerNames: [String], seed: UInt64? = nil) -> GameViewModel {
         let s = seed ?? UInt64.random(in: 0...UInt64.max)
-        return GameViewModel(state: GameFactory.newGame(playerNames: playerNames, seed: s))
+        return GameViewModel(
+            state: GameFactory.newGame(playerNames: playerNames, seed: s),
+            presentsOpeningDraw: true
+        )
     }
 
     // MARK: - Derived helpers used by views
 
     public var turnPlayer: Player { state.players[state.currentTurnIndex] }
+    public var activePlayer: Player {
+        state.players.first(where: { $0.id == state.activePlayerId })
+            ?? turnPlayer
+    }
     public var currentPlayer: Player {
         guard let localPlayerId,
               let local = state.players.first(where: { $0.id == localPlayerId }) else {
@@ -83,6 +159,19 @@ public final class GameViewModel: ObservableObject {
         return local
     }
     public var currentPlayerName: String { turnPlayer.name }
+    public func buysRemaining(for playerId: UUID) -> Int {
+        guard let player = state.players.first(where: { $0.id == playerId }),
+              !player.hasGoneDownThisRound else {
+            return 0
+        }
+        return max(
+            0,
+            RulesConfig.maxBuysPerRound - player.buysUsedThisRound
+        )
+    }
+    public var currentPlayerBuysRemaining: Int {
+        buysRemaining(for: currentPlayer.id)
+    }
     public var displayedPlayerIndex: Int {
         guard let localPlayerId,
               let index = state.players.firstIndex(where: { $0.id == localPlayerId }) else {
@@ -93,6 +182,15 @@ public final class GameViewModel: ObservableObject {
         return index
     }
     public var isOnlineGame: Bool { localPlayerId != nil }
+    public var isOpeningDrawPresented: Bool {
+        openingDrawStage != nil
+    }
+    public func cpuDifficulty(for playerId: UUID) -> BotDifficulty {
+        cpuPlayerDifficulties[playerId] ?? .hard
+    }
+    public var isLocalActivePlayer: Bool {
+        localPlayerId == nil || state.activePlayerId == localPlayerId
+    }
     public var isLocalPlayersTurn: Bool {
         localPlayerId == nil || state.currentPlayerId == localPlayerId
     }
@@ -101,6 +199,9 @@ public final class GameViewModel: ObservableObject {
     }
     public var turnPlayerContractDescription: String {
         contractDescription(for: turnPlayer.id)
+    }
+    public var activePlayerContractDescription: String {
+        contractDescription(for: activePlayer.id)
     }
     public func contractDescription(for playerId: UUID) -> String {
         state.contract(forPlayer: playerId)?.displayName ?? "—"
@@ -113,7 +214,6 @@ public final class GameViewModel: ObservableObject {
     public var canDrawFromStock: Bool {
         isLocalBuyDecision
             && isTurnPlayersFirstRefusal
-            && !state.stock.isEmpty
     }
     public var isBuyDecisionActive: Bool {
         state.phase == .awaitingDraw && state.buyDecisionPlayerId != nil
@@ -142,12 +242,12 @@ public final class GameViewModel: ObservableObject {
         guard isBuyDecisionActive else { return nil }
         if isLocalBuyDecision {
             return isTurnPlayersFirstRefusal
-                ? "Choose the discard or offer it clockwise"
+                ? "Take the discard or pass"
                 : "Buy the discard or pass"
         }
         let name = buyDecisionPlayerName ?? "Another player"
         return isTurnPlayersFirstRefusal
-            ? "\(name) is choosing the discard or offering it clockwise"
+            ? "\(name) is choosing the discard or passing"
             : "\(name) is deciding whether to buy the discard"
     }
     public var canAcceptBuyOffer: Bool {
@@ -156,7 +256,7 @@ public final class GameViewModel: ObservableObject {
             || state.isEligibleBuyer(currentPlayer)
     }
     public var canPassBuyOffer: Bool {
-        isLocalBuyDecision && !state.stock.isEmpty
+        isLocalBuyDecision
     }
     public var privacyPlayerName: String {
         currentPlayer.name
@@ -208,9 +308,12 @@ public final class GameViewModel: ObservableObject {
                 stagedCardIds.removeAll()
                 contractDraft.removeAll()
                 pendingInitialSequenceChoice = nil
+                resetContractReadyPresentation()
                 if outgoingIsCPU {
                     isBetweenTurns = false
                 }
+            } else if !canConfirmGoDown {
+                resetContractReadyPresentation()
             }
             let incomingIsCPU = cpuPlayerIds.contains(incomingActiveId)
             let outgoingActiveIsCPU = cpuPlayerIds.contains(outgoingActiveId)
@@ -219,11 +322,11 @@ public final class GameViewModel: ObservableObject {
                     && !(outgoingActiveIsCPU || incomingIsCPU)
             }
             scheduleLocalBuyOfferTimeout()
-            // Auto-pump CPU turns and CPU buy decisions.
+            // Pace CPU turns so each decision remains visible on the table.
             if incomingIsCPU,
                onlineActionSubmitter == nil,
                !isRunningCPUTurns {
-                runAllCPUTurns()
+                runLocalCPUActionsIfNeeded()
             }
             return true
         case .failure(let err):
@@ -235,9 +338,36 @@ public final class GameViewModel: ObservableObject {
     public func configureOnlineActionSubmitter(
         _ submitter: @escaping (TurnEngine.Action) -> Bool
     ) {
+        cancelPacedCPUActions()
         localBuyOfferTimeoutTask?.cancel()
         localBuyOfferTimeoutTask = nil
         onlineActionSubmitter = submitter
+    }
+
+    public func configureCPUPlayers(
+        _ difficulties: [UUID: BotDifficulty]
+    ) {
+        cpuPlayerDifficulties = difficulties
+        cpuPlayerIds = Set(difficulties.keys)
+    }
+
+    public func configureOpeningDrawCompletion(
+        _ completion: @escaping () -> Void
+    ) {
+        openingDrawCompletionHandler = completion
+    }
+
+    public func showOpeningSeatOrder() {
+        guard openingDrawStage == .drawing else { return }
+        openingDrawStage = .seating
+    }
+
+    public func completeOpeningDrawCeremony() {
+        guard openingDrawStage != nil else { return }
+        openingDrawStage = nil
+        scheduleLocalBuyOfferTimeout()
+        runLocalCPUActionsIfNeeded()
+        openingDrawCompletionHandler?()
     }
 
     public func receiveAuthoritativeState(
@@ -245,6 +375,7 @@ public final class GameViewModel: ObservableObject {
         completesPendingAction: Bool = true
     ) {
         state = newState
+        resetContractReadyPresentation()
         reconcileScorecardPresentation()
         lastError = nil
         pendingSequenceEndChoice = nil
@@ -259,6 +390,7 @@ public final class GameViewModel: ObservableObject {
 
     public func rejectOnlineAction(message: String, state newState: GameState) {
         state = newState
+        resetContractReadyPresentation()
         reconcileScorecardPresentation()
         lastError = message
         pendingSequenceEndChoice = nil
@@ -309,7 +441,10 @@ public final class GameViewModel: ObservableObject {
     // Convenience wrappers for common actions.
     public func drawFromStock() { dispatch(.draw(playerId: currentPlayer.id, source: .stock)) }
     public func drawFromDiscard() { dispatch(.draw(playerId: currentPlayer.id, source: .discard)) }
-    public func discard(_ card: Card) { dispatch(.discard(playerId: currentPlayer.id, card: card)) }
+    public func discard(_ card: Card) {
+        guard requestDiscard(card) else { return }
+        dispatch(.discard(playerId: currentPlayer.id, card: card))
+    }
     public func goDown(contract: [[Card]]) {
         dispatch(.goDown(playerId: currentPlayer.id, contract: contract))
     }
@@ -348,6 +483,7 @@ public final class GameViewModel: ObservableObject {
         localBuyOfferTimeoutTask?.cancel()
         localBuyOfferTimeoutTask = nil
         guard !isOnlineGame,
+              openingDrawStage == nil,
               !isBetweenTurns,
               state.phase == .awaitingDraw,
               let offeredPlayerId = state.buyDecisionPlayerId,
@@ -383,6 +519,26 @@ public final class GameViewModel: ObservableObject {
 
     public var isHandOver: Bool { state.phase == .roundEnded }
     public var isGameOver: Bool { state.phase == .gameEnded }
+    public var botTurnActivityText: String? {
+        guard isCurrentPlayerCPU else { return nil }
+        switch state.phase {
+        case .awaitingDraw:
+            if state.buyDecisionPlayerId != state.currentPlayerId {
+                return "Considering the discard…"
+            }
+            return "Choosing stock or discard…"
+        case .awaitingMeldOrDiscard:
+            if activePlayer.laidDownThisTurn {
+                return "Choosing a discard…"
+            }
+            if activePlayer.hasGoneDownThisRound {
+                return "Looking for a card to play…"
+            }
+            return "Checking the contract…"
+        case .roundEnded, .gameEnded:
+            return nil
+        }
+    }
     public var winnerNames: [String] {
         state.gameWinnerIds.compactMap { id in
             state.players.first(where: { $0.id == id })?.name
@@ -466,25 +622,62 @@ public final class GameViewModel: ObservableObject {
     public struct FinalScoreRow: Identifiable, Equatable {
         public let id: UUID
         public let name: String
+        public let placement: Int
         public let totalScore: Int
         public let currentLevel: Int
+        public let contractsCompleted: Int
         public let isWinner: Bool
     }
 
-    /// Final scoreboard, non-nil only while `phase == .gameEnded`. Sorted
-    /// by score ascending (lowest = winner in Shanghai Rummy).
+    /// Final scoreboard, non-nil only while `phase == .gameEnded`.
+    /// Finishers rank first, followed by contract progress; lower cumulative
+    /// penalty score breaks ties at the same progress.
     public var finalScoreboard: [FinalScoreRow]? {
         guard state.phase == .gameEnded else { return nil }
         let winners = Set(state.gameWinnerIds)
-        let rows = state.players.map { p in
-            FinalScoreRow(
-                id: p.id, name: p.name,
-                totalScore: p.totalScore,
-                currentLevel: p.currentLevel,
-                isWinner: winners.contains(p.id)
+        let rankedPlayers = state.players.sorted { lhs, rhs in
+            let lhsIsWinner = winners.contains(lhs.id)
+            let rhsIsWinner = winners.contains(rhs.id)
+            if lhsIsWinner != rhsIsWinner {
+                return lhsIsWinner
+            }
+            if lhs.currentLevel != rhs.currentLevel {
+                return lhs.currentLevel > rhs.currentLevel
+            }
+            if lhs.totalScore != rhs.totalScore {
+                return lhs.totalScore < rhs.totalScore
+            }
+            return lhs.name < rhs.name
+        }
+
+        var previousWinner: Bool?
+        var previousLevel: Int?
+        var previousScore: Int?
+        var placement = 0
+        return rankedPlayers.enumerated().map { index, player in
+            let isWinner = winners.contains(player.id)
+            if previousWinner != isWinner
+                || previousLevel != player.currentLevel
+                || previousScore != player.totalScore {
+                placement = index + 1
+            }
+            previousWinner = isWinner
+            previousLevel = player.currentLevel
+            previousScore = player.totalScore
+
+            return FinalScoreRow(
+                id: player.id,
+                name: player.name,
+                placement: placement,
+                totalScore: player.totalScore,
+                currentLevel: player.currentLevel,
+                contractsCompleted: min(
+                    max(player.currentLevel - 1, 0),
+                    RulesConfig.maxLevel
+                ),
+                isWinner: isWinner
             )
         }
-        return rows.sorted { $0.totalScore < $1.totalScore }
     }
 
     // MARK: - Hand display order (M2f)
@@ -543,7 +736,9 @@ public final class GameViewModel: ObservableObject {
 
     private func rankSortKey(_ card: Card) -> String {
         let wildBucket = card.isWild ? 1 : 0
-        let rank = card.rank?.rawValue ?? 99
+        let rank = card.rank == .ace
+            ? Rank.king.rawValue + 1
+            : (card.rank?.rawValue ?? 99)
         let suit = suitIndex(card.suit)
         return String(format: "%01d-%02d-%01d-%@",
                       wildBucket, rank, suit, card.id.uuidString)
@@ -560,9 +755,9 @@ public final class GameViewModel: ObservableObject {
     private func suitIndex(_ suit: Suit?) -> Int {
         switch suit {
         case .clubs: return 0
-        case .diamonds: return 1
-        case .hearts: return 2
-        case .spades: return 3
+        case .hearts: return 1
+        case .spades: return 2
+        case .diamonds: return 3
         case .none: return 4
         }
     }
@@ -685,6 +880,7 @@ public final class GameViewModel: ObservableObject {
         contractDraft.append(cards)
         stagedCardIds.removeAll()
         pendingInitialSequenceChoice = nil
+        presentContractReadyPromptIfNeeded()
     }
 
     /// Undo one saved draft meld: cards return to the hand's un-staged pool.
@@ -692,10 +888,14 @@ public final class GameViewModel: ObservableObject {
     public func removeDraftMeld(at index: Int) {
         guard contractDraft.indices.contains(index) else { return }
         contractDraft.remove(at: index)
+        if !canConfirmGoDown {
+            resetContractReadyPresentation()
+        }
     }
 
     public func clearContractDraft() {
         contractDraft.removeAll()
+        resetContractReadyPresentation()
     }
 
     /// The draft's shape (kind + size for each meld), sorted for order-
@@ -763,17 +963,75 @@ public final class GameViewModel: ObservableObject {
         return "Still need: \(pretty)"
     }
 
+    /// Return `true` when the discard may proceed immediately. A completed
+    /// draft is intercepted for a human confirmation before the scene starts
+    /// its discard animation.
+    @discardableResult
+    public func requestDiscard(_ card: Card) -> Bool {
+        guard isLocalPlayersTurn,
+              state.phase == .awaitingMeldOrDiscard,
+              currentPlayer.hand.contains(where: { $0.id == card.id }) else {
+            return false
+        }
+        guard canConfirmGoDown,
+              !cpuPlayerIds.contains(currentPlayer.id) else {
+            return true
+        }
+        contractReadyPrompt = .confirmDiscard(card)
+        hasPresentedContractReadyPrompt = true
+        return false
+    }
+
+    public func reviewContractMelds() {
+        contractReadyPrompt = nil
+    }
+
+    /// Discard the card retained by the warning without re-triggering it.
+    @discardableResult
+    public func discardAnyway() -> Bool {
+        guard case .some(.confirmDiscard(let card)) =
+                contractReadyPrompt else {
+            return false
+        }
+        let ok = dispatch(
+            .discard(playerId: currentPlayer.id, card: card)
+        )
+        if ok {
+            contractReadyPrompt = nil
+        }
+        return ok
+    }
+
     /// Commit the draft as `.goDown`. Returns whether the dispatch succeeded.
     @discardableResult
     public func confirmGoDown() -> Bool {
         guard canConfirmGoDown else { return false }
         let draft = contractDraft
         let ok = dispatch(.goDown(playerId: currentPlayer.id, contract: draft))
-        if ok && !isOnlineGame {
-            contractDraft.removeAll()
-            stagedCardIds.removeAll()
+        if ok {
+            contractReadyPrompt = nil
+            if !isOnlineGame {
+                contractDraft.removeAll()
+                stagedCardIds.removeAll()
+                hasPresentedContractReadyPrompt = false
+            }
         }
         return ok
+    }
+
+    private func presentContractReadyPromptIfNeeded() {
+        guard canConfirmGoDown,
+              !hasPresentedContractReadyPrompt,
+              !cpuPlayerIds.contains(currentPlayer.id) else {
+            return
+        }
+        hasPresentedContractReadyPrompt = true
+        contractReadyPrompt = .readyToPutDown
+    }
+
+    private func resetContractReadyPresentation() {
+        contractReadyPrompt = nil
+        hasPresentedContractReadyPrompt = false
     }
 
     // MARK: - Table card play (M2d-c)
@@ -808,35 +1066,6 @@ public final class GameViewModel: ObservableObject {
             )
         }
         return layoffHandCard(card, to: meldId)
-    }
-
-    @discardableResult
-    public func playTappedHandCard(_ card: Card) -> Bool {
-        guard canPlayFromHand(card) else { return false }
-
-        // Prefer the exact-slot redemption when a tap could also extend
-        // another meld; dragging still lets the player choose a specific meld.
-        for meld in state.melds
-            where redemptionWildCardId(for: card, in: meld) != nil {
-            return playHandCard(card, to: meld.id)
-        }
-        for meld in state.melds where canLayOff(card, to: meld) {
-            return layoffHandCard(card, to: meld.id)
-        }
-        return false
-    }
-
-    /// If the player has gone down and `card` extends some existing meld,
-    /// dispatch the `.addToMeld`. Returns true if the layoff succeeded.
-    /// Called from a single-tap on a hand card (not a drag).
-    @discardableResult
-    public func layoffTappedHandCard(_ card: Card) -> Bool {
-        guard currentPlayer.hasGoneDownThisRound,
-              !currentPlayer.laidDownThisTurn else { return false }
-        for meld in state.melds {
-            if layoffHandCard(card, to: meld.id) { return true }
-        }
-        return false
     }
 
     public func canLayOff(_ card: Card, to meld: Meld) -> Bool {
@@ -956,9 +1185,64 @@ public final class GameViewModel: ObservableObject {
 
     // MARK: - CPU practice bot (M1e)
 
-    /// True when the player whose turn it is right now is a CPU.
+    /// True when the player currently drawing, buying, or acting is a CPU.
     public var isCurrentPlayerCPU: Bool {
         cpuPlayerIds.contains(state.activePlayerId)
+    }
+
+    private func runLocalCPUActionsIfNeeded() {
+        guard onlineActionSubmitter == nil,
+              openingDrawStage == nil,
+              !isRunningCPUTurns,
+              isCurrentPlayerCPU,
+              (state.phase == .awaitingDraw
+                || state.phase == .awaitingMeldOrDiscard) else {
+            return
+        }
+        let taskId = UUID()
+        isRunningCPUTurns = true
+        cpuTurnTaskId = taskId
+        cpuTurnTask = Task { @MainActor [weak self] in
+            await self?.runPacedCPUTurns(taskId: taskId)
+        }
+    }
+
+    private func runPacedCPUTurns(taskId: UUID) async {
+        defer {
+            if cpuTurnTaskId == taskId {
+                cpuTurnTask = nil
+                cpuTurnTaskId = nil
+                isRunningCPUTurns = false
+            }
+        }
+
+        var guardCounter = 0
+        while openingDrawStage == nil
+                && isCurrentPlayerCPU
+                && (state.phase == .awaitingDraw
+                    || state.phase == .awaitingMeldOrDiscard)
+                && guardCounter < 200 {
+            do {
+                try await Task.sleep(for: cpuActionDelay)
+            } catch {
+                return
+            }
+            guard cpuTurnTaskId == taskId,
+                  !Task.isCancelled,
+                  openingDrawStage == nil,
+                  isCurrentPlayerCPU else {
+                return
+            }
+            if !stepCurrentCPUTurn() { return }
+            guardCounter += 1
+        }
+    }
+
+    private func cancelPacedCPUActions() {
+        cpuTurnTask?.cancel()
+        cpuTurnTask = nil
+        cpuTurnTaskId = nil
+        isRunningCPUTurns = false
     }
 
     /// If the current player is a CPU and the round is still live, run a
@@ -969,14 +1253,21 @@ public final class GameViewModel: ObservableObject {
         guard isCurrentPlayerCPU else { return false }
         guard state.phase == .awaitingDraw
                 || state.phase == .awaitingMeldOrDiscard else { return false }
-        let action = CPUPlayer.nextAction(for: state.activePlayerId, in: state)
+        let action = CPUPlayer.nextAction(
+            for: state.activePlayerId,
+            in: state,
+            difficulty: cpuDifficulty(for: state.activePlayerId)
+        )
         return dispatch(action)
     }
 
     /// Pump CPU actions until it's a human's turn (or the round/game ends).
     /// Caps iterations to avoid any theoretical infinite loop from a bad
-    /// heuristic — 200 covers dozens of full turns per player.
+    /// heuristic — 200 covers dozens of full turns per player. Tests and
+    /// simulations use this immediate path; normal gameplay uses paced turns.
     public func runAllCPUTurns() {
+        guard onlineActionSubmitter == nil else { return }
+        cancelPacedCPUActions()
         isRunningCPUTurns = true
         defer { isRunningCPUTurns = false }
         var guardCounter = 0

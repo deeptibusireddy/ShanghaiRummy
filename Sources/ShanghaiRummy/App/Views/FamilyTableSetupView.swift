@@ -1,10 +1,8 @@
 import SwiftUI
 
-enum FamilyTableSeatKind: String, CaseIterable, Identifiable {
+enum FamilyTableSeatKind: String {
     case human = "Human"
     case bot = "Bot"
-
-    var id: String { rawValue }
 
     var systemImage: String {
         switch self {
@@ -17,10 +15,18 @@ enum FamilyTableSeatKind: String, CaseIterable, Identifiable {
 struct FamilyTableSeat: Identifiable, Equatable {
     let id: UUID
     var kind: FamilyTableSeatKind
+    var botDifficulty: BotDifficulty?
 
-    init(id: UUID = UUID(), kind: FamilyTableSeatKind) {
+    init(
+        id: UUID = UUID(),
+        kind: FamilyTableSeatKind,
+        botDifficulty: BotDifficulty? = nil
+    ) {
         self.id = id
         self.kind = kind
+        self.botDifficulty = kind == .bot
+            ? botDifficulty ?? .hard
+            : nil
     }
 }
 
@@ -39,11 +45,28 @@ struct FamilyTableConfiguration: Equatable {
     var invitedHumanCount: Int {
         seats.filter { $0.kind == .human }.count
     }
+    var humanCount: Int { invitedHumanCount + 1 }
     var botCount: Int {
         seats.filter { $0.kind == .bot }.count
     }
+    var botDifficulties: [BotDifficulty] {
+        seats.compactMap {
+            guard $0.kind == .bot else { return nil }
+            return $0.botDifficulty ?? .hard
+        }
+    }
     var gameCenterPlayerCount: Int { invitedHumanCount + 1 }
     var canAddSeat: Bool { totalPlayerCount < RulesConfig.maxPlayers }
+    var openSeatCount: Int {
+        RulesConfig.maxPlayers - totalPlayerCount
+    }
+    var estimatedDurationMinutes: Int {
+        switch totalPlayerCount {
+        case ...2: return 45
+        case ...4: return 75
+        default: return 90
+        }
+    }
 
     var actionTitle: String {
         guard !seats.isEmpty else { return "Start Game" }
@@ -51,13 +74,19 @@ struct FamilyTableConfiguration: Equatable {
             return "Play with \(botCount) \(botCount == 1 ? "Bot" : "Bots")"
         }
         return "Invite \(invitedHumanCount) "
-            + (invitedHumanCount == 1 ? "Person" : "People")
+            + (invitedHumanCount == 1 ? "Guest" : "Guests")
     }
 
-    func canStart(isGameCenterAuthenticated: Bool) -> Bool {
+    func actionTitle(isGameCenterAuthenticated: Bool) -> String {
+        if invitedHumanCount > 0, !isGameCenterAuthenticated {
+            return "Sign In & \(actionTitle)"
+        }
+        return actionTitle
+    }
+
+    var canStart: Bool {
         totalPlayerCount >= RulesConfig.minPlayers
             && totalPlayerCount <= RulesConfig.maxPlayers
-            && (invitedHumanCount == 0 || isGameCenterAuthenticated)
     }
 
     @discardableResult
@@ -73,6 +102,20 @@ struct FamilyTableConfiguration: Equatable {
             return false
         }
         seats.remove(at: index)
+        return true
+    }
+
+    @discardableResult
+    mutating func setBotDifficulty(
+        _ difficulty: BotDifficulty,
+        for seatId: UUID
+    ) -> Bool {
+        guard let index = seats.firstIndex(where: {
+            $0.id == seatId && $0.kind == .bot
+        }) else {
+            return false
+        }
+        seats[index].botDifficulty = difficulty
         return true
     }
 
@@ -100,23 +143,64 @@ struct FamilyTableSetupView: View {
                 Section {
                     localPlayerRow
 
-                    ForEach($configuration.seats) { $seat in
+                    ForEach(configuration.seats) { seat in
                         HStack(spacing: 12) {
                             Image(systemName: seat.kind.systemImage)
                                 .foregroundStyle(.secondary)
                                 .frame(width: 24)
 
-                            Text(configuration.label(for: seat.id))
-                                .frame(minWidth: 72, alignment: .leading)
-
-                            Picker("Player type", selection: $seat.kind) {
-                                ForEach(FamilyTableSeatKind.allCases) { kind in
-                                    Text(kind.rawValue).tag(kind)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(configuration.label(for: seat.id))
+                                if seat.kind == .human {
+                                    Text("Game Center invite")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                } else {
+                                    Menu {
+                                        ForEach(
+                                            BotDifficulty.allCases,
+                                            id: \.self
+                                        ) { difficulty in
+                                            Button {
+                                                configuration
+                                                    .setBotDifficulty(
+                                                        difficulty,
+                                                        for: seat.id
+                                                    )
+                                            } label: {
+                                                difficultyLabel(
+                                                    difficulty,
+                                                    selected:
+                                                        seat.botDifficulty
+                                                        ?? .hard
+                                                )
+                                            }
+                                        }
+                                    } label: {
+                                        Label(
+                                            (seat.botDifficulty ?? .hard)
+                                                .displayName,
+                                            systemImage: "gauge.with.dots.needle.50percent"
+                                        )
+                                        .font(.caption.weight(.semibold))
+                                    }
+                                    .accessibilityLabel(
+                                        "\(configuration.label(for: seat.id)) "
+                                            + "strength, "
+                                            + (seat.botDifficulty ?? .hard)
+                                                .displayName
+                                    )
+                                    .accessibilityIdentifier(
+                                        botDifficultyIdentifier(
+                                            for: configuration.label(
+                                                for: seat.id
+                                            )
+                                        )
+                                    )
                                 }
                             }
-                            .pickerStyle(.segmented)
-                            .labelsHidden()
-                            .frame(maxWidth: 190)
+
+                            Spacer()
 
                             Button {
                                 configuration.removeSeat(id: seat.id)
@@ -165,16 +249,17 @@ struct FamilyTableSetupView: View {
                     Button {
                         onStart(configuration)
                     } label: {
-                        Text(configuration.actionTitle)
+                        Text(
+                            configuration.actionTitle(
+                                isGameCenterAuthenticated:
+                                    isGameCenterAuthenticated
+                            )
+                        )
                             .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.large)
-                    .disabled(
-                        !configuration.canStart(
-                            isGameCenterAuthenticated: isGameCenterAuthenticated
-                        )
-                    )
+                    .disabled(!configuration.canStart)
                     .accessibilityIdentifier("start-family-table")
                 }
             }
@@ -209,6 +294,23 @@ struct FamilyTableSetupView: View {
         }
     }
 
+    @ViewBuilder
+    private func difficultyLabel(
+        _ difficulty: BotDifficulty,
+        selected: BotDifficulty
+    ) -> some View {
+        if difficulty == selected {
+            Label(difficulty.displayName, systemImage: "checkmark")
+        } else {
+            Text(difficulty.displayName)
+        }
+    }
+
+    private func botDifficultyIdentifier(for title: String) -> String {
+        title.lowercased().replacingOccurrences(of: " ", with: "-")
+            + "-difficulty"
+    }
+
     private var footerMessage: String {
         if configuration.seats.isEmpty {
             return "Add at least one Human or Bot. Tables support 2–6 total "
@@ -216,8 +318,8 @@ struct FamilyTableSetupView: View {
         }
         if configuration.invitedHumanCount > 0,
            !isGameCenterAuthenticated {
-            return "Sign in to Game Center to invite people, or change every "
-                + "added seat to Bot."
+            return "Tap Sign In & Invite to connect this device to Game "
+                + "Center. Every player with the app can create a table."
         }
         if configuration.invitedHumanCount == 0 {
             return "Bot-only games start immediately on this device. "

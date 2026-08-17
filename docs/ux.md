@@ -1,6 +1,6 @@
-# Shanghai Rummy — UX & Interaction Design
+# Shanghai Rummy Nights — UX & Interaction Design
 
-> Owner: @deeptibusireddy · Updated: 2026-08-10 · Style: contemporary family game night
+> Owner: @deeptibusireddy · Updated: 2026-08-17 · Style: contemporary family game night
 
 This doc is the source of truth for how the game *feels*. The SpriteKit scene
 in M2b implements what's specified here. Any UX change should update this
@@ -10,27 +10,67 @@ file first, then the scene.
 
 1. **Cards first.** Cards, melds, and the current turn dominate the visual
    hierarchy. Table texture and chrome stay quiet.
-2. **One-tap where possible, drag where it matters.** Draw / discard are
-   taps. Meld staging is drag & drop so the physical act of building a
-   meld matches the mental one.
+2. **One-tap where possible, drag where it matters.** Tap hand cards to
+   stage them and tap staged cards to return them. Drag when choosing a
+   spatial target: staging tray, public meld, or discard pile.
 3. **Independent-contract clarity.** Each seat displays that player's
    current level and running score. You always know where you stand
    relative to the others.
 4. **Keep the table live.** Core play never opens a blocking modal. Contract
    cards move through an inline private tray while the public table remains
    visible.
-5. **Landscape only.** Portrait cramped six players onto too little
+5. **Landscape only on iPad.** Portrait cramps six players into too little
    horizontal space; landscape gives every seat room.
+
+## Entry and table setup
+
+- **Home:** The Supper Club treatment is the production entry screen. It
+  extends Bund After Dark with a layered waterfront skyline, slow river-light
+  shimmer, restrained city-light motion, and the full Shanghai Rummy Nights
+  wordmark.
+- **Create Table:** The setup flow opens full-screen in the Midnight Deco
+  Dossier treatment so roster controls and the live session summary have the
+  full iPad canvas.
+- **Starting state:** Only the local host is seated initially. The host adds
+  Human and Bot seats explicitly, up to six total players.
+- **Reserved table:** All six places remain visible in a fixed two-column
+  grid. Empty places are low-emphasis ghost placards that fill in as Human or
+  Bot seats are added.
+- **Live dossier:** Human, Bot, and total-player counts update alongside the
+  expected duration, table policy, and six-dot occupancy indicator.
+- **Stable roster controls:** Add Human and Add Bot stay anchored in the
+  lower-center position while the seated count updates, and remain visible
+  but disabled when all six seats are filled.
+- **Single-purpose seat cards:** Human or Bot is chosen when the seat is
+  added. Configured cards expose only the X removal action; changing a seat
+  type means removing it and adding the intended type.
+- **Bot strength:** Every Bot card includes an Easy, Medium, or Hard menu.
+  Hard is selected by default. Easy makes relaxed local choices, Medium
+  protects its contract without advanced opponent-aware tactics, and Hard
+  uses the full existing strategy.
+- **Starting play:** Bot-only tables begin immediately. Tables with Human
+  seats authenticate with Game Center when needed, then request exactly the
+  selected number of remote players.
+- **Opening draw:** Once the roster is complete, every player receives a
+  face-up random non-joker card. After a short reveal, the cards animate into
+  highest-to-lowest clockwise order. Ace is high, tied ranks redraw, the
+  lowest-card player is marked as dealer, and the highest-card player is
+  marked to play first. The game remains blocked until the seating animation
+  completes or the user taps **Take Your Seats**.
+- **Safe exit:** Back closes setup without starting a table or changing the
+  current game state.
 
 ## Screen orientation & size
 
 - **Orientation:** Landscape only (locked).
-- **Aspect ratio target:** iPhone 15+ family (~19.5:9). Design at logical
-  size 852×393 pt (iPhone 15 in landscape) and scale up for iPad later.
-- **Safe areas:** The full-bleed table may extend behind the camera/Dynamic
-  Island and home indicator, but seats, player names, the local HUD, hand, and
-  controls use the device's live landscape safe-area insets. Edge seating is
-  clamped symmetrically so either landscape orientation remains readable.
+- **Aspect ratio targets:** Adaptive from iPad mini through the 13-inch iPad
+  Pro, including compact iPadOS windows.
+- **Device support:** The target is iPad-only and always uses the native iPad
+  canvas rather than iPhone compatibility mode.
+- **Safe areas:** The full-bleed table may extend beneath system areas, but
+  seats, player names, the local HUD, hand, and controls use the device's live
+  landscape safe-area insets. Edge seating is clamped symmetrically so either
+  landscape orientation remains readable.
 
 ## Table zones
 
@@ -73,6 +113,12 @@ percentages of the game surface so they scale to any device.
 | **Turn banner**   | Top strip with active player's name, cards in hand, level, and contract |
 | **Context action**| Bottom right only when a real action such as Save Meld or Go Down is available |
 | **Utility controls** | Top right: Score, Rank, and Suit |
+| **Leave control** | Top left; opens a confirmation instead of ending the game immediately |
+
+- **Rank sorting:** Ace is displayed after King, while live wild cards remain
+  at the end of the hand.
+- **Suit sorting:** Suit groups alternate black and red in Clubs, Hearts,
+  Spades, Diamonds order. Wild cards remain at the end.
 
 ## Seat layouts by player count
 
@@ -134,26 +180,39 @@ pile-free outer bands. A sixth player's center-top melds split into readable
 left and right wings beside that seat. This is the constraint that ruled out
 portrait mode.
 
-On iPhone, the hand cards render slightly smaller than their full logical size
-to reserve a dedicated tableau lane. Meld cards use larger, more exposed faces
-and stronger container outlines so ranks and suits remain readable. Crowded
-side-seat melds wrap into two rows with a 34% card-scale floor; only card
-overlap tightens on especially narrow screens, while at least 25% of each card
-remains exposed. Five/six-player and compact-width layouts use smaller,
-avatar-first opponent pills to reserve that space. All opponent layouts preserve
-a protected corridor around the shared piles. The discard drop zone follows the
-visible pile instead of extending into the tableau; if padded targets ever
-touch, the nearest visual target wins and an exact tie favors the meld.
+In compact iPad windows, the hand cards render slightly smaller than their full
+logical size to reserve a dedicated tableau lane. On full-height iPads, the
+meld-planning tray is 112 points tall and its staged cards render at 76% scale.
+Laid-down meld cards prefer 78% scale for opponents and 86% for the local
+player. Crowded side melds use two large rows before falling back to smaller
+cards. Compact windows retain the 56-point tray, 44% staged cards, and the
+previous 62%/68% laid-down preferences.
+
+Horizontal gaps, overlap fractions, seat anchors, and table zones do not
+change; local melds grow upward while retaining the same gap above the hand.
+Top-center meld wings retain an 8-point clearance below the turn banner.
+Six-player center and corner melds use separate vertical lanes.
+Crowded side-seat melds retain a 34% card-scale floor, and at least 25% of each
+card remains exposed. Five/six-player and compact-width layouts use smaller,
+avatar-first opponent pills to reserve that space. All opponent layouts
+preserve a protected corridor around the shared piles. The discard drop zone
+follows the visible pile instead of extending into the tableau; if padded
+targets ever touch, the nearest visual target wins and an exact tie favors the
+meld.
 
 ### Player status hierarchy
 
 - The top banner is the single glanceable active-turn summary: active name,
   hand count, level/contract, and current guidance.
+- Bot turns use the same banner without adding another table overlay. The
+  banner explicitly labels **BOT TURN**, shows action-specific guidance, and
+  animates progress dots while the active bot seat remains highlighted.
 - Seat pills are the spatial roster. They always retain name, hand count, and
   level; amber border, avatar, and halo styling identify the active player
   without replacing useful details with another turn label.
 - The bottom-left local HUD remains the persistent personal reference for name,
-  score, level, and contract.
+  score, level, and contract. On full-height iPad layouts, these details use a
+  larger semibold treatment so they remain readable at a glance.
 - The bottom-right area is reserved for real enabled actions. Passive prompts
   and duplicated "[name]'s turn" boxes are omitted because guidance already
   lives in the top banner.
@@ -168,11 +227,12 @@ touch, the nearest visual target wins and an exact tie favors the meld.
 
 - A blocking, role-specific purchase overlay pauses table interaction.
 - The turn player sees **Your Draw** and explicitly chooses **Take [card]** or
-  **Offer Clockwise**.
+  **Pass**. Passing still starts the clockwise buyer offers.
 - A non-turn player whose offer is active sees **Buy Opportunity**. Everyone
   else sees **Waiting for [name]**.
-- These choices appear in a narrow center panel confined to the protected stock
-  and discard corridor. It does not dim or cover any player's melds, including
+- These choices appear in a compact, high-contrast center panel confined to the
+  protected stock and discard corridor. It uses larger text and controls without
+  dimming or covering any player's melds, including
   the left and right tableau lanes in four-player games. The full table remains
   visible. The local player can still reorder their hand, use Rank/Suit, or
   inspect Score while waiting; draw, discard, staging, and meld actions remain
@@ -185,11 +245,11 @@ touch, the nearest visual target wins and an exact tie favors the meld.
 
 Two modes:
 
-1. **Add to an existing meld** — after going down on an earlier turn, tap
-   a compatible hand card for automatic placement or drag it to a specific
-   glowing meld. A successful drop commits immediately unless a wild fits both
-   sequence ends; then a blocking low-end/high-end picker asks for its position.
-   If only one sequence end is legal, placement remains automatic.
+1. **Add to an existing meld** — after going down on an earlier turn, drag
+   a compatible hand card to a specific glowing meld. A successful drop commits
+   immediately unless a wild fits both sequence ends; then a blocking
+   low-end/high-end picker asks for its position. If only one sequence end is
+   legal, placement remains automatic.
 2. **Build a new contract meld** — tap cards or drag them into the persistent
    **staging tray**. Save each valid set/run as a draft chip, then tap
    **Go Down** when the full contract is ready. If a sequence has multiple
@@ -198,6 +258,7 @@ Two modes:
 
 **Staging tray properties:**
 - Visible only to you (hot-seat: only the current player).
+- Tap a hand card to move it into the staging tray.
 - Saved draft cards leave the hand fan and appear as tappable chips; tapping
   a chip returns that meld to the hand.
 - Tap a staged card to return it to the hand.
@@ -216,7 +277,6 @@ with warning feedback.
 ### Discarding
 
 - Drag a card from your hand onto the discard pile → snap.
-- Or: tap-select a card + tap discard button.
 - One card only. Confirm the turn ends after any confirmation modals
   (e.g., "You have unconfirmed staged cards — abandon?").
 - On confirm: card lands on discard, auto-advance triggers pass-and-play
@@ -252,13 +312,18 @@ with warning feedback.
   you've gone down → hand ends.
 - **Hand-over overlay** slides up center: title, per-player level
   bumps, per-player round score, cumulative totals. **Next hand**
-  button starts the new deal.
+  button starts the new deal for ordinary hands.
+- If anyone completed level 10, final scoring happens immediately and the
+  hand-over/deal step is skipped.
 
 ### Game over
 
-- First player past level 10 → full-screen celebration overlay.
-- Fireworks/haptic (M4).
-- Buttons: **View final scores** and **Back to menu**.
+- A completed level-10 hand transitions directly to a full-screen celebration.
+- Champion name, animated crowns, confetti, success feedback, and a prominent
+  top-three podium establish a clear winner moment.
+- Complete standings show ordinal placement, contracts completed, and final
+  penalty score. Progress decides placement; lower score breaks ties.
+- Button: **Back to Menu**.
 
 ## Visual style
 
@@ -293,8 +358,14 @@ with warning feedback.
 - Active turn: the current player's seat uses a bright pulsing amber halo,
   amber avatar/name treatment. The local seat always retains its own level and
   contract description, including while another player has the turn.
+- Bot pacing: automated actions are separated by a 900 ms presentation beat.
+  A normal draw-and-discard turn therefore remains visible for about two
+  seconds, while longer meld sequences progress one readable step at a time.
 
 Haptics (M4):
+- Player prompt: short two-note chime plus a medium impact on supported devices,
+  emitted once when a local human receives a draw, buy, or meld/discard prompt.
+  Repeated state updates within the same prompt stay silent.
 - Draw: `.light`
 - Discard: `.rigid`
 - Go Down / Go Out: `.success`
@@ -311,26 +382,34 @@ Haptics (M4):
   text grows to 24 pt.
 - VoiceOver rotor: "Piles", "My hand", "My melds", "Opponents' melds".
 
-## Hot-seat vs online
+## Local bot tables vs online
 
-- Hot-seat: the whole scene renders as-is, but the "your seat" rotates
-  each turn. The pass-and-play interstitial hides the previous player's
-  hand before the next one takes the device.
+- Local bot table: your seat stays anchored at the bottom and every bot action,
+  including draw and buy decisions, runs automatically with visible pacing.
 - Online: scene stays anchored to *you* (your seat always bottom); opponent
   hands stay hidden, and the turn banner shows whose turn or buy decision is
   active.
+- The home screen exposes one primary **Create Table** action. Legacy Hot-Seat
+  and Quick Pair choices are not shown.
 - **Create Table** opens one roster for 2–6 seats. The local player is fixed;
   the roster starts with only You, and every added seat can switch between
   Human and Bot or be removed. Start stays disabled until at least one seat is
   added, and bot-only tables start locally without Game Center.
+- Every device exposes an explicit Game Center sign-in action. If an
+  unauthenticated player selects human seats, the start action launches sign-in
+  and resumes that same table request afterward; hosting is not restricted to
+  the original developer account.
 - Mixed tables reserve their bot seats and open Apple's matchmaker only for the
   exact selected human count. A noninteractive notice over Apple's screen keeps
   the reserved bot count visible.
 - Bot identities are shared with every device, but only the authoritative host
-  runs their decisions. Humans cannot submit normal turn actions for bots.
-- When clockwise dealer rotation assigns the next deal to a bot, any human may
-  tap **Deal Next Hand** after reviewing the scorecard; the host validates and
-  performs that one delegated bot action.
+  runs their decisions. The host applies the same pacing before broadcasting
+  each bot action, and humans cannot submit normal turn actions for bots.
+- Bot draw and buy decisions resolve automatically; a human is never asked to
+  accept or pass on a bot's behalf.
+- On non-final hands, when clockwise dealer rotation assigns the next deal to a
+  bot, any human may tap **Deal Next Hand** after reviewing the scorecard; the
+  host validates and performs that one delegated bot action.
 
 ## Open UX questions (park here)
 

@@ -27,15 +27,25 @@ final class GameCenterManager: NSObject, ObservableObject {
     private var gameSetup: RealtimeGameSetup?
     private var requestedRemoteHumanCount: Int?
     private var shouldBroadcastGameSetup = false
+    private var shouldPresentMatchmakerAfterAuthentication = false
     private var isRunningHostedBots = false
+    private var hostedBotTask: Task<Void, Never>?
+    private var hostedBotTaskId: UUID?
 
     func authenticate() async {
+        lastError = nil
         let localPlayer = GKLocalPlayer.local
         localPlayer.authenticateHandler = { [weak self] viewController, error in
             Task { @MainActor in
                 guard let self else { return }
                 if let error {
-                    self.lastError = error.localizedDescription
+                    let wasStartingTable =
+                        self.shouldPresentMatchmakerAfterAuthentication
+                    self.clearPendingMatchmaking()
+                    self.lastError = wasStartingTable
+                        ? "Game Center sign-in failed: "
+                            + error.localizedDescription
+                        : error.localizedDescription
                     self.isAuthenticated = false
                     self.isPresentingAuthentication = false
                     self.authenticationViewController = nil
@@ -46,31 +56,42 @@ final class GameCenterManager: NSObject, ObservableObject {
                     self.isPresentingAuthentication = true
                     return
                 }
+                let authenticationWasPresented =
+                    self.isPresentingAuthentication
                 self.authenticationViewController = nil
                 self.isPresentingAuthentication = false
                 self.isAuthenticated = localPlayer.isAuthenticated
                 self.displayName = localPlayer.displayName
-                self.lastError = nil
                 if localPlayer.isAuthenticated {
+                    self.lastError = nil
                     localPlayer.unregisterAllListeners()
                     localPlayer.register(self)
+                    if !authenticationWasPresented {
+                        self.presentPendingMatchmakerIfReady()
+                    }
+                } else if self.shouldPresentMatchmakerAfterAuthentication {
+                    self.clearPendingMatchmaking()
+                    self.lastError =
+                        "Sign in to Game Center to invite other players"
                 }
             }
         }
     }
 
-    func beginMatchmaking(invitedHumanCount: Int, botCount: Int) {
-        guard isAuthenticated else {
-            lastError = "Sign in to Game Center before starting an online game"
-            return
-        }
+    func beginMatchmaking(
+        invitedHumanCount: Int,
+        botDifficulties: [BotDifficulty]
+    ) {
+        let botCount = botDifficulties.count
         guard invitedHumanCount >= 1,
               botCount >= 0,
               invitedHumanCount + botCount + 1 <= RulesConfig.maxPlayers else {
             lastError = "Choose 2–6 total human and bot players"
             return
         }
-        gameSetup = RealtimeGameSetup(botCount: botCount)
+        gameSetup = RealtimeGameSetup(
+            botDifficulties: botDifficulties
+        )
         requestedRemoteHumanCount = invitedHumanCount
         shouldBroadcastGameSetup = true
         lastError = nil
@@ -82,7 +103,25 @@ final class GameCenterManager: NSObject, ObservableObject {
             matchmakerNotice = "\(botCount) \(bots) reserved • Invite exactly "
                 + "\(invitedHumanCount) \(people)"
         }
-        isPresentingMatchmaker = true
+        if isAuthenticated {
+            isPresentingMatchmaker = true
+        } else {
+            shouldPresentMatchmakerAfterAuthentication = true
+            Task { [weak self] in
+                await self?.authenticate()
+            }
+        }
+    }
+
+    func authenticationDidDismiss() {
+        authenticationViewController = nil
+        isPresentingAuthentication = false
+        if isAuthenticated {
+            presentPendingMatchmakerIfReady()
+        } else if shouldPresentMatchmakerAfterAuthentication {
+            clearPendingMatchmaking()
+            lastError = "Sign in to Game Center to invite other players"
+        }
     }
 
     func beginQuickPair() {
@@ -149,8 +188,8 @@ final class GameCenterManager: NSObject, ObservableObject {
                 botCount: botCount
             )
             request.inviteMessage = botCount == 0
-                ? "Join my Shanghai Rummy table"
-                : "Join my Shanghai Rummy table — \(botCount) bot "
+                ? "Join my Shanghai Rummy Nights table"
+                : "Join my Shanghai Rummy Nights table — \(botCount) bot "
                     + (botCount == 1 ? "seat" : "seats")
                     + " reserved"
             request.recipientResponseHandler = { [weak self] player, response in
@@ -218,6 +257,7 @@ final class GameCenterManager: NSObject, ObservableObject {
 
     private func accept(match: GKMatch) {
         self.match?.disconnect()
+        cancelHostedBotActions()
         self.match = match
         requestedRemoteHumanCount = nil
         match.delegate = self
@@ -282,7 +322,7 @@ final class GameCenterManager: NSObject, ObservableObject {
                     }
                     self.startHostedGame(
                         players: players,
-                        botCount: gameSetup.botCount,
+                        botDifficulties: gameSetup.botDifficulties,
                         hostGamePlayerId: hostId
                     )
                 } else {
@@ -303,21 +343,26 @@ final class GameCenterManager: NSObject, ObservableObject {
 
     private func startHostedGame(
         players: [GKPlayer],
-        botCount: Int,
+        botDifficulties: [BotDifficulty],
         hostGamePlayerId: String
     ) {
+        let botCount = botDifficulties.count
         guard players.count >= RulesConfig.minPlayers,
               players.count + botCount <= RulesConfig.maxPlayers else {
             failOnlineSession("Online games require 2–6 connected players")
             return
         }
 
-        let botNames = (0..<botCount).map { "Bot \($0 + 1)" }
+        let humanStatePlayers = players.map {
+            Player(name: $0.displayName)
+        }
+        let botStatePlayers = (0..<botCount).map {
+            Player(name: "Bot \($0 + 1)")
+        }
         let state = GameFactory.newGame(
-            playerNames: players.map(\.displayName) + botNames,
+            players: humanStatePlayers + botStatePlayers,
             seed: UInt64.random(in: 0...UInt64.max)
         )
-        let humanStatePlayers = state.players.prefix(players.count)
         let bindings = zip(players, humanStatePlayers).map { gamePlayer, player in
             RealtimeParticipantBinding(
                 gamePlayerId: gamePlayer.gamePlayerID,
@@ -325,14 +370,19 @@ final class GameCenterManager: NSObject, ObservableObject {
                 displayName: gamePlayer.displayName
             )
         }
-        let botPlayerIds = state.players
-            .dropFirst(players.count)
-            .map(\.id)
+        let botPlayerIds = botStatePlayers.map(\.id)
+        let botDifficultiesByPlayer = Dictionary(
+            uniqueKeysWithValues: zip(
+                botPlayerIds,
+                botDifficulties
+            )
+        )
         let snapshot = RealtimeGameSnapshot(
             revision: 0,
             state: state,
             participants: bindings,
             botPlayerIds: botPlayerIds,
+            botDifficultiesByPlayer: botDifficultiesByPlayer,
             hostGamePlayerId: hostGamePlayerId
         )
         authority = RealtimeGameAuthority(snapshot: snapshot)
@@ -356,7 +406,9 @@ final class GameCenterManager: NSObject, ObservableObject {
 
         currentSnapshot = snapshot
         if let onlineGame {
-            onlineGame.cpuPlayerIds = Set(snapshot.botPlayerIds)
+            onlineGame.configureCPUPlayers(
+                snapshot.botDifficultiesByPlayer
+            )
             let completesPendingAction =
                 snapshot.lastAppliedRequestId == pendingLocalRequestId
                 && pendingLocalRequestId != nil
@@ -370,12 +422,18 @@ final class GameCenterManager: NSObject, ObservableObject {
         } else {
             let viewModel = GameViewModel(
                 state: snapshot.state,
-                localPlayerId: localBinding.playerId
+                localPlayerId: localBinding.playerId,
+                presentsOpeningDraw: true
             )
-            viewModel.cpuPlayerIds = Set(snapshot.botPlayerIds)
             viewModel.configureOnlineActionSubmitter { [weak self] action in
                 self?.submit(action) ?? false
             }
+            viewModel.configureOpeningDrawCompletion { [weak self] in
+                self?.runHostedBotsIfNeeded()
+            }
+            viewModel.configureCPUPlayers(
+                snapshot.botDifficultiesByPlayer
+            )
             onlineGame = viewModel
         }
         onlineStatusMessage = "Connected"
@@ -533,13 +591,16 @@ final class GameCenterManager: NSObject, ObservableObject {
             tryStartMatchIfReady()
         case .start(let snapshot):
             guard sender.gamePlayerID == snapshot.hostGamePlayerId else { return }
+            let snapshotDifficulties = snapshot.botPlayerIds.map {
+                snapshot.botDifficulty(for: $0)
+            }
             if let gameSetup,
-               gameSetup.botCount != snapshot.botPlayerIds.count {
+               gameSetup.botDifficulties != snapshotDifficulties {
                 abortOnlineSession("The host started with different table options")
                 return
             }
             gameSetup = RealtimeGameSetup(
-                botCount: snapshot.botPlayerIds.count
+                botDifficulties: snapshotDifficulties
             )
             shouldBroadcastGameSetup = false
             install(snapshot)
@@ -635,16 +696,35 @@ final class GameCenterManager: NSObject, ObservableObject {
         pendingLocalRequestId = nil
         buyOfferTimeoutTask?.cancel()
         buyOfferTimeoutTask = nil
+        cancelHostedBotActions()
         quickPairSearchId = nil
         gameSetup = nil
         requestedRemoteHumanCount = nil
         shouldBroadcastGameSetup = false
-        isRunningHostedBots = false
+        shouldPresentMatchmakerAfterAuthentication = false
         onlineGame = nil
         hasActiveMatch = false
         isChoosingHost = false
         matchmakerNotice = nil
         onlineStatusMessage = ""
+    }
+
+    private func presentPendingMatchmakerIfReady() {
+        guard shouldPresentMatchmakerAfterAuthentication,
+              isAuthenticated,
+              !isPresentingAuthentication else {
+            return
+        }
+        shouldPresentMatchmakerAfterAuthentication = false
+        isPresentingMatchmaker = true
+    }
+
+    private func clearPendingMatchmaking() {
+        gameSetup = nil
+        requestedRemoteHumanCount = nil
+        shouldBroadcastGameSetup = false
+        shouldPresentMatchmakerAfterAuthentication = false
+        matchmakerNotice = nil
     }
 
     private func broadcastGameSetupIfNeeded() {
@@ -654,17 +734,48 @@ final class GameCenterManager: NSObject, ObservableObject {
 
     private func runHostedBotsIfNeeded() {
         guard !isRunningHostedBots,
-              var authority,
+              onlineGame?.isOpeningDrawPresented != true,
+              let authority,
               authority.snapshot.hostGamePlayerId
-                == GKLocalPlayer.local.gamePlayerID else {
+                == GKLocalPlayer.local.gamePlayerID,
+              RealtimeBotDriver.nextAction(in: authority.snapshot) != nil else {
             return
         }
 
+        let taskId = UUID()
         isRunningHostedBots = true
-        defer { isRunningHostedBots = false }
+        hostedBotTaskId = taskId
+        hostedBotTask = Task { @MainActor [weak self] in
+            await self?.runPacedHostedBotActions(taskId: taskId)
+        }
+    }
+
+    private func runPacedHostedBotActions(taskId: UUID) async {
+        defer {
+            if hostedBotTaskId == taskId {
+                hostedBotTask = nil
+                hostedBotTaskId = nil
+                isRunningHostedBots = false
+            }
+        }
+
         var actionCount = 0
 
         while actionCount < 200 {
+            do {
+                try await Task.sleep(
+                    for: GameViewModel.defaultCPUActionDelay
+                )
+            } catch {
+                return
+            }
+            guard hostedBotTaskId == taskId,
+                  !Task.isCancelled,
+                  var authority,
+                  authority.snapshot.hostGamePlayerId
+                    == GKLocalPlayer.local.gamePlayerID else {
+                return
+            }
             let snapshot = authority.snapshot
             guard let action = RealtimeBotDriver.nextAction(
                 in: snapshot
@@ -690,11 +801,18 @@ final class GameCenterManager: NSObject, ObservableObject {
             }
         }
 
-        self.authority = authority
         if actionCount == 200,
+           let authority,
            RealtimeBotDriver.nextAction(in: authority.snapshot) != nil {
             failOnlineSession("A bot took too many actions without ending its turn")
         }
+    }
+
+    private func cancelHostedBotActions() {
+        hostedBotTask?.cancel()
+        hostedBotTask = nil
+        hostedBotTaskId = nil
+        isRunningHostedBots = false
     }
 }
 
@@ -704,10 +822,7 @@ extension GameCenterManager: GKMatchmakerViewControllerDelegate {
     ) {
         Task { @MainActor [weak self] in
             self?.isPresentingMatchmaker = false
-            self?.matchmakerNotice = nil
-            self?.gameSetup = nil
-            self?.requestedRemoteHumanCount = nil
-            self?.shouldBroadcastGameSetup = false
+            self?.clearPendingMatchmaking()
         }
     }
 
@@ -717,11 +832,8 @@ extension GameCenterManager: GKMatchmakerViewControllerDelegate {
     ) {
         Task { @MainActor [weak self] in
             self?.isPresentingMatchmaker = false
-            self?.matchmakerNotice = nil
             self?.lastError = error.localizedDescription
-            self?.gameSetup = nil
-            self?.requestedRemoteHumanCount = nil
-            self?.shouldBroadcastGameSetup = false
+            self?.clearPendingMatchmaking()
         }
     }
 
@@ -814,9 +926,7 @@ extension GameCenterManager: GKLocalPlayerListener {
         Task { @MainActor [weak self] in
             guard let self else { return }
             self.pendingInvite = invite
-            self.gameSetup = nil
-            self.requestedRemoteHumanCount = nil
-            self.shouldBroadcastGameSetup = false
+            self.clearPendingMatchmaking()
             self.isPresentingMatchmaker = true
         }
     }

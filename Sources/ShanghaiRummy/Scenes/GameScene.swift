@@ -44,6 +44,7 @@ final class GameScene: SKScene {
     private var dragOriginRotation: CGFloat = 0
     private var dragOriginZ: CGFloat = 0
     private var dragOriginScale: CGFloat = 1
+    private var dragTouchOrigin: CGPoint = .zero
     private var draggingCardId: UUID?
     private var dragAllowsGameplay = false
     private var discardTargetRing: SKShapeNode?
@@ -53,6 +54,9 @@ final class GameScene: SKScene {
     private var lastRenderedHandOwnerId: UUID?
     private var lastRenderedHandIds: Set<UUID> = []
     private var isAnimatingTurnAction = false
+    private var lastObservedTurnRound: Int?
+    private var lastObservedActivePlayerId: UUID?
+    private var lastObservedTurnPhase: GameState.Phase?
 
     /// Slot centers captured during `buildHand`, used for drag reordering.
     private var handSlots: [(id: UUID, x: CGFloat, y: CGFloat)] = []
@@ -153,6 +157,13 @@ final class GameScene: SKScene {
     // MARK: - Dynamic layers (rebuild on state change)
 
     private func subscribeToViewModel() {
+        vm.$state
+            .receive(on: RunLoop.main)
+            .sink { [weak self] state in
+                self?.playTurnAlertIfNeeded(for: state)
+            }
+            .store(in: &cancellables)
+
         // Rebuild on any published change (state, staging, etc.).
         vm.objectWillChange
             .receive(on: RunLoop.main)
@@ -177,17 +188,67 @@ final class GameScene: SKScene {
         buildContextActions()
     }
 
+    private func playTurnAlertIfNeeded(for state: GameState) {
+        let currentRound = state.currentRound
+        let activePlayerId = state.activePlayerId
+        let shouldPlay = Self.shouldPlayTurnAlert(
+            previousRound: lastObservedTurnRound,
+            previousActivePlayerId: lastObservedActivePlayerId,
+            previousPhase: lastObservedTurnPhase,
+            currentRound: currentRound,
+            currentActivePlayerId: activePlayerId,
+            localPlayerId: vm.localPlayerId,
+            cpuPlayerIds: vm.cpuPlayerIds,
+            phase: state.phase
+        )
+        lastObservedTurnRound = currentRound
+        lastObservedActivePlayerId = activePlayerId
+        lastObservedTurnPhase = state.phase
+
+        guard shouldPlay,
+              UIApplication.shared.applicationState == .active else {
+            return
+        }
+        run(.playSoundFileNamed("turn-chime.wav", waitForCompletion: false))
+        UIImpactFeedbackGenerator(style: .medium)
+            .impactOccurred(intensity: 0.75)
+    }
+
+    static func shouldPlayTurnAlert(
+        previousRound: Int?,
+        previousActivePlayerId: UUID?,
+        previousPhase: GameState.Phase?,
+        currentRound: Int,
+        currentActivePlayerId: UUID,
+        localPlayerId: UUID?,
+        cpuPlayerIds: Set<UUID>,
+        phase: GameState.Phase
+    ) -> Bool {
+        guard let previousRound,
+              let previousActivePlayerId,
+              let previousPhase,
+              (previousRound != currentRound
+                || previousActivePlayerId != currentActivePlayerId
+                || previousPhase != phase),
+              (phase == .awaitingDraw
+                || phase == .awaitingMeldOrDiscard),
+              !cpuPlayerIds.contains(currentActivePlayerId) else {
+            return false
+        }
+        return localPlayerId == nil || localPlayerId == currentActivePlayerId
+    }
+
     private func buildHeader() {
         headerLayer.removeAllChildren()
 
-        let activePlayer = vm.turnPlayer
-        let width = Self.turnBannerWidth(
-            sceneWidth: size.width,
+        let activePlayer = vm.activePlayer
+        let frame = Self.turnBannerFrame(
+            sceneSize: size,
             horizontalEdgeInset: horizontalEdgeInset
         )
-        let height: CGFloat = 48
-        let center = CGPoint(x: size.width / 2, y: size.height - 31)
-        let panel = SKShapeNode(rectOf: CGSize(width: width, height: height),
+        let width = frame.width
+        let center = CGPoint(x: frame.midX, y: frame.midY)
+        let panel = SKShapeNode(rectOf: frame.size,
                                 cornerRadius: 24)
         panel.fillColor = theme.contractPillBg.withAlphaComponent(0.92)
         panel.strokeColor = theme.turnGlow.withAlphaComponent(0.9)
@@ -205,15 +266,16 @@ final class GameScene: SKScene {
                                      y: center.y + 9)
         activeDot.zPosition = 31
         headerLayer.addChild(activeDot)
+        let pulseDuration = vm.isCurrentPlayerCPU ? 0.32 : 0.65
         let pulse = SKAction.sequence([
-            .fadeAlpha(to: 0.45, duration: 0.65),
-            .fadeAlpha(to: 1.0, duration: 0.65),
+            .fadeAlpha(to: 0.45, duration: pulseDuration),
+            .fadeAlpha(to: 1.0, duration: pulseDuration),
         ])
         activeDot.run(.repeatForever(pulse))
 
         let turn = SKLabelNode(text: Self.turnTitle(
             playerName: activePlayer.name,
-            isLocalPlayersTurn: vm.isLocalPlayersTurn,
+            isLocalPlayersTurn: vm.isLocalActivePlayer,
             isCPU: vm.isCurrentPlayerCPU
         ))
         turn.fontName = theme.titleFont
@@ -236,6 +298,10 @@ final class GameScene: SKScene {
         phase.zPosition = 31
         headerLayer.addChild(phase)
 
+        if vm.isCurrentPlayerCPU {
+            addBotProgressDots(at: CGPoint(x: center.x, y: center.y - 10))
+        }
+
         let handCount = SKLabelNode(
             text: Self.cardCountLabel(activePlayer.hand.count).uppercased()
         )
@@ -250,7 +316,7 @@ final class GameScene: SKScene {
         headerLayer.addChild(handCount)
 
         let contract = SKLabelNode(
-            text: "LV \(activePlayer.currentLevel)  •  \(vm.turnPlayerContractDescription)"
+            text: "LV \(activePlayer.currentLevel)  •  \(vm.activePlayerContractDescription)"
         )
         contract.fontName = theme.titleFont
         contract.fontSize = size.width < 720 ? 9 : 10
@@ -264,11 +330,11 @@ final class GameScene: SKScene {
     }
 
     private var phaseInstruction: String {
+        if let botTurnActivityText = vm.botTurnActivityText {
+            return botTurnActivityText
+        }
         if vm.isBuyDecisionActive {
             return "Purchase round in progress"
-        }
-        if vm.isCurrentPlayerCPU {
-            return "Playing automatically"
         }
         if vm.isOnlineGame && !vm.isLocalPlayersTurn {
             return "Waiting for their move"
@@ -288,6 +354,27 @@ final class GameScene: SKScene {
             return "Hand complete"
         case .gameEnded:
             return "Match complete"
+        }
+    }
+
+    private func addBotProgressDots(at position: CGPoint) {
+        for index in 0..<3 {
+            let dot = SKShapeNode(circleOfRadius: 2.2)
+            dot.fillColor = theme.turnGlow
+            dot.strokeColor = .clear
+            dot.position = CGPoint(
+                x: position.x + CGFloat(index - 1) * 9,
+                y: position.y
+            )
+            dot.alpha = 0.35
+            dot.zPosition = 31
+            headerLayer.addChild(dot)
+            dot.run(.repeatForever(.sequence([
+                .wait(forDuration: Double(index) * 0.12),
+                .fadeAlpha(to: 1, duration: 0.18),
+                .fadeAlpha(to: 0.35, duration: 0.35),
+                .wait(forDuration: Double(2 - index) * 0.12),
+            ])))
         }
     }
 
@@ -394,7 +481,7 @@ final class GameScene: SKScene {
                 buildCurrentPlayerHUD(
                     player: player,
                     colorIndex: i,
-                    isActive: i == vm.state.currentTurnIndex
+                    isActive: player.id == vm.state.activePlayerId
                 )
                 continue
             }
@@ -404,7 +491,7 @@ final class GameScene: SKScene {
             let bgHeight: CGFloat = usesCompactSeat ? 38 : 42
             let bg = SKShapeNode(rectOf: CGSize(width: bgWidth, height: bgHeight),
                                  cornerRadius: bgHeight / 2)
-            let isActive = i == vm.state.currentTurnIndex
+            let isActive = player.id == vm.state.activePlayerId
             if isActive {
                 addActiveTurnHalo(
                     at: seat.anchor,
@@ -532,7 +619,7 @@ final class GameScene: SKScene {
     }
 
     private func drawOwnMeldsAboveHand(_ melds: [Meld]) {
-        let meldGap: CGFloat = 14
+        let meldGap = Self.ownMeldGap
         let scale = ownMeldScale(for: melds, meldGap: meldGap)
         let cardW = CardNode.size.width * scale
         let cardH = CardNode.size.height * scale
@@ -549,7 +636,7 @@ final class GameScene: SKScene {
         let widths = melds.map { CGFloat($0.cards.count - 1) * overlap + cardW }
         let totalWidth = widths.reduce(0, +) + CGFloat(melds.count - 1) * meldGap
 
-        let rowY = tableauLaneY
+        let rowY = ownMeldRowY(scale: scale)
         let minCenter = stagingTrayRect.minX + totalWidth / 2
         let maxCenter = stagingTrayRect.maxX - totalWidth / 2
         let centerX = minCenter <= maxCenter
@@ -585,12 +672,13 @@ final class GameScene: SKScene {
 
     private func drawMelds(_ melds: [Meld], near seat: SeatLayout.Seat) {
         let seatHalfWidth = opponentSeatWidth / 2
-        let seatHalfHeight: CGFloat = 42 / 2
         let seatPadding: CGFloat = 6
         let edgeMargin: CGFloat = 24
-        let meldGap: CGFloat = melds.count > 2 ? 8 : 12
-        let desiredScale: CGFloat = 0.46
-        let minimumScale: CGFloat = 0.34
+        let meldGap = melds.count > 2
+            ? Self.crowdedOpponentMeldGap
+            : Self.standardOpponentMeldGap
+        let desiredScale = preferredOpponentMeldScaleForLayout
+        let minimumScale = Self.minimumMeldScale
         let pileCorridorHalfWidth = Self.protectedPileCorridorHalfWidth
 
         switch seat.edge {
@@ -622,10 +710,23 @@ final class GameScene: SKScene {
             let bounds = edgeMargin...(
                 seat.anchor.x - seatHalfWidth - seatPadding
             )
+            let rowScale = fittedScale(
+                for: melds,
+                desiredScale: desiredScale,
+                minimumScale: minimumScale,
+                meldGap: meldGap,
+                availableWidth: max(0, bounds.upperBound - bounds.lowerBound)
+            )
+            let rowY = Self.centerTopMeldRowY(
+                sceneSize: size,
+                seatY: seat.anchor.y,
+                horizontalEdgeInset: horizontalEdgeInset,
+                meldScale: rowScale
+            )
             drawFittedMeldRow(
                 melds,
                 bounds: bounds,
-                rowY: seat.anchor.y,
+                rowY: rowY,
                 alignment: .trailing,
                 desiredScale: desiredScale,
                 minimumScale: minimumScale,
@@ -654,19 +755,25 @@ final class GameScene: SKScene {
             }
             let rowScale = fittedScale(
                 for: melds,
-                desiredScale: minimumScale,
+                desiredScale: desiredScale,
                 minimumScale: minimumScale,
                 meldGap: meldGap,
                 availableWidth: max(0, bounds.upperBound - bounds.lowerBound)
             )
-            let rowY = seat.anchor.y - seatHalfHeight - seatPadding
-                - CardNode.size.height * rowScale / 2
+            let rowY = Self.topCornerMeldRowY(
+                sceneSize: size,
+                seatY: seat.anchor.y,
+                horizontalEdgeInset: horizontalEdgeInset,
+                playerCount: vm.state.players.count,
+                cornerMeldScale: rowScale,
+                centerMeldScale: desiredScale
+            )
             drawFittedMeldRow(
                 melds,
                 bounds: bounds,
                 rowY: rowY,
                 alignment: .center,
-                desiredScale: minimumScale,
+                desiredScale: desiredScale,
                 minimumScale: minimumScale,
                 meldGap: meldGap
             )
@@ -703,6 +810,35 @@ final class GameScene: SKScene {
             )
             return
         }
+
+        if usesExpandedIPadLayout {
+            let preferredRows = greedyMeldRows(
+                melds,
+                scale: desiredScale,
+                meldGap: meldGap,
+                availableWidth: availableWidth
+            )
+            if preferredRows.count <= 2 {
+                let rowYs = sideMeldRowYs(
+                    rowCount: preferredRows.count,
+                    seatY: seatY,
+                    cardScale: desiredScale
+                )
+                for (index, row) in preferredRows.enumerated() {
+                    drawFittedMeldRow(
+                        row,
+                        bounds: bounds,
+                        rowY: rowYs[index],
+                        alignment: alignment,
+                        desiredScale: desiredScale,
+                        minimumScale: minimumScale,
+                        meldGap: meldGap
+                    )
+                }
+                return
+            }
+        }
+
         if Self.meldRowWidth(
             cardCounts: melds.map(\.cards.count),
             scale: minimumScale,
@@ -757,13 +893,25 @@ final class GameScene: SKScene {
         guard rowCount > 1 else { return [seatY] }
 
         let cardHeight = CardNode.size.height * cardScale
-        let ownMeldTop = tableauLaneY + CardNode.size.height * 0.50 / 2
+        let reservedOwnMeldScale = preferredOwnMeldScaleForLayout
+        let ownMeldTop = ownMeldRowY(scale: reservedOwnMeldScale)
+            + CardNode.size.height * reservedOwnMeldScale / 2
         let minimumCenter = ownMeldTop + cardHeight / 2 + 2
         var spacing = cardHeight + 10
         var maximumCenter = CGFloat.greatestFiniteMagnitude
         if vm.state.players.count >= 5 {
             let topSeatY = size.height - 24 - 60
-            let topCornerMeldBottom = topSeatY - 21 - 6 - cardHeight
+            let topCornerScale = preferredOpponentMeldScaleForLayout
+            let topCornerRowY = Self.topCornerMeldRowY(
+                sceneSize: size,
+                seatY: topSeatY,
+                horizontalEdgeInset: horizontalEdgeInset,
+                playerCount: vm.state.players.count,
+                cornerMeldScale: topCornerScale,
+                centerMeldScale: topCornerScale
+            )
+            let topCornerMeldBottom = topCornerRowY
+                - CardNode.size.height * topCornerScale / 2
             maximumCenter = topCornerMeldBottom - cardHeight / 2 - 2
             spacing = min(spacing, max(0, maximumCenter - minimumCenter))
         }
@@ -799,12 +947,18 @@ final class GameScene: SKScene {
             size.width - outerSeatX - seatHalfWidth - seatPadding
         )
         let groups = balancedMeldGroups(melds, groupCount: 2)
+        let rowY = Self.centerTopMeldRowY(
+            sceneSize: size,
+            seatY: seatY,
+            horizontalEdgeInset: horizontalEdgeInset,
+            meldScale: desiredScale
+        )
 
         if let left = groups.first, !left.isEmpty {
             drawFittedMeldRow(
                 left,
                 bounds: leftBounds,
-                rowY: seatY,
+                rowY: rowY,
                 alignment: .center,
                 desiredScale: desiredScale,
                 minimumScale: minimumScale,
@@ -815,7 +969,7 @@ final class GameScene: SKScene {
             drawFittedMeldRow(
                 groups[1],
                 bounds: rightBounds,
-                rowY: seatY,
+                rowY: rowY,
                 alignment: .center,
                 desiredScale: desiredScale,
                 minimumScale: minimumScale,
@@ -929,24 +1083,40 @@ final class GameScene: SKScene {
         meldGap: CGFloat,
         availableWidth: CGFloat
     ) -> [[Meld]] {
-        var rows: [[Meld]] = []
-        for meld in melds {
+        Self.greedyMeldRowIndices(
+            cardCounts: melds.map(\.cards.count),
+            scale: scale,
+            meldGap: meldGap,
+            availableWidth: availableWidth
+        ).map { indices in
+            indices.map { melds[$0] }
+        }
+    }
+
+    static func greedyMeldRowIndices(
+        cardCounts: [Int],
+        scale: CGFloat,
+        meldGap: CGFloat,
+        availableWidth: CGFloat
+    ) -> [[Int]] {
+        var rows: [[Int]] = []
+        for index in cardCounts.indices {
             guard var row = rows.popLast() else {
-                rows.append([meld])
+                rows.append([index])
                 continue
             }
-            let candidate = row + [meld]
-            if Self.meldRowWidth(
-                cardCounts: candidate.map(\.cards.count),
+            let candidate = row + [index]
+            if meldRowWidth(
+                cardCounts: candidate.map { cardCounts[$0] },
                 scale: scale,
-                cardStepFraction: Self.meldCardStepFraction,
+                cardStepFraction: meldCardStepFraction,
                 meldGap: meldGap
             ) <= availableWidth {
-                row.append(meld)
+                row.append(index)
                 rows.append(row)
             } else {
                 rows.append(row)
-                rows.append([meld])
+                rows.append([index])
             }
         }
         return rows
@@ -1080,10 +1250,17 @@ final class GameScene: SKScene {
         colorIndex: Int,
         isActive: Bool
     ) {
-        let panelSize = CGSize(width: currentPlayerHUDWidth, height: 46)
+        let usesRoomyLayout = usesExpandedIPadLayout
+        let panelSize = CGSize(
+            width: currentPlayerHUDWidth,
+            height: usesRoomyLayout ? 76 : 62
+        )
         let center = CGPoint(x: horizontalEdgeInset + panelSize.width / 2,
-                             y: stagingTrayY)
-        let panel = SKShapeNode(rectOf: panelSize, cornerRadius: 23)
+                             y: stagingTrayY + 8)
+        let panel = SKShapeNode(
+            rectOf: panelSize,
+            cornerRadius: panelSize.height / 2
+        )
         if isActive {
             addActiveTurnHalo(at: center, size: panelSize, to: seatsLayer)
         }
@@ -1096,9 +1273,9 @@ final class GameScene: SKScene {
         panel.zPosition = 2
         seatsLayer.addChild(panel)
 
-        let avatarRadius: CGFloat = 15
+        let avatarRadius: CGFloat = usesRoomyLayout ? 17 : 15
         let avatarPosition = CGPoint(x: center.x - panelSize.width / 2 + 24,
-                                     y: center.y)
+                                     y: center.y + 3)
         let avatarColor = theme.avatarColors[colorIndex % theme.avatarColors.count]
         let avatar = SKShapeNode(circleOfRadius: avatarRadius)
         avatar.fillColor = avatarColor
@@ -1111,7 +1288,7 @@ final class GameScene: SKScene {
         seatsLayer.addChild(avatar)
         let initial = SKLabelNode(text: String(player.name.prefix(1)).uppercased())
         initial.fontName = theme.titleFont
-        initial.fontSize = 15
+        initial.fontSize = usesRoomyLayout ? 17 : 15
         initial.fontColor = .white
         initial.horizontalAlignmentMode = .center
         initial.verticalAlignmentMode = .center
@@ -1122,23 +1299,24 @@ final class GameScene: SKScene {
         let textX = avatarPosition.x + avatarRadius + 8
         let name = SKLabelNode(text: player.name)
         name.fontName = theme.titleFont
-        name.fontSize = 12
+        name.fontSize = usesRoomyLayout ? 15 : 13
         name.fontColor = isActive ? theme.turnGlow : theme.seatTitle
         name.horizontalAlignmentMode = .left
         name.verticalAlignmentMode = .center
-        name.position = CGPoint(x: textX, y: center.y + 8)
+        let topLineY = center.y + (usesRoomyLayout ? 20 : 16)
+        name.position = CGPoint(x: textX, y: topLineY)
         name.zPosition = 3
         seatsLayer.addChild(name)
 
         let score = SKLabelNode(text: "\(player.totalScore) pts")
-        score.fontName = theme.bodyFont
-        score.fontSize = 8
-        score.fontColor = theme.seatSub
+        score.fontName = theme.titleFont
+        score.fontSize = usesRoomyLayout ? 11.5 : 9.5
+        score.fontColor = isActive ? theme.turnGlow : theme.seatTitle
         score.horizontalAlignmentMode = .right
         score.verticalAlignmentMode = .center
         score.position = CGPoint(
             x: center.x + panelSize.width / 2 - 12,
-            y: center.y + 8
+            y: topLineY
         )
         score.zPosition = 3
         seatsLayer.addChild(score)
@@ -1147,14 +1325,68 @@ final class GameScene: SKScene {
         let detail = SKLabelNode(
             text: "LV \(player.currentLevel)  •  \(contract)"
         )
-        detail.fontName = theme.bodyFont
-        detail.fontSize = size.width < 720 ? 7.5 : 8.5
-        detail.fontColor = isActive ? theme.turnGlow : theme.seatSub
+        detail.fontName = theme.titleFont
+        detail.fontSize = usesRoomyLayout ? 11.5 : 9.5
+        detail.fontColor = isActive ? theme.turnGlow : theme.contractPillText
         detail.horizontalAlignmentMode = .left
         detail.verticalAlignmentMode = .center
-        detail.position = CGPoint(x: textX, y: center.y - 9)
+        detail.position = CGPoint(
+            x: textX,
+            y: center.y + (usesRoomyLayout ? 1 : 0)
+        )
         detail.zPosition = 3
         seatsLayer.addChild(detail)
+
+        let buysRemaining = vm.buysRemaining(for: player.id)
+        let counterSize = CGSize(width: 94, height: 20)
+        let counterCenter = CGPoint(
+            x: center.x + panelSize.width / 2 - counterSize.width / 2 - 10,
+            y: center.y - (usesRoomyLayout ? 24 : 20)
+        )
+        let counter = SKShapeNode(
+            rectOf: counterSize,
+            cornerRadius: counterSize.height / 2
+        )
+        counter.fillColor = buysRemaining > 0
+            ? theme.contractPillBg
+            : theme.scoreChipBg
+        counter.strokeColor = buysRemaining > 0
+            ? theme.turnGlow.withAlphaComponent(0.9)
+            : theme.feltStroke.withAlphaComponent(0.8)
+        counter.lineWidth = 1.5
+        counter.position = counterCenter
+        counter.zPosition = 3
+        seatsLayer.addChild(counter)
+
+        let buysLabel = SKLabelNode(text: "BUYS LEFT")
+        buysLabel.fontName = theme.titleFont
+        buysLabel.fontSize = usesRoomyLayout ? 9 : 7.5
+        buysLabel.fontColor = buysRemaining > 0
+            ? theme.contractPillText
+            : theme.scoreChipText
+        buysLabel.horizontalAlignmentMode = .center
+        buysLabel.verticalAlignmentMode = .center
+        buysLabel.position = CGPoint(
+            x: counterCenter.x - 13,
+            y: counterCenter.y
+        )
+        buysLabel.zPosition = 4
+        seatsLayer.addChild(buysLabel)
+
+        let buysCount = SKLabelNode(text: "\(buysRemaining)")
+        buysCount.fontName = theme.titleFont
+        buysCount.fontSize = usesRoomyLayout ? 14 : 13
+        buysCount.fontColor = buysRemaining > 0
+            ? theme.turnGlow
+            : theme.scoreChipText
+        buysCount.horizontalAlignmentMode = .center
+        buysCount.verticalAlignmentMode = .center
+        buysCount.position = CGPoint(
+            x: counterCenter.x + 34,
+            y: counterCenter.y
+        )
+        buysCount.zPosition = 4
+        seatsLayer.addChild(buysCount)
     }
 
     private func buildHand() {
@@ -1196,10 +1428,13 @@ final class GameScene: SKScene {
             let lift = maxLift * (1 - norm * norm)
             let x = startX + CGFloat(i) * step
             let isHighlighted = highlightedIds.contains(card.id)
-            let y = baseY + lift + (isHighlighted ? 5 : 0)
+            let y = baseY + lift + (isHighlighted ? 4 : 0)
             let angle = -norm * maxAngle
             let pos = CGPoint(x: x, y: y)
-            node.setNewCardHighlighted(isHighlighted)
+            node.setNewCardHighlighted(
+                isHighlighted,
+                animateArrival: newlyDrawnIds.contains(card.id)
+            )
             node.zPosition = 4 + CGFloat(i) * 0.01
             if newlyDrawnIds.contains(card.id) {
                 node.position = SeatLayout.pileCenter(sceneSize: size)
@@ -1245,8 +1480,56 @@ final class GameScene: SKScene {
 
     private static let pileScale: CGFloat = 0.90
     private static let pileGap: CGFloat = 34
-    private static let meldCardStepFraction: CGFloat = 0.50
-    private static let minimumMeldStepFraction: CGFloat = 0.25
+    static let expandedIPadLayoutMinimumHeight: CGFloat = 600
+    static let compactOpponentMeldScale: CGFloat = 0.62
+    static let expandedOpponentMeldScale: CGFloat = 0.78
+    static let compactOwnMeldScale: CGFloat = 0.68
+    static let expandedOwnMeldScale: CGFloat = 0.86
+    static let minimumMeldScale: CGFloat = 0.34
+    static let ownMeldGap: CGFloat = 14
+    static let ownMeldHandGap: CGFloat = 12
+    static let standardOpponentMeldGap: CGFloat = 12
+    static let crowdedOpponentMeldGap: CGFloat = 8
+    static let meldCardStepFraction: CGFloat = 0.50
+    static let minimumMeldStepFraction: CGFloat = 0.25
+    static let compactStagingTrayHeight: CGFloat = 56
+    static let expandedStagingTrayHeight: CGFloat = 112
+    static let stagingTrayHandGap: CGFloat = 8
+    static let compactStagedCardScale: CGFloat = 0.44
+    static let expandedStagedCardScale: CGFloat = 0.76
+    static let turnBannerHeight: CGFloat = 48
+    static let turnBannerTopInset: CGFloat = 7
+    static let topMeldBannerGap: CGFloat = 8
+    static let topMeldLaneGap: CGFloat = 12
+
+    static func usesExpandedIPadLayout(sceneHeight: CGFloat) -> Bool {
+        sceneHeight >= expandedIPadLayoutMinimumHeight
+    }
+
+    static func preferredOpponentMeldScale(sceneHeight: CGFloat) -> CGFloat {
+        usesExpandedIPadLayout(sceneHeight: sceneHeight)
+            ? expandedOpponentMeldScale
+            : compactOpponentMeldScale
+    }
+
+    static func preferredOwnMeldScale(sceneHeight: CGFloat) -> CGFloat {
+        usesExpandedIPadLayout(sceneHeight: sceneHeight)
+            ? expandedOwnMeldScale
+            : compactOwnMeldScale
+    }
+
+    static func stagingTrayHeight(sceneHeight: CGFloat) -> CGFloat {
+        usesExpandedIPadLayout(sceneHeight: sceneHeight)
+            ? expandedStagingTrayHeight
+            : compactStagingTrayHeight
+    }
+
+    static func stagedCardScale(sceneHeight: CGFloat) -> CGFloat {
+        usesExpandedIPadLayout(sceneHeight: sceneHeight)
+            ? expandedStagedCardScale
+            : compactStagedCardScale
+    }
+
     private static var protectedPileCorridorHalfWidth: CGFloat {
         (
             CardNode.size.width * pileScale
@@ -1270,6 +1553,26 @@ final class GameScene: SKScene {
             - Self.protectedPileCorridorHalfWidth
         return sideMeldStart <= sideMeldEnd
             && size.height >= CardNode.size.height * 2.5
+    }
+
+    private var usesExpandedIPadLayout: Bool {
+        Self.usesExpandedIPadLayout(sceneHeight: size.height)
+    }
+
+    private var preferredOpponentMeldScaleForLayout: CGFloat {
+        Self.preferredOpponentMeldScale(sceneHeight: size.height)
+    }
+
+    private var preferredOwnMeldScaleForLayout: CGFloat {
+        Self.preferredOwnMeldScale(sceneHeight: size.height)
+    }
+
+    private var currentStagingTrayHeight: CGFloat {
+        Self.stagingTrayHeight(sceneHeight: size.height)
+    }
+
+    private var stagedCardScaleForLayout: CGFloat {
+        Self.stagedCardScale(sceneHeight: size.height)
     }
 
     private var handCardScale: CGFloat {
@@ -1301,6 +1604,65 @@ final class GameScene: SKScene {
             520,
             max(300, sceneWidth - horizontalEdgeInset * 2 - 304)
         )
+    }
+
+    static func turnBannerFrame(
+        sceneSize: CGSize,
+        horizontalEdgeInset: CGFloat
+    ) -> CGRect {
+        let width = turnBannerWidth(
+            sceneWidth: sceneSize.width,
+            horizontalEdgeInset: horizontalEdgeInset
+        )
+        return CGRect(
+            x: sceneSize.width / 2 - width / 2,
+            y: sceneSize.height - turnBannerTopInset - turnBannerHeight,
+            width: width,
+            height: turnBannerHeight
+        )
+    }
+
+    static func centerTopMeldRowY(
+        sceneSize: CGSize,
+        seatY: CGFloat,
+        horizontalEdgeInset: CGFloat,
+        meldScale: CGFloat
+    ) -> CGFloat {
+        let bannerBottom = turnBannerFrame(
+            sceneSize: sceneSize,
+            horizontalEdgeInset: horizontalEdgeInset
+        ).minY
+        let highestSafeCenter = bannerBottom
+            - topMeldBannerGap
+            - CardNode.size.height * meldScale / 2
+        return min(seatY, highestSafeCenter)
+    }
+
+    static func topCornerMeldRowY(
+        sceneSize: CGSize,
+        seatY: CGFloat,
+        horizontalEdgeInset: CGFloat,
+        playerCount: Int,
+        cornerMeldScale: CGFloat,
+        centerMeldScale: CGFloat
+    ) -> CGFloat {
+        let cornerCardHalfHeight = CardNode.size.height
+            * cornerMeldScale / 2
+        let rowBelowSeat = seatY - 21 - 6 - cornerCardHalfHeight
+        guard playerCount >= 6 else { return rowBelowSeat }
+
+        let centerRowY = centerTopMeldRowY(
+            sceneSize: sceneSize,
+            seatY: seatY,
+            horizontalEdgeInset: horizontalEdgeInset,
+            meldScale: centerMeldScale
+        )
+        let centerMeldBottom = centerRowY
+            - CardNode.size.height * centerMeldScale / 2
+        let rowBelowCenterMelds = centerMeldBottom
+            - topMeldLaneGap
+            - cornerCardHalfHeight
+        return min(rowBelowSeat, rowBelowCenterMelds)
     }
 
     private var scaledHandCardSize: CGSize {
@@ -1344,25 +1706,63 @@ final class GameScene: SKScene {
     }
 
     private var currentPlayerHUDWidth: CGFloat {
-        size.width < 720 ? 190 : 224
+        size.width < 720 ? 190 : 240
     }
 
     private var stagingTrayY: CGFloat {
-        handRowY + scaledHandCardSize.height / 2 + 36
+        Self.stagingTrayY(
+            handRowY: handRowY,
+            handCardHeight: scaledHandCardSize.height,
+            sceneHeight: size.height
+        )
+    }
+
+    static func stagingTrayY(
+        handRowY: CGFloat,
+        handCardHeight: CGFloat,
+        sceneHeight: CGFloat
+    ) -> CGFloat {
+        handRowY
+            + handCardHeight / 2
+            + stagingTrayHandGap
+            + stagingTrayHeight(sceneHeight: sceneHeight) / 2
     }
 
     private var stagingTrayRect: CGRect {
         let left = horizontalEdgeInset + currentPlayerHUDWidth + 12
         let right = size.width - horizontalEdgeInset - 176
         let width = max(210, right - left)
-        return CGRect(x: left, y: stagingTrayY - 28,
-                      width: width, height: 56)
+        return CGRect(
+            x: left,
+            y: stagingTrayY - currentStagingTrayHeight / 2,
+            width: width,
+            height: currentStagingTrayHeight
+        )
     }
 
     private var tableauLaneY: CGFloat { stagingTrayY }
 
+    private func ownMeldRowY(scale: CGFloat) -> CGFloat {
+        Self.ownMeldRowY(
+            handRowY: handRowY,
+            handCardHeight: scaledHandCardSize.height,
+            meldScale: scale
+        )
+    }
+
+    static func ownMeldRowY(
+        handRowY: CGFloat,
+        handCardHeight: CGFloat,
+        meldScale: CGFloat
+    ) -> CGFloat {
+        handRowY
+            + handCardHeight / 2
+            + Self.ownMeldHandGap
+            + CardNode.size.height * meldScale / 2
+    }
+
     private func ownMeldScale(for melds: [Meld], meldGap: CGFloat) -> CGFloat {
-        let desiredScale: CGFloat = 0.50
+        let desiredScale = preferredOwnMeldScaleForLayout
         let widthAtScaleOne = melds.reduce(CGFloat.zero) { total, meld in
             total + CardNode.size.width * (
                 1 + CGFloat(max(0, meld.cards.count - 1))
@@ -1372,7 +1772,10 @@ final class GameScene: SKScene {
         let totalGaps = CGFloat(max(0, melds.count - 1)) * meldGap
         let available = max(1, stagingTrayRect.width - 16 - totalGaps)
         guard widthAtScaleOne > 0 else { return desiredScale }
-        return min(desiredScale, max(0.34, available / widthAtScaleOne))
+        return min(
+            desiredScale,
+            max(Self.minimumMeldScale, available / widthAtScaleOne)
+        )
     }
 
     // MARK: - Inline staging and contextual actions
@@ -1438,7 +1841,7 @@ final class GameScene: SKScene {
 
     private func addStagedCards(in rect: CGRect) {
         let cards = vm.stagedCards
-        let scale: CGFloat = 0.44
+        let scale = stagedCardScaleForLayout
         let cardW = CardNode.size.width * scale
         let available = rect.width - 28
         let step: CGFloat
@@ -1506,12 +1909,18 @@ final class GameScene: SKScene {
             return
         }
 
-        let controlSize = CGSize(width: 44, height: 40)
+        let controlSize = CGSize(width: 44, height: 42)
+        let controlGap: CGFloat = 4
+        let suitControlX = size.width
+            - horizontalEdgeInset
+            - controlSize.width / 2
+        let rankControlX = suitControlX - controlSize.width - controlGap
+        let scoreControlX = rankControlX - controlSize.width - controlGap
         addSmallControl(
             title: "SCORE",
             name: "show-score",
             at: CGPoint(
-                x: size.width - horizontalEdgeInset - 118,
+                x: scoreControlX,
                 y: size.height - 31
             ),
             size: controlSize,
@@ -1536,7 +1945,7 @@ final class GameScene: SKScene {
             title: "RANK",
             name: "sort-rank",
             at: CGPoint(
-                x: size.width - horizontalEdgeInset - 70,
+                x: rankControlX,
                 y: size.height - 31
             ),
             size: controlSize,
@@ -1546,7 +1955,7 @@ final class GameScene: SKScene {
             title: "SUIT",
             name: "sort-suit",
             at: CGPoint(
-                x: size.width - horizontalEdgeInset - 22,
+                x: suitControlX,
                 y: size.height - 31
             ),
             size: controlSize,
@@ -1570,7 +1979,7 @@ final class GameScene: SKScene {
                 return ("TAP OR DRAG TO MELD", nil, false, false)
             }
             if vm.canConfirmGoDown {
-                return ("GO DOWN", "go-down", true, true)
+                return ("PUT DOWN CONTRACT", "go-down", true, true)
             }
             if case .some(.success(_)) = vm.stagedValidation {
                 return ("SAVE MELD", "save-meld", true, true)
@@ -1645,9 +2054,9 @@ final class GameScene: SKScene {
     ) {
         let button = SKShapeNode(rectOf: controlSize,
                                  cornerRadius: controlSize.height / 2)
-        button.fillColor = theme.contractPillBg
-        button.strokeColor = theme.feltStroke.withAlphaComponent(0.8)
-        button.lineWidth = 1
+        button.fillColor = theme.scoreChipBg
+        button.strokeColor = theme.turnGlow.withAlphaComponent(0.78)
+        button.lineWidth = 1.5
         button.position = position
         button.zPosition = 25
         button.name = name
@@ -1655,8 +2064,8 @@ final class GameScene: SKScene {
 
         let label = SKLabelNode(text: title)
         label.fontName = theme.titleFont
-        label.fontSize = controlSize.height < 30 ? 7 : 8
-        label.fontColor = theme.seatSub
+        label.fontSize = controlSize.height < 30 ? 8 : 10
+        label.fontColor = theme.bannerText
         label.horizontalAlignmentMode = .center
         label.verticalAlignmentMode = .center
         label.position = position
@@ -1740,7 +2149,7 @@ final class GameScene: SKScene {
         ), let hit = handLayer.children.first(where: {
             $0.name == "card:\(uuid.uuidString)"
         }) as? CardNode {
-            beginDrag(card: hit, id: uuid)
+            beginDrag(card: hit, id: uuid, touchPoint: point)
             return
         }
 
@@ -1757,7 +2166,7 @@ final class GameScene: SKScene {
                   let uuid = UUID(uuidString: String(idStr)),
                   vm.currentPlayer.hand.contains(where: { $0.id == uuid })
             else { continue }
-            beginDrag(card: hit, id: uuid)
+            beginDrag(card: hit, id: uuid, touchPoint: point)
             return
         }
     }
@@ -1784,6 +2193,10 @@ final class GameScene: SKScene {
                 switch cardDropTarget(at: point, for: card) {
                 case .some(.discard):
                     guard let node = draggingCard else { return }
+                    guard vm.requestDiscard(card) else {
+                        cancelDrag()
+                        return
+                    }
                     animateDiscard(card, node: node)
                     return
                 case .some(.meld(let meldId)):
@@ -1811,25 +2224,17 @@ final class GameScene: SKScene {
                 return
             }
 
-            let dx = point.x - dragOrigin.x
-            let dy = point.y - dragOrigin.y
-            let tapThreshold: CGFloat = 10
-            if abs(dx) < tapThreshold && abs(dy) < tapThreshold {
-                guard dragAllowsGameplay,
-                      vm.isLocalPlayersTurn,
-                      vm.state.phase == .awaitingMeldOrDiscard else {
-                    warningFeedback()
+            let dx = point.x - dragTouchOrigin.x
+            let dy = point.y - dragTouchOrigin.y
+            if Self.isCardTap(dx: dx, dy: dy) {
+                guard Self.allowsTapToStage(
+                    isLocalPlayersTurn: vm.isLocalPlayersTurn,
+                    phase: vm.state.phase,
+                    isBuyDecisionActive: vm.isBuyDecisionActive,
+                    hasGoneDownThisRound:
+                        vm.currentPlayer.hasGoneDownThisRound
+                ) else {
                     cancelDrag()
-                    return
-                }
-                if vm.currentPlayer.hasGoneDownThisRound {
-                    if vm.playTappedHandCard(card) {
-                        successFeedback()
-                        completeDrag()
-                    } else {
-                        warningFeedback()
-                        cancelDrag()
-                    }
                     return
                 }
                 vm.toggleStaged(cardId: id)
@@ -1940,6 +2345,9 @@ final class GameScene: SKScene {
         isLocalPlayersTurn: Bool,
         isCPU: Bool
     ) -> String {
+        if isCPU {
+            return "\(playerName.uppercased())  •  BOT TURN"
+        }
         if isLocalPlayersTurn && !isCPU {
             return "YOUR TURN"
         }
@@ -2123,6 +2531,24 @@ final class GameScene: SKScene {
             && !isBuyDecisionActive
     }
 
+    static func allowsTapToStage(
+        isLocalPlayersTurn: Bool,
+        phase: GameState.Phase,
+        isBuyDecisionActive: Bool,
+        hasGoneDownThisRound: Bool
+    ) -> Bool {
+        allowsGameplayDrop(
+            isLocalPlayersTurn: isLocalPlayersTurn,
+            phase: phase,
+            isBuyDecisionActive: isBuyDecisionActive
+        ) && !hasGoneDownThisRound
+    }
+
+    static func isCardTap(dx: CGFloat, dy: CGFloat) -> Bool {
+        let threshold: CGFloat = 18
+        return dx * dx + dy * dy <= threshold * threshold
+    }
+
     private func reorderTargetId(forDropX x: CGFloat, draggedId: UUID) -> UUID? {
         let slots = handSlots.filter { $0.id != draggedId }
         for slot in slots where x < slot.x {
@@ -2133,13 +2559,18 @@ final class GameScene: SKScene {
 
     // MARK: - Drag helpers
 
-    private func beginDrag(card: CardNode, id: UUID) {
+    private func beginDrag(
+        card: CardNode,
+        id: UUID,
+        touchPoint: CGPoint
+    ) {
         draggingCard = card
         draggingCardId = id
         dragOrigin = card.position
         dragOriginRotation = card.zRotation
         dragOriginZ = card.zPosition
         dragOriginScale = card.xScale
+        dragTouchOrigin = touchPoint
         dragAllowsGameplay = Self.allowsGameplayDrop(
             isLocalPlayersTurn: vm.isLocalPlayersTurn,
             phase: vm.state.phase,
@@ -2179,6 +2610,7 @@ final class GameScene: SKScene {
         }
         draggingCard = nil
         draggingCardId = nil
+        dragTouchOrigin = .zero
         dragAllowsGameplay = false
         clearDragTargets()
     }
@@ -2186,6 +2618,7 @@ final class GameScene: SKScene {
     private func completeDrag() {
         draggingCard = nil
         draggingCardId = nil
+        dragTouchOrigin = .zero
         dragAllowsGameplay = false
         clearDragTargets()
     }
@@ -2195,6 +2628,7 @@ final class GameScene: SKScene {
         draggingCard?.removeAllActions()
         draggingCard = nil
         draggingCardId = nil
+        dragTouchOrigin = .zero
         dragAllowsGameplay = false
         clearDragTargets()
     }
@@ -2203,6 +2637,7 @@ final class GameScene: SKScene {
         isAnimatingTurnAction = true
         draggingCard = nil
         draggingCardId = nil
+        dragTouchOrigin = .zero
         dragAllowsGameplay = false
         clearDragTargets()
 

@@ -73,7 +73,9 @@ final class RealtimeGameProtocolTests: XCTestCase {
     }
 
     func testCodecRoundTripsOnlineBotSetup() throws {
-        let setup = RealtimeGameSetup(botCount: 3)
+        let setup = RealtimeGameSetup(
+            botDifficulties: [.easy, .medium, .hard]
+        )
 
         XCTAssertEqual(
             try RealtimeMessageCodec.decode(
@@ -87,6 +89,7 @@ final class RealtimeGameProtocolTests: XCTestCase {
             ),
             .setupRequest
         )
+        XCTAssertEqual(setup.botCount, 3)
     }
 
     func testMatchmakingGroupsSeparateBotCounts() {
@@ -124,6 +127,57 @@ final class RealtimeGameProtocolTests: XCTestCase {
 
         XCTAssertTrue(snapshot.hasValidPlayerIdentityLayout())
         XCTAssertLessThan(encoded.count, 80_000)
+    }
+
+    func testOpeningDrawReorderingPreservesParticipantAndBotIdentity() {
+        let humans = [
+            Player(name: "Human 1"),
+            Player(name: "Human 2"),
+        ]
+        let bots = [
+            Player(name: "Bot 1"),
+            Player(name: "Bot 2"),
+        ]
+        let roster = humans + bots
+        let state = try! XCTUnwrap(
+            (0...100)
+                .lazy
+                .map {
+                    GameFactory.newGame(
+                        players: roster,
+                        seed: UInt64($0)
+                    )
+                }
+                .first {
+                    $0.players.map(\.id) != roster.map(\.id)
+                }
+        )
+        let participants = humans.enumerated().map {
+            RealtimeParticipantBinding(
+                gamePlayerId: "gc-player-\($0.offset)",
+                playerId: $0.element.id,
+                displayName: $0.element.name
+            )
+        }
+        let snapshot = RealtimeGameSnapshot(
+            revision: 0,
+            state: state,
+            participants: participants,
+            botPlayerIds: bots.map(\.id),
+            botDifficultiesByPlayer: [
+                bots[0].id: .easy,
+                bots[1].id: .medium,
+            ],
+            hostGamePlayerId: participants[0].gamePlayerId
+        )
+
+        XCTAssertTrue(snapshot.hasValidPlayerIdentityLayout())
+        XCTAssertEqual(snapshot.botDifficulty(for: bots[0].id), .easy)
+        XCTAssertEqual(snapshot.botDifficulty(for: bots[1].id), .medium)
+        XCTAssertNotEqual(
+            state.players.map(\.id),
+            roster.map(\.id)
+        )
     }
 
     func testMixedSnapshotRequiresEverySeatToBeExactlyOneHumanOrBot() {
@@ -291,6 +345,64 @@ final class RealtimeGameProtocolTests: XCTestCase {
             hostGamePlayerId: participants[0].gamePlayerId
         )
         XCTAssertNil(RealtimeBotDriver.nextAction(in: snapshot))
+    }
+
+    func testBotDriverUsesTheBotsSharedDifficulty() {
+        let human = Player(name: "Human")
+        let bot = Player(
+            name: "Bot",
+            hand: [
+                Card(suit: .hearts, rank: .ace),
+                Card(suit: .spades, rank: .ace),
+                Card(suit: .hearts, rank: .king),
+                Card(suit: .spades, rank: .king),
+                Card(suit: .hearts, rank: .queen),
+                Card(suit: .diamonds, rank: .three),
+                Card(suit: .clubs, rank: .four),
+            ]
+        )
+        let state = GameState(
+            players: [human, bot],
+            currentRound: 1,
+            currentTurnIndex: 1,
+            dealerIndex: 0,
+            stock: [Card(suit: .clubs, rank: .five)],
+            discard: [Card(suit: .clubs, rank: .six)],
+            melds: [],
+            phase: .awaitingMeldOrDiscard,
+            stockReshufflesUsed: 0,
+            randomSeed: 1
+        )
+        let participant = RealtimeParticipantBinding(
+            gamePlayerId: "gc-human",
+            playerId: human.id,
+            displayName: human.name
+        )
+        let easy = RealtimeGameSnapshot(
+            revision: 0,
+            state: state,
+            participants: [participant],
+            botPlayerIds: [bot.id],
+            botDifficultiesByPlayer: [bot.id: .easy],
+            hostGamePlayerId: participant.gamePlayerId
+        )
+        let hard = RealtimeGameSnapshot(
+            revision: 0,
+            state: state,
+            participants: [participant],
+            botPlayerIds: [bot.id],
+            botDifficultiesByPlayer: [bot.id: .hard],
+            hostGamePlayerId: participant.gamePlayerId
+        )
+
+        guard let easyAction = RealtimeBotDriver.nextAction(in: easy),
+              let hardAction = RealtimeBotDriver.nextAction(in: hard),
+              case .discard(_, let easyCard) = easyAction,
+              case .discard(_, let hardCard) = hardAction else {
+            return XCTFail("Both shared bot profiles should discard")
+        }
+        XCTAssertEqual(easyCard.rank, .ace)
+        XCTAssertEqual(hardCard.rank, .queen)
     }
 
     func testHostedBotStopsAfterLayingOffItsLastCard() {

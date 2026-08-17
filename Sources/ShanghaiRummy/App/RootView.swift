@@ -4,12 +4,19 @@ struct RootView: View {
     @EnvironmentObject var gameCenter: GameCenterManager
     @State private var activeGame: GameViewModel?
     @State private var activeTheme: VisualTheme = .gameNight
-    @State private var showingSetup = false
     @State private var showingFamilyTableSetup = false
+    @State private var familyTableConfiguration =
+        FamilyTableConfiguration()
     @State private var pendingFamilyTable: FamilyTableConfiguration?
+    private let entryFinalistPreview = EntryFinalistLaunchConfiguration.current()
 
     var body: some View {
-        if let game = gameCenter.onlineGame {
+        if let preview = entryFinalistPreview {
+            EntryFinalistPreviewHost(
+                design: preview.design,
+                screen: preview.screen
+            )
+        } else if let game = gameCenter.onlineGame {
             GameContainerView(vm: game, theme: activeTheme) {
                 gameCenter.leaveOnlineMatch()
             }
@@ -21,23 +28,24 @@ struct RootView: View {
             }
         } else {
             homeMenu
-                .sheet(isPresented: $showingSetup) {
-                    NewGameSetupView { vm in
-                        showingSetup = false
-                        activeGame = vm
-                    }
-                }
-                .sheet(
+                .fullScreenCover(
                     isPresented: $showingFamilyTableSetup,
                     onDismiss: startPendingFamilyTable
                 ) {
-                    FamilyTableSetupView(
+                    MidnightDecoTableView(
+                        configuration: $familyTableConfiguration,
                         localPlayerName: gameCenter.displayName,
-                        isGameCenterAuthenticated: gameCenter.isAuthenticated
-                    ) { configuration in
-                        pendingFamilyTable = configuration
-                        showingFamilyTableSetup = false
-                    }
+                        isGameCenterAuthenticated:
+                            gameCenter.isAuthenticated,
+                        onBack: {
+                            pendingFamilyTable = nil
+                            showingFamilyTableSetup = false
+                        },
+                        onStart: { configuration in
+                            pendingFamilyTable = configuration
+                            showingFamilyTableSetup = false
+                        }
+                    )
                 }
                 .fullScreenCover(isPresented: $gameCenter.isPresentingMatchmaker) {
                     ZStack(alignment: .bottom) {
@@ -57,7 +65,12 @@ struct RootView: View {
                     }
                     .ignoresSafeArea()
                 }
-                .sheet(isPresented: $gameCenter.isPresentingAuthentication) {
+                .sheet(
+                    isPresented: $gameCenter.isPresentingAuthentication,
+                    onDismiss: {
+                        gameCenter.authenticationDidDismiss()
+                    }
+                ) {
                     if let controller = gameCenter.authenticationViewController {
                         GameCenterAuthenticationView(viewController: controller)
                             .ignoresSafeArea()
@@ -67,6 +80,8 @@ struct RootView: View {
                     if CommandLine.arguments.contains(
                         "--demo-family-table-setup"
                     ) {
+                        familyTableConfiguration =
+                            FamilyTableConfiguration()
                         showingFamilyTableSetup = true
                     } else if activeGame == nil,
                        CommandLine.arguments.contains("--demo-six-player-status") {
@@ -81,23 +96,90 @@ struct RootView: View {
                         }
                         activeGame = vm
                     } else if activeGame == nil,
+                              CommandLine.arguments.contains(
+                                "--demo-crowded-new-cards"
+                              ) {
+                        activeTheme = themeFromArgs()
+                        activeGame = GameViewModel(
+                            state: GameFactory.demoCrowdedHighlightedHand()
+                        )
+                    } else if activeGame == nil,
                        CommandLine.arguments.contains("--demo-mid-game") {
                         activeTheme = themeFromArgs()
                         var state = GameFactory.demoMidGame()
-                        if CommandLine.arguments.contains("--demo-stage-triplet") {
+                        var localPlayerId: UUID?
+                        let stagesTriplet = CommandLine.arguments.contains(
+                            "--demo-stage-triplet"
+                        )
+                        let stagesLongSequence = CommandLine.arguments.contains(
+                            "--demo-stage-long-sequence"
+                        )
+                        if stagesTriplet || stagesLongSequence {
                             let playerId = state.currentPlayerId
                             state.players[state.currentTurnIndex].hasGoneDownThisRound = false
                             state.players[state.currentTurnIndex].laidDownThisTurn = false
                             state.melds.removeAll { $0.ownerId == playerId }
                         }
+                        if stagesLongSequence {
+                            state.players[state.currentTurnIndex].hand = [
+                                Card(suit: .hearts, rank: .three),
+                                Card(suit: .hearts, rank: .four),
+                                Card(suit: .hearts, rank: .five),
+                                Card(suit: .hearts, rank: .six),
+                                Card(suit: .hearts, rank: .seven),
+                                Card(suit: .hearts, rank: .eight),
+                                Card(suit: .hearts, rank: .nine),
+                                Card(suit: .spades, rank: .king),
+                                Card(suit: .diamonds, rank: .queen),
+                                Card(suit: .clubs, rank: .ace),
+                                Card.joker(),
+                            ]
+                        }
                         if CommandLine.arguments.contains("--demo-buy-decision") {
                             state.phase = .awaitingDraw
-                            state.buyDecisionPlayerId = state.currentPlayerId
+                            let youId = state.players[0].id
+                            state.currentTurnIndex = 1
+                            state.players[0].buysUsedThisRound = 1
+                            state.players[0].hasGoneDownThisRound = false
+                            state.players[0].laidDownThisTurn = false
+                            state.melds.removeAll { $0.ownerId == youId }
+                            state.buyDecisionPlayerId = youId
+                            localPlayerId = youId
                         }
-                        let vm = GameViewModel(state: state)
-                        if CommandLine.arguments.contains("--demo-stage-triplet") {
+                        let vm = GameViewModel(
+                            state: state,
+                            localPlayerId: localPlayerId
+                        )
+                        if stagesLongSequence {
+                            stageFirstHeartRun(in: vm)
+                        } else if stagesTriplet {
                             stageFirstTriplet(in: vm)
                         }
+                        activeGame = vm
+                    } else if activeGame == nil,
+                              CommandLine.arguments.contains(
+                                "--demo-bot-turn"
+                              ) {
+                        activeTheme = themeFromArgs()
+                        let built = GameFactory.newVsCPU(
+                            you: "You",
+                            cpuNames: ["Alex", "Jordan", "Sam"],
+                            seed: 42
+                        )
+                        var state = built.state
+                        let botId = state.players.first {
+                            built.cpuIds.contains($0.id)
+                        }!.id
+                        state.currentTurnIndex = state.players.firstIndex {
+                            $0.id == botId
+                        }!
+                        state.buyDecisionPlayerId = botId
+                        let vm = GameViewModel(
+                            state: state,
+                            localPlayerId: built.localPlayerId,
+                            cpuActionDelay: .seconds(30)
+                        )
+                        vm.configureCPUPlayers(built.cpuDifficulties)
                         activeGame = vm
                     } else if activeGame == nil,
                               CommandLine.arguments.contains("--demo-vs-cpu") {
@@ -107,10 +189,11 @@ struct RootView: View {
                             cpuNames: ["Alex", "Jordan", "Sam"],
                             seed: 42
                         )
-                        let vm = GameViewModel(state: built.state)
-                        vm.cpuPlayerIds = built.cpuIds
-                        // If it's already a CPU's first turn, let them play.
-                        vm.runAllCPUTurns()
+                        let vm = GameViewModel(
+                            state: built.state,
+                            localPlayerId: built.localPlayerId
+                        )
+                        vm.configureCPUPlayers(built.cpuDifficulties)
                         activeGame = vm
                     } else if activeGame == nil,
                               CommandLine.arguments.contains("--demo-hand-over") {
@@ -144,6 +227,14 @@ struct RootView: View {
         }
     }
 
+    private func stageFirstHeartRun(in vm: GameViewModel) {
+        for card in vm.currentPlayer.hand
+            .filter({ $0.suit == .hearts })
+            .prefix(7) {
+            vm.toggleStaged(cardId: card.id)
+        }
+    }
+
     private func themeFromArgs() -> VisualTheme {
         if CommandLine.arguments.contains("--theme-felt") { return .casinoFelt }
         if CommandLine.arguments.contains("--theme-minimal") { return .minimalModern }
@@ -155,79 +246,68 @@ struct RootView: View {
         pendingFamilyTable = nil
 
         if configuration.invitedHumanCount == 0 {
-            startBotOnlyGame(botCount: configuration.botCount)
+            startBotOnlyGame(
+                botDifficulties: configuration.botDifficulties
+            )
         } else {
             gameCenter.beginMatchmaking(
                 invitedHumanCount: configuration.invitedHumanCount,
-                botCount: configuration.botCount
+                botDifficulties: configuration.botDifficulties
             )
         }
     }
 
-    private func startBotOnlyGame(botCount: Int) {
+    private func startBotOnlyGame(
+        botDifficulties: [BotDifficulty]
+    ) {
+        let botCount = botDifficulties.count
         let botNames = (0..<botCount).map { "Bot \($0 + 1)" }
-        let built = GameFactory.newVsCPU(
+        var seed = CommandLine.arguments.contains("--ui-testing")
+            ? UInt64(0)
+            : UInt64.random(in: 0...UInt64.max)
+        var built = GameFactory.newVsCPU(
             you: "You",
             cpuNames: botNames,
-            seed: UInt64.random(in: 0...UInt64.max)
+            cpuDifficulties: botDifficulties,
+            seed: seed
         )
+        if CommandLine.arguments.contains("--ui-testing") {
+            while built.state.currentPlayerId != built.localPlayerId,
+                  seed < 100 {
+                seed += 1
+                built = GameFactory.newVsCPU(
+                    you: "You",
+                    cpuNames: botNames,
+                    cpuDifficulties: botDifficulties,
+                    seed: seed
+                )
+            }
+        }
         let viewModel = GameViewModel(
             state: built.state,
-            localPlayerId: built.state.players[0].id
+            localPlayerId: built.localPlayerId,
+            presentsOpeningDraw: true
         )
-        viewModel.cpuPlayerIds = built.cpuIds
-        viewModel.runAllCPUTurns()
+        viewModel.configureCPUPlayers(built.cpuDifficulties)
         activeGame = viewModel
     }
 
     private var homeMenu: some View {
-        NavigationStack {
-            VStack(spacing: 24) {
-                Text("Shanghai Rummy")
-                    .font(.largeTitle.bold())
-
-                if gameCenter.isAuthenticated {
-                    Text("Signed in as \(gameCenter.displayName)")
-                        .foregroundStyle(.secondary)
-                } else {
-                    Text("Sign in to Game Center to play with family")
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
+        BundAfterDarkHomeView(
+            localPlayerName: gameCenter.displayName,
+            isGameCenterAuthenticated: gameCenter.isAuthenticated,
+            errorMessage: gameCenter.lastError,
+            onCreateTable: {
+                pendingFamilyTable = nil
+                familyTableConfiguration = FamilyTableConfiguration()
+                showingFamilyTableSetup = true
+            },
+            onAuthenticate: {
+                Task {
+                    await gameCenter.authenticate()
                 }
-
-                Button("Hot-Seat (Pass & Play)") {
-                    showingSetup = true
-                }
-                .buttonStyle(.borderedProminent)
-
-                VStack(spacing: 8) {
-                    Button("Create Table (People & Bots)") {
-                        showingFamilyTableSetup = true
-                    }
-                    .buttonStyle(.bordered)
-
-                    Button("Quick Pair (2-Player Beta Test)") {
-                        gameCenter.beginQuickPair()
-                    }
-                    .buttonStyle(.bordered)
-                    .disabled(!gameCenter.isAuthenticated)
-
-                    Text("For Quick Pair, tap it on both phones at the same time.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
-                }
-
-                if let error = gameCenter.lastError {
-                    Text(error)
-                        .font(.footnote)
-                        .foregroundStyle(.red)
-                        .multilineTextAlignment(.center)
-                }
-
             }
-            .padding()
-        }
+        )
     }
 
     private var onlineLobby: some View {

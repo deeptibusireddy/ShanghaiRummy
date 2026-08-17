@@ -6,12 +6,13 @@ final class FamilyTableConfigurationTests: XCTestCase {
         let configuration = FamilyTableConfiguration()
 
         XCTAssertEqual(configuration.totalPlayerCount, 1)
+        XCTAssertEqual(configuration.humanCount, 1)
         XCTAssertEqual(configuration.botCount, 0)
         XCTAssertEqual(configuration.invitedHumanCount, 0)
+        XCTAssertEqual(configuration.openSeatCount, 5)
+        XCTAssertEqual(configuration.estimatedDurationMinutes, 45)
         XCTAssertEqual(configuration.actionTitle, "Start Game")
-        XCTAssertFalse(
-            configuration.canStart(isGameCenterAuthenticated: false)
-        )
+        XCTAssertFalse(configuration.canStart)
     }
 
     func testTableSupportsYouAndFiveBots() {
@@ -23,23 +24,33 @@ final class FamilyTableConfigurationTests: XCTestCase {
 
         XCTAssertEqual(configuration.totalPlayerCount, 6)
         XCTAssertEqual(configuration.botCount, 5)
+        XCTAssertEqual(
+            configuration.botDifficulties,
+            Array(repeating: .hard, count: 5)
+        )
+        XCTAssertEqual(configuration.openSeatCount, 0)
+        XCTAssertEqual(configuration.estimatedDurationMinutes, 90)
         XCTAssertFalse(configuration.canAddSeat)
         XCTAssertFalse(configuration.addSeat(kind: .bot))
         XCTAssertEqual(configuration.actionTitle, "Play with 5 Bots")
     }
 
-    func testHumanSeatsRequireGameCenter() {
+    func testHumanSeatsCanStartGameCenterSignInFlow() {
         var configuration = FamilyTableConfiguration()
         configuration.addSeat(kind: .human)
 
         XCTAssertEqual(configuration.invitedHumanCount, 1)
+        XCTAssertEqual(configuration.humanCount, 2)
         XCTAssertEqual(configuration.gameCenterPlayerCount, 2)
-        XCTAssertEqual(configuration.actionTitle, "Invite 1 Person")
-        XCTAssertFalse(
-            configuration.canStart(isGameCenterAuthenticated: false)
+        XCTAssertEqual(configuration.actionTitle, "Invite 1 Guest")
+        XCTAssertEqual(
+            configuration.actionTitle(isGameCenterAuthenticated: false),
+            "Sign In & Invite 1 Guest"
         )
-        XCTAssertTrue(
-            configuration.canStart(isGameCenterAuthenticated: true)
+        XCTAssertTrue(configuration.canStart)
+        XCTAssertEqual(
+            configuration.actionTitle(isGameCenterAuthenticated: true),
+            "Invite 1 Guest"
         )
     }
 
@@ -65,6 +76,7 @@ final class FamilyTableConfigurationTests: XCTestCase {
             configuration.seats.map { configuration.label(for: $0.id) },
             ["Bot 1", "Human 1", "Bot 2", "Human 2"]
         )
+        XCTAssertEqual(configuration.estimatedDurationMinutes, 90)
     }
 
     func testLastOpponentCanBeRemoved() {
@@ -74,8 +86,36 @@ final class FamilyTableConfigurationTests: XCTestCase {
             configuration.removeSeat(id: configuration.seats[0].id)
         )
         XCTAssertEqual(configuration.totalPlayerCount, 1)
+        XCTAssertFalse(configuration.canStart)
+    }
+
+    func testBotStrengthDefaultsToHardAndCanBeChangedPerSeat() {
+        var configuration = FamilyTableConfiguration(
+            seatKinds: [.bot, .human, .bot]
+        )
+        let botSeats = configuration.seats.filter { $0.kind == .bot }
+
+        XCTAssertEqual(configuration.botDifficulties, [.hard, .hard])
+        XCTAssertTrue(
+            configuration.setBotDifficulty(
+                .easy,
+                for: botSeats[0].id
+            )
+        )
+        XCTAssertTrue(
+            configuration.setBotDifficulty(
+                .medium,
+                for: botSeats[1].id
+            )
+        )
+        XCTAssertEqual(configuration.botDifficulties, [.easy, .medium])
         XCTAssertFalse(
-            configuration.canStart(isGameCenterAuthenticated: true)
+            configuration.setBotDifficulty(
+                .hard,
+                for: configuration.seats.first {
+                    $0.kind == .human
+                }!.id
+            )
         )
     }
 }

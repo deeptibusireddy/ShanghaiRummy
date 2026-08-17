@@ -84,6 +84,47 @@ final class GameSceneHitTestingTests: XCTestCase {
         )
     }
 
+    func testCardTapAllowsSmallFingerDrift() {
+        XCTAssertTrue(GameScene.isCardTap(dx: 12, dy: 8))
+        XCTAssertTrue(GameScene.isCardTap(dx: 18, dy: 0))
+        XCTAssertFalse(GameScene.isCardTap(dx: 18, dy: 1))
+    }
+
+    func testTapStagesOnlyWhileBuildingInitialContract() {
+        XCTAssertTrue(
+            GameScene.allowsTapToStage(
+                isLocalPlayersTurn: true,
+                phase: .awaitingMeldOrDiscard,
+                isBuyDecisionActive: false,
+                hasGoneDownThisRound: false
+            )
+        )
+        XCTAssertFalse(
+            GameScene.allowsTapToStage(
+                isLocalPlayersTurn: true,
+                phase: .awaitingMeldOrDiscard,
+                isBuyDecisionActive: false,
+                hasGoneDownThisRound: true
+            )
+        )
+        XCTAssertFalse(
+            GameScene.allowsTapToStage(
+                isLocalPlayersTurn: false,
+                phase: .awaitingMeldOrDiscard,
+                isBuyDecisionActive: false,
+                hasGoneDownThisRound: false
+            )
+        )
+        XCTAssertFalse(
+            GameScene.allowsTapToStage(
+                isLocalPlayersTurn: true,
+                phase: .awaitingDraw,
+                isBuyDecisionActive: false,
+                hasGoneDownThisRound: false
+            )
+        )
+    }
+
     func testCardCountLabelUsesSingularOnlyForOne() {
         XCTAssertEqual(GameScene.cardCountLabel(0), "0 cards")
         XCTAssertEqual(GameScene.cardCountLabel(1), "1 card")
@@ -113,7 +154,128 @@ final class GameSceneHitTestingTests: XCTestCase {
                 isLocalPlayersTurn: true,
                 isCPU: true
             ),
-            "BOT'S TURN"
+            "BOT  •  BOT TURN"
+        )
+    }
+
+    func testTurnAlertPlaysForEachLocalHumanActionPrompt() {
+        let local = UUID()
+        let remote = UUID()
+        let bot = UUID()
+
+        XCTAssertFalse(
+            GameScene.shouldPlayTurnAlert(
+                previousRound: nil,
+                previousActivePlayerId: nil,
+                previousPhase: nil,
+                currentRound: 1,
+                currentActivePlayerId: local,
+                localPlayerId: local,
+                cpuPlayerIds: [bot],
+                phase: .awaitingDraw
+            )
+        )
+        XCTAssertTrue(
+            GameScene.shouldPlayTurnAlert(
+                previousRound: 1,
+                previousActivePlayerId: remote,
+                previousPhase: .awaitingMeldOrDiscard,
+                currentRound: 1,
+                currentActivePlayerId: local,
+                localPlayerId: local,
+                cpuPlayerIds: [bot],
+                phase: .awaitingDraw
+            )
+        )
+        XCTAssertTrue(
+            GameScene.shouldPlayTurnAlert(
+                previousRound: 1,
+                previousActivePlayerId: local,
+                previousPhase: .awaitingDraw,
+                currentRound: 1,
+                currentActivePlayerId: local,
+                localPlayerId: local,
+                cpuPlayerIds: [bot],
+                phase: .awaitingMeldOrDiscard
+            )
+        )
+        XCTAssertTrue(
+            GameScene.shouldPlayTurnAlert(
+                previousRound: 1,
+                previousActivePlayerId: remote,
+                previousPhase: .awaitingDraw,
+                currentRound: 1,
+                currentActivePlayerId: local,
+                localPlayerId: local,
+                cpuPlayerIds: [bot],
+                phase: .awaitingDraw
+            )
+        )
+        XCTAssertFalse(
+            GameScene.shouldPlayTurnAlert(
+                previousRound: 1,
+                previousActivePlayerId: local,
+                previousPhase: .awaitingMeldOrDiscard,
+                currentRound: 1,
+                currentActivePlayerId: local,
+                localPlayerId: local,
+                cpuPlayerIds: [bot],
+                phase: .awaitingMeldOrDiscard
+            )
+        )
+        XCTAssertFalse(
+            GameScene.shouldPlayTurnAlert(
+                previousRound: 1,
+                previousActivePlayerId: local,
+                previousPhase: .awaitingDraw,
+                currentRound: 1,
+                currentActivePlayerId: bot,
+                localPlayerId: local,
+                cpuPlayerIds: [bot],
+                phase: .awaitingDraw
+            )
+        )
+    }
+
+    func testTurnAlertHandlesHotSeatAndNewRounds() {
+        let first = UUID()
+        let second = UUID()
+
+        XCTAssertTrue(
+            GameScene.shouldPlayTurnAlert(
+                previousRound: 1,
+                previousActivePlayerId: first,
+                previousPhase: .awaitingDraw,
+                currentRound: 1,
+                currentActivePlayerId: second,
+                localPlayerId: nil,
+                cpuPlayerIds: [],
+                phase: .awaitingMeldOrDiscard
+            )
+        )
+        XCTAssertTrue(
+            GameScene.shouldPlayTurnAlert(
+                previousRound: 1,
+                previousActivePlayerId: first,
+                previousPhase: .awaitingMeldOrDiscard,
+                currentRound: 2,
+                currentActivePlayerId: first,
+                localPlayerId: nil,
+                cpuPlayerIds: [],
+                phase: .awaitingDraw
+            )
+        )
+        XCTAssertFalse(
+            GameScene.shouldPlayTurnAlert(
+                previousRound: 1,
+                previousActivePlayerId: first,
+                previousPhase: .awaitingMeldOrDiscard,
+                currentRound: 1,
+                currentActivePlayerId: second,
+                localPlayerId: nil,
+                cpuPlayerIds: [],
+                phase: .roundEnded
+            )
         )
     }
 
@@ -151,6 +313,72 @@ final class GameSceneHitTestingTests: XCTestCase {
         )
     }
 
+    func testSixPlayerTopMeldLanesStaySeparated() {
+        let sceneSize = CGSize(width: 1366, height: 1024)
+        let horizontalEdgeInset: CGFloat = 24
+        let seatY = sceneSize.height - 24 - 60
+        let scale = GameScene.expandedOpponentMeldScale
+        let rowY = GameScene.centerTopMeldRowY(
+            sceneSize: sceneSize,
+            seatY: seatY,
+            horizontalEdgeInset: horizontalEdgeInset,
+            meldScale: scale
+        )
+        let meldTop = rowY + CardNode.size.height * scale / 2
+        let bannerBottom = GameScene.turnBannerFrame(
+            sceneSize: sceneSize,
+            horizontalEdgeInset: horizontalEdgeInset
+        ).minY
+        let cornerRowY = GameScene.topCornerMeldRowY(
+            sceneSize: sceneSize,
+            seatY: seatY,
+            horizontalEdgeInset: horizontalEdgeInset,
+            playerCount: 6,
+            cornerMeldScale: scale,
+            centerMeldScale: scale
+        )
+        let centerMeldBottom = rowY - CardNode.size.height * scale / 2
+        let cornerMeldTop = cornerRowY
+            + CardNode.size.height * scale / 2
+
+        XCTAssertLessThan(rowY, seatY)
+        XCTAssertEqual(
+            bannerBottom - meldTop,
+            GameScene.topMeldBannerGap,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            centerMeldBottom - cornerMeldTop,
+            GameScene.topMeldLaneGap,
+            accuracy: 0.001
+        )
+    }
+
+    func testFourPlayerTopMeldLaneStaysBelowTurnBanner() {
+        let sceneSize = CGSize(width: 1024, height: 768)
+        let horizontalEdgeInset: CGFloat = 24
+        let seatY = sceneSize.height - 24 - 60
+        let scale = GameScene.expandedOpponentMeldScale
+        let rowY = GameScene.centerTopMeldRowY(
+            sceneSize: sceneSize,
+            seatY: seatY,
+            horizontalEdgeInset: horizontalEdgeInset,
+            meldScale: scale
+        )
+        let meldTop = rowY + CardNode.size.height * scale / 2
+        let bannerBottom = GameScene.turnBannerFrame(
+            sceneSize: sceneSize,
+            horizontalEdgeInset: horizontalEdgeInset
+        ).minY
+
+        XCTAssertLessThan(rowY, seatY)
+        XCTAssertEqual(
+            bannerBottom - meldTop,
+            GameScene.topMeldBannerGap,
+            accuracy: 0.001
+        )
+    }
+
     func testSixPlayerStatusFixtureSeparatesLocalAndActivePlayers() {
         let state = GameFactory.demoSixPlayerStatus()
 
@@ -158,6 +386,10 @@ final class GameSceneHitTestingTests: XCTestCase {
         XCTAssertEqual(state.players[0].name, "You")
         XCTAssertEqual(state.players[state.currentTurnIndex].name, "Sam")
         XCTAssertNotEqual(state.currentPlayerId, state.players[0].id)
+        XCTAssertEqual(
+            state.melds.filter { $0.ownerId == state.currentPlayerId }.count,
+            2
+        )
     }
 
     func testContextAreaShowsOnlyRealEnabledActions() {
@@ -362,6 +594,79 @@ final class GameSceneHitTestingTests: XCTestCase {
                 meldGap: 8
             ),
             114.5
+        )
+    }
+
+    func testExpandedIPadMeldWorkspacePreservesCompactFallbacks() {
+        XCTAssertFalse(GameScene.usesExpandedIPadLayout(sceneHeight: 402))
+        XCTAssertTrue(GameScene.usesExpandedIPadLayout(sceneHeight: 1024))
+        XCTAssertEqual(
+            GameScene.preferredOpponentMeldScale(sceneHeight: 402),
+            0.62
+        )
+        XCTAssertEqual(
+            GameScene.preferredOpponentMeldScale(sceneHeight: 1024),
+            0.78
+        )
+        XCTAssertEqual(
+            GameScene.preferredOwnMeldScale(sceneHeight: 402),
+            0.68
+        )
+        XCTAssertEqual(
+            GameScene.preferredOwnMeldScale(sceneHeight: 1024),
+            0.86
+        )
+        XCTAssertEqual(GameScene.minimumMeldScale, 0.34)
+        XCTAssertEqual(GameScene.stagingTrayHeight(sceneHeight: 402), 56)
+        XCTAssertEqual(GameScene.stagingTrayHeight(sceneHeight: 1024), 112)
+        XCTAssertEqual(GameScene.stagedCardScale(sceneHeight: 402), 0.44)
+        XCTAssertEqual(GameScene.stagedCardScale(sceneHeight: 1024), 0.76)
+
+        XCTAssertEqual(GameScene.ownMeldGap, 14)
+        XCTAssertEqual(GameScene.ownMeldHandGap, 12)
+        XCTAssertEqual(GameScene.stagingTrayHandGap, 8)
+        XCTAssertEqual(GameScene.standardOpponentMeldGap, 12)
+        XCTAssertEqual(GameScene.crowdedOpponentMeldGap, 8)
+        XCTAssertEqual(GameScene.meldCardStepFraction, 0.50)
+        XCTAssertEqual(GameScene.minimumMeldStepFraction, 0.25)
+
+        let handRowY: CGFloat = 150
+        let handCardHeight: CGFloat = 96
+        let meldRowY = GameScene.ownMeldRowY(
+            handRowY: handRowY,
+            handCardHeight: handCardHeight,
+            meldScale: GameScene.expandedOwnMeldScale
+        )
+        let handTop = handRowY + handCardHeight / 2
+        let meldBottom = meldRowY
+            - CardNode.size.height * GameScene.expandedOwnMeldScale / 2
+        XCTAssertEqual(
+            meldBottom - handTop,
+            GameScene.ownMeldHandGap,
+            accuracy: 0.001
+        )
+
+        let trayY = GameScene.stagingTrayY(
+            handRowY: handRowY,
+            handCardHeight: handCardHeight,
+            sceneHeight: 1024
+        )
+        let trayBottom = trayY
+            - GameScene.stagingTrayHeight(sceneHeight: 1024) / 2
+        XCTAssertEqual(
+            trayBottom - handTop,
+            GameScene.stagingTrayHandGap,
+            accuracy: 0.001
+        )
+
+        XCTAssertEqual(
+            GameScene.greedyMeldRowIndices(
+                cardCounts: [5, 5, 5],
+                scale: GameScene.expandedOpponentMeldScale,
+                meldGap: GameScene.crowdedOpponentMeldGap,
+                availableWidth: 442
+            ),
+            [[0, 1], [2]]
         )
     }
 

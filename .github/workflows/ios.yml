@@ -9,9 +9,12 @@ on:
 
 jobs:
   build-and-test:
-    name: Build & Test (iOS Simulator)
+    name: Build & Test (iPad)
     runs-on: macos-15
     timeout-minutes: 20
+    env:
+      DEVICE_FAMILY: iPad
+      RESULT_BUNDLE: TestResults-iPad.xcresult
 
     steps:
       - name: Checkout
@@ -26,26 +29,40 @@ jobs:
       - name: Generate Xcode project
         run: xcodegen generate
 
+      - name: Verify iPad-only target
+        run: |
+          TARGET_DEVICE_FAMILY=$(xcodebuild \
+            -project ShanghaiRummy.xcodeproj \
+            -target ShanghaiRummy \
+            -configuration Debug \
+            -showBuildSettings \
+            | awk -F ' = ' '/TARGETED_DEVICE_FAMILY/ { print $2; exit }')
+          if [ "$TARGET_DEVICE_FAMILY" != "2" ]; then
+            echo "Expected TARGETED_DEVICE_FAMILY=2, got '$TARGET_DEVICE_FAMILY'"
+            exit 1
+          fi
+
       - name: Show available simulators
         run: xcrun simctl list devices available
 
       - name: Build & test
         run: |
           set -o pipefail
-          # Pick the first available iPhone runtime dynamically instead of pinning
-          # to a specific iOS version — CI runners rotate what's preinstalled.
+          # Pick the first available device in the iPad family instead of
+          # pinning to a runtime that may rotate off the hosted runner.
           DEVICE_ID=$(xcrun simctl list devices available -j \
-            | python3 -c 'import json,sys; d=json.load(sys.stdin)["devices"]; \
-              picks=[dev for k,v in d.items() if "iOS" in k for dev in v if "iPhone" in dev["name"]]; \
+            | python3 -c 'import json,os,sys; d=json.load(sys.stdin)["devices"]; \
+              family=os.environ["DEVICE_FAMILY"]; \
+              picks=[dev for k,v in d.items() if "iOS" in k for dev in v if family in dev["name"]]; \
               print(picks[0]["udid"])')
-          echo "Using simulator: $DEVICE_ID"
+          echo "Using $DEVICE_FAMILY simulator: $DEVICE_ID"
           xcodebuild \
             -project ShanghaiRummy.xcodeproj \
             -scheme ShanghaiRummy \
             -sdk iphonesimulator \
             -destination "platform=iOS Simulator,id=$DEVICE_ID" \
             -configuration Debug \
-            -resultBundlePath TestResults.xcresult \
+            -resultBundlePath "$RESULT_BUNDLE" \
             -retry-tests-on-failure \
             CODE_SIGNING_ALLOWED=NO \
             build test \
@@ -54,9 +71,9 @@ jobs:
       - name: Extract screenshots from test results
         if: always()
         run: |
-          if [ -d TestResults.xcresult ]; then
+          if [ -d "$RESULT_BUNDLE" ]; then
             mkdir -p screenshots
-            xcparse screenshots TestResults.xcresult screenshots/ || true
+            xcparse screenshots "$RESULT_BUNDLE" screenshots/ || true
             ls -la screenshots/ || true
           else
             echo "No xcresult bundle found — skipping"
@@ -66,7 +83,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: app-screenshots
+          name: app-screenshots-iPad
           path: screenshots/
           if-no-files-found: warn
 
@@ -74,6 +91,141 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: test-results
-          path: TestResults.xcresult
+          name: test-results-iPad
+          path: ${{ env.RESULT_BUNDLE }}
           if-no-files-found: ignore
+
+  game-simulation:
+    name: Simulate ${{ matrix.player_count }} Players (${{ matrix.batch.start }}-${{ matrix.batch.end }})
+    if: ${{ github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      max-parallel: 20
+      matrix:
+        player_count: [2, 3, 4, 5, 6]
+        batch:
+          - { start: 1, end: 50, slug: "0001-0050" }
+          - { start: 51, end: 100, slug: "0051-0100" }
+          - { start: 101, end: 150, slug: "0101-0150" }
+          - { start: 151, end: 200, slug: "0151-0200" }
+          - { start: 201, end: 250, slug: "0201-0250" }
+          - { start: 251, end: 300, slug: "0251-0300" }
+          - { start: 301, end: 350, slug: "0301-0350" }
+          - { start: 351, end: 400, slug: "0351-0400" }
+          - { start: 401, end: 450, slug: "0401-0450" }
+          - { start: 451, end: 500, slug: "0451-0500" }
+          - { start: 501, end: 550, slug: "0501-0550" }
+          - { start: 551, end: 600, slug: "0551-0600" }
+          - { start: 601, end: 650, slug: "0601-0650" }
+          - { start: 651, end: 700, slug: "0651-0700" }
+          - { start: 701, end: 750, slug: "0701-0750" }
+          - { start: 751, end: 800, slug: "0751-0800" }
+          - { start: 801, end: 850, slug: "0801-0850" }
+          - { start: 851, end: 900, slug: "0851-0900" }
+          - { start: 901, end: 950, slug: "0901-0950" }
+          - { start: 951, end: 1000, slug: "0951-1000" }
+    env:
+      PLAYER_COUNT: ${{ matrix.player_count }}
+      BATCH_START: ${{ matrix.batch.start }}
+      BATCH_SLUG: ${{ matrix.batch.slug }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Show Swift version
+        run: swift --version
+
+      - name: Build release simulator
+        run: |
+          swift build -c release --product GameSimulationCLI
+          echo "SIMULATOR=$(swift build -c release --show-bin-path)/GameSimulationCLI" \
+            >> "$GITHUB_ENV"
+
+      - name: Simulate 50 games
+        run: |
+          $SIMULATOR \
+            --players "$PLAYER_COUNT" \
+            --start "$BATCH_START" \
+            --count 50 \
+            --output "simulation-reports/${PLAYER_COUNT}p-${BATCH_SLUG}.json"
+
+      - name: Upload simulation batch
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: game-simulation-${{ matrix.player_count }}p-${{ matrix.batch.slug }}
+          path: simulation-reports/
+          if-no-files-found: warn
+
+  simulation-summary:
+    name: Verify 5,000 Simulated Games
+    if: ${{ always() && github.event_name == 'workflow_dispatch' }}
+    needs: game-simulation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download simulation batches
+        uses: actions/download-artifact@v4
+        with:
+          pattern: game-simulation-*
+          path: simulation-reports
+          merge-multiple: true
+
+      - name: Verify simulation results
+        run: |
+          python3 - <<'PY'
+          import glob
+          import json
+          import sys
+
+          paths = sorted(glob.glob("simulation-reports/*.json"))
+          reports = []
+          for path in paths:
+              with open(path, encoding="utf-8") as handle:
+                  reports.append(json.load(handle))
+
+          requested = sum(report["gamesRequested"] for report in reports)
+          completed = sum(report["gamesCompleted"] for report in reports)
+          failures = [
+              failure
+              for report in reports
+              for failure in report["failures"]
+          ]
+          by_player = {
+              player_count: sum(
+                  report["gamesCompleted"]
+                  for report in reports
+                  if report["playerCount"] == player_count
+              )
+              for player_count in range(2, 7)
+          }
+          print(
+              f"{len(reports)} batches, {completed}/{requested} games completed, "
+              f"{len(failures)} failures"
+          )
+          print(f"Completed by player count: {by_player}")
+          if (
+              len(reports) != 100
+              or requested != 5000
+              or completed != 5000
+              or any(count != 1000 for count in by_player.values())
+              or failures
+          ):
+              for failure in failures[:20]:
+                  print(
+                      f"{failure['playerCount']}p game {failure['gameNumber']}: "
+                      f"{failure['message']}",
+                      file=sys.stderr,
+                  )
+              sys.exit(1)
+          PY
+
+      - name: Upload combined simulation results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: game-simulation-results
+          path: simulation-reports/
+          if-no-files-found: warn

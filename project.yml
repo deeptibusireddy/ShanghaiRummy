@@ -11,7 +11,7 @@ settings:
     SWIFT_VERSION: "5.9"
     DEVELOPMENT_TEAM: "" # fill in your Apple Team ID on Mac
     MARKETING_VERSION: "1.0"
-    CURRENT_PROJECT_VERSION: "29"
+    CURRENT_PROJECT_VERSION: "42"
 
 targets:
   ShanghaiRummy:
@@ -24,13 +24,17 @@ targets:
     info:
       path: Sources/ShanghaiRummy/Info.plist
       properties:
-        CFBundleDisplayName: Shanghai Rummy
+        CFBundleDisplayName: Shanghai Rummy Nights
         ITSAppUsesNonExemptEncryption: false
         UILaunchScreen: {}
         UIRequiredDeviceCapabilities: [arm64]
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UIRequiresFullScreen: true
     entitlements:
       path: Sources/ShanghaiRummy/ShanghaiRummy.entitlements
       properties:
@@ -41,7 +45,7 @@ targets:
         GENERATE_INFOPLIST_FILE: NO
         ENABLE_PREVIEWS: YES
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
-        TARGETED_DEVICE_FAMILY: "1"
+        TARGETED_DEVICE_FAMILY: "2"
 
   ShanghaiRummyTests:
     type: bundle.unit-test

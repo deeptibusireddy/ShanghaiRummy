@@ -11,8 +11,11 @@ final class GameViewModelStagingTests: XCTestCase {
         GameViewModel.newHotSeat(playerNames: ["A", "B"], seed: 42)
     }
 
-    private func makeVM(hand: [Card]) -> GameViewModel {
-        let players = [Player(name: "A", hand: hand), Player(name: "B")]
+    private func makeVM(hand: [Card], level: Int = 1) -> GameViewModel {
+        let players = [
+            Player(name: "A", hand: hand, currentLevel: level),
+            Player(name: "B", currentLevel: level),
+        ]
         let state = GameState(
             players: players,
             currentRound: 1,
@@ -56,6 +59,23 @@ final class GameViewModelStagingTests: XCTestCase {
         XCTAssertFalse(vm.stagedCardIds.contains(bogus))
     }
 
+    func testCanSaveTripletOfTwosToContractDraft() {
+        let twos = [
+            Card(suit: .clubs, rank: .two),
+            Card(suit: .hearts, rank: .two),
+            Card(suit: .spades, rank: .two),
+        ]
+        let vm = makeVM(hand: twos + [
+            Card(suit: .diamonds, rank: .three),
+        ])
+        for card in twos {
+            vm.toggleStaged(cardId: card.id)
+        }
+
+        XCTAssertTrue(vm.saveStagedAsMeld())
+        XCTAssertEqual(vm.contractDraft.first?.map(\.id), twos.map(\.id))
+    }
+
     func testStagingClearsOnTurnAdvance() {
         let vm = makeVM()
         // Stage a card, then complete the purchase round and discard.
@@ -78,7 +98,7 @@ final class GameViewModelStagingTests: XCTestCase {
         XCTAssertTrue(vm.stagedCardIds.isEmpty)
     }
 
-    func testRankSortPutsNaturalCardsInRankOrderAndWildsLast() {
+    func testRankSortPutsAceAfterKingAndWildsLast() {
         let king = Card(suit: .hearts, rank: .king)
         let three = Card(suit: .clubs, rank: .three)
         let ace = Card(suit: .spades, rank: .ace)
@@ -89,10 +109,10 @@ final class GameViewModelStagingTests: XCTestCase {
         vm.sortHandByRank()
 
         XCTAssertEqual(vm.orderedHand.map(\.id),
-                       [ace.id, three.id, five.id, king.id, joker.id])
+                       [three.id, five.id, king.id, ace.id, joker.id])
     }
 
-    func testSuitSortUsesConsistentSuitGroupsAndWildsLast() {
+    func testSuitSortAlternatesBlackAndRedAndKeepsWildsLast() {
         let king = Card(suit: .hearts, rank: .king)
         let three = Card(suit: .clubs, rank: .three)
         let ace = Card(suit: .spades, rank: .ace)
@@ -103,7 +123,7 @@ final class GameViewModelStagingTests: XCTestCase {
         vm.sortHandBySuit()
 
         XCTAssertEqual(vm.orderedHand.map(\.id),
-                       [three.id, five.id, king.id, ace.id, joker.id])
+                       [three.id, king.id, ace.id, five.id, joker.id])
     }
 
     func testRelativeReorderRemainsCorrectWhileAnotherCardIsStaged() {
@@ -166,5 +186,39 @@ final class GameViewModelStagingTests: XCTestCase {
         XCTAssertEqual(vm.contractDraft.count, 1)
         XCTAssertEqual(vm.contractDraft[0].first?.id, joker.id)
         XCTAssertTrue(vm.stagedCardIds.isEmpty)
+    }
+
+    func testFinalAmbiguousSequenceChoicePresentsContractReadyPrompt() throws {
+        let triplet = [
+            Card(suit: .hearts, rank: .king),
+            Card(suit: .spades, rank: .king),
+            Card(suit: .diamonds, rank: .king),
+        ]
+        let sequence = [
+            Card(suit: .diamonds, rank: .nine),
+            Card(suit: .diamonds, rank: .ten),
+            Card(suit: .diamonds, rank: .jack),
+            Card.joker(),
+        ]
+        let leftover = Card(suit: .clubs, rank: .three)
+        let vm = makeVM(
+            hand: triplet + sequence + [leftover],
+            level: 2
+        )
+        for card in triplet {
+            vm.toggleStaged(cardId: card.id)
+        }
+        XCTAssertTrue(vm.saveStagedAsMeld())
+        XCTAssertNil(vm.contractReadyPrompt)
+        for card in sequence {
+            vm.toggleStaged(cardId: card.id)
+        }
+
+        XCTAssertTrue(vm.saveStagedAsMeld())
+        XCTAssertNil(vm.contractReadyPrompt)
+        let options = try XCTUnwrap(vm.pendingInitialSequenceChoice?.options)
+
+        XCTAssertTrue(vm.chooseInitialSequenceArrangement(at: options.startIndex))
+        XCTAssertEqual(vm.contractReadyPrompt, .readyToPutDown)
     }
 }

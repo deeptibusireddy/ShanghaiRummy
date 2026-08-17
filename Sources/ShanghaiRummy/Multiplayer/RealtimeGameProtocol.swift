@@ -7,7 +7,17 @@ struct RealtimeParticipantBinding: Codable, Equatable, Sendable {
 }
 
 struct RealtimeGameSetup: Codable, Equatable, Sendable {
-    let botCount: Int
+    let botDifficulties: [BotDifficulty]
+
+    var botCount: Int { botDifficulties.count }
+
+    init(botDifficulties: [BotDifficulty]) {
+        self.botDifficulties = botDifficulties
+    }
+
+    init(botCount: Int) {
+        botDifficulties = Array(repeating: .hard, count: botCount)
+    }
 }
 
 struct RealtimeGameSnapshot: Codable, Equatable, Sendable {
@@ -15,6 +25,7 @@ struct RealtimeGameSnapshot: Codable, Equatable, Sendable {
     let state: GameState
     let participants: [RealtimeParticipantBinding]
     let botPlayerIds: [UUID]
+    let botDifficultiesByPlayer: [UUID: BotDifficulty]
     let hostGamePlayerId: String
     let lastAppliedRequestId: UUID?
 
@@ -23,6 +34,7 @@ struct RealtimeGameSnapshot: Codable, Equatable, Sendable {
         state: GameState,
         participants: [RealtimeParticipantBinding],
         botPlayerIds: [UUID] = [],
+        botDifficultiesByPlayer: [UUID: BotDifficulty]? = nil,
         hostGamePlayerId: String,
         lastAppliedRequestId: UUID? = nil
     ) {
@@ -30,12 +42,24 @@ struct RealtimeGameSnapshot: Codable, Equatable, Sendable {
         self.state = state
         self.participants = participants
         self.botPlayerIds = botPlayerIds
+        var difficulties = Dictionary(
+            uniqueKeysWithValues: botPlayerIds.map { ($0, BotDifficulty.hard) }
+        )
+        for (playerId, difficulty) in botDifficultiesByPlayer ?? [:]
+            where difficulties[playerId] != nil {
+            difficulties[playerId] = difficulty
+        }
+        self.botDifficultiesByPlayer = difficulties
         self.hostGamePlayerId = hostGamePlayerId
         self.lastAppliedRequestId = lastAppliedRequestId
     }
 
     func binding(forGamePlayerId id: String) -> RealtimeParticipantBinding? {
         participants.first(where: { $0.gamePlayerId == id })
+    }
+
+    func botDifficulty(for playerId: UUID) -> BotDifficulty {
+        botDifficultiesByPlayer[playerId] ?? .hard
     }
 
     func hasValidPlayerIdentityLayout() -> Bool {
@@ -53,6 +77,7 @@ struct RealtimeGameSnapshot: Codable, Equatable, Sendable {
             && participantIdSet.count == participantIds.count
             && Set(gamePlayerIds).count == gamePlayerIds.count
             && botIdSet.count == botPlayerIds.count
+            && Set(botDifficultiesByPlayer.keys) == botIdSet
             && Set(stateIds).count == stateIds.count
             && participantIdSet.isDisjoint(with: botIdSet)
             && participantIdSet.union(botIdSet) == Set(stateIds)
@@ -102,7 +127,7 @@ enum RealtimeGameMessage: Codable, Equatable, Sendable {
 }
 
 enum RealtimeMessageCodec {
-    static let protocolVersion = 3
+    static let protocolVersion = 4
 
     static func playerGroup(botCount: Int) -> Int {
         protocolVersion * 10 + botCount
@@ -161,7 +186,10 @@ enum RealtimeBotDriver {
         }
         return CPUPlayer.nextAction(
             for: snapshot.state.activePlayerId,
-            in: snapshot.state
+            in: snapshot.state,
+            difficulty: snapshot.botDifficulty(
+                for: snapshot.state.activePlayerId
+            )
         )
     }
 }
@@ -267,6 +295,8 @@ struct RealtimeGameAuthority {
             state: state,
             participants: snapshot.participants,
             botPlayerIds: snapshot.botPlayerIds,
+            botDifficultiesByPlayer:
+                snapshot.botDifficultiesByPlayer,
             hostGamePlayerId: snapshot.hostGamePlayerId,
             lastAppliedRequestId: lastAppliedRequestId
         )
