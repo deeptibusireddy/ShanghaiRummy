@@ -105,6 +105,9 @@ percentages of the game surface so they scale to any device.
 | **Utility controls** | Top right: Score, Rank, and Suit |
 | **Leave control** | Top left; opens a confirmation instead of ending the game immediately |
 
+- **Rank sorting:** Ace is displayed after King, while live wild cards remain
+  at the end of the hand. Suit sorting keeps its existing grouping.
+
 ## Seat layouts by player count
 
 Your seat is always at the bottom. Opponents fill the other edges.
