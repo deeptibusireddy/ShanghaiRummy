@@ -53,6 +53,7 @@ final class ScreenshotUITests: XCTestCase {
         start.tap()
 
         XCTAssertTrue(app.buttons["quit-game"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["turn-sound-settings"].exists)
         XCTAssertTrue(
             app.descendants(matching: .any)["opening-seat-draw"]
                 .waitForExistence(timeout: 5)
@@ -193,6 +194,40 @@ final class ScreenshotUITests: XCTestCase {
         XCTAssertTrue(alert.waitForExistence(timeout: 2))
         alert.buttons["Leave Game"].tap()
         XCTAssertTrue(createTable.waitForExistence(timeout: 5))
+    }
+
+    func testTurnSoundSettingsOfferPreviewsAndToggle() throws {
+        app.launch()
+
+        let soundSettings = app.buttons["home-turn-sound-settings"]
+        XCTAssertTrue(soundSettings.waitForExistence(timeout: 5))
+        soundSettings.tap()
+
+        XCTAssertTrue(
+            app.descendants(matching: .any)["turn-sound-settings-view"]
+                .waitForExistence(timeout: 3)
+        )
+        let enabledToggle = app.switches["turn-sounds-enabled"]
+        XCTAssertTrue(enabledToggle.exists)
+        XCTAssertTrue(enabledToggle.isHittable)
+
+        for sound in ["classic", "crystal", "soft-bell", "woodblock"] {
+            XCTAssertTrue(app.buttons["turn-sound-\(sound)"].exists)
+        }
+
+        app.buttons["turn-sound-crystal"].tap()
+        dismissSoundUnavailableAlertIfNeeded()
+        snapshot(named: "01-turn-sound-settings")
+
+        app.buttons["close-turn-sound-settings"].tap()
+        XCTAssertTrue(soundSettings.waitForExistence(timeout: 3))
+    }
+
+    private func dismissSoundUnavailableAlertIfNeeded() {
+        let alert = app.alerts["Sound Unavailable"]
+        if alert.waitForExistence(timeout: 0.5) {
+            alert.buttons["OK"].tap()
+        }
     }
 
     func testCaptureMidGamePreview() throws {

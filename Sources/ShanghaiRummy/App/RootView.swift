@@ -8,6 +8,7 @@ struct RootView: View {
     @State private var familyTableConfiguration =
         FamilyTableConfiguration()
     @State private var pendingFamilyTable: FamilyTableConfiguration?
+    @State private var isShowingTurnSoundSettings = false
     private let entryFinalistPreview = EntryFinalistLaunchConfiguration.current()
 
     var body: some View {
@@ -28,6 +29,9 @@ struct RootView: View {
             }
         } else {
             homeMenu
+                .sheet(isPresented: $isShowingTurnSoundSettings) {
+                    TurnSoundSettingsView()
+                }
                 .fullScreenCover(
                     isPresented: $showingFamilyTableSetup,
                     onDismiss: startPendingFamilyTable
@@ -306,6 +310,9 @@ struct RootView: View {
                 Task {
                     await gameCenter.authenticate()
                 }
+            },
+            onSoundSettings: {
+                isShowingTurnSoundSettings = true
             }
         )
     }

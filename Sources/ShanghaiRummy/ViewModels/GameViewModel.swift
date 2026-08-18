@@ -736,9 +736,7 @@ public final class GameViewModel: ObservableObject {
 
     private func rankSortKey(_ card: Card) -> String {
         let wildBucket = card.isWild ? 1 : 0
-        let rank = card.rank == .ace
-            ? Rank.king.rawValue + 1
-            : (card.rank?.rawValue ?? 99)
+        let rank = handSortRank(card)
         let suit = suitIndex(card.suit)
         return String(format: "%01d-%02d-%01d-%@",
                       wildBucket, rank, suit, card.id.uuidString)
@@ -747,9 +745,15 @@ public final class GameViewModel: ObservableObject {
     private func suitSortKey(_ card: Card) -> String {
         let wildBucket = card.isWild ? 1 : 0
         let suit = suitIndex(card.suit)
-        let rank = card.rank?.rawValue ?? 99
+        let rank = handSortRank(card)
         return String(format: "%01d-%01d-%02d-%@",
                       wildBucket, suit, rank, card.id.uuidString)
+    }
+
+    private func handSortRank(_ card: Card) -> Int {
+        card.rank == .ace
+            ? Rank.king.rawValue + 1
+            : (card.rank?.rawValue ?? 99)
     }
 
     private func suitIndex(_ suit: Suit?) -> Int {

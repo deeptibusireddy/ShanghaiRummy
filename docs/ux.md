@@ -363,9 +363,15 @@ with warning feedback.
   seconds, while longer meld sequences progress one readable step at a time.
 
 Haptics (M4):
-- Player prompt: short two-note chime plus a medium impact on supported devices,
-  emitted once when a local human receives a draw, buy, or meld/discard prompt.
+- Player prompt: selected notification tone plus a medium impact on supported
+  devices, emitted once when a local human receives a draw, buy, or
+  meld/discard prompt. The first actionable prompt sounds after the opening
+  seating ceremony, and hot-seat prompts sound after the privacy handoff.
   Repeated state updates within the same prompt stay silent.
+- Turn sounds: enabled by default and persisted across launches. Players can
+  switch them off or preview/select Classic Chime, Crystal, Soft Bell, or
+  Woodblock from the home screen or table. Deliberate previews remain audible
+  while turn alerts are switched off; haptics remain enabled.
 - Draw: `.light`
 - Discard: `.rigid`
 - Go Down / Go Out: `.success`

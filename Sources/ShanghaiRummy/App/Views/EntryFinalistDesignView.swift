@@ -81,7 +81,8 @@ struct EntryFinalistPreviewHost: View {
                     isGameCenterAuthenticated: true,
                     errorMessage: nil,
                     onCreateTable: { screen = .invite },
-                    onAuthenticate: {}
+                    onAuthenticate: {},
+                    onSoundSettings: {}
                 )
             case (.bundAfterDark, .invite):
                 BundAfterDarkTableView(
@@ -364,24 +365,29 @@ struct MidnightDecoTableView: View {
 
 struct BundAfterDarkHomeView: View {
     private let palette = EntryFinalistPalette.bundAfterDark
+    @AppStorage(TurnSoundPreferences.enabledKey)
+    private var turnSoundsEnabled = true
     let localPlayerName: String
     let isGameCenterAuthenticated: Bool
     let errorMessage: String?
     let onCreateTable: () -> Void
     let onAuthenticate: () -> Void
+    let onSoundSettings: () -> Void
 
     init(
         localPlayerName: String,
         isGameCenterAuthenticated: Bool,
         errorMessage: String?,
         onCreateTable: @escaping () -> Void,
-        onAuthenticate: @escaping () -> Void
+        onAuthenticate: @escaping () -> Void,
+        onSoundSettings: @escaping () -> Void
     ) {
         self.localPlayerName = localPlayerName
         self.isGameCenterAuthenticated = isGameCenterAuthenticated
         self.errorMessage = errorMessage
         self.onCreateTable = onCreateTable
         self.onAuthenticate = onAuthenticate
+        self.onSoundSettings = onSoundSettings
     }
 
     var body: some View {
@@ -461,6 +467,27 @@ struct BundAfterDarkHomeView: View {
                                     "sign-in-game-center"
                                 )
                             }
+
+                            Button(action: onSoundSettings) {
+                                Label(
+                                    "Sounds",
+                                    systemImage: turnSoundsEnabled
+                                        ? "speaker.wave.2.fill"
+                                        : "speaker.slash.fill"
+                                )
+                            }
+                            .buttonStyle(EntrySecondaryButtonStyle(
+                                foreground: palette.text,
+                                stroke: palette.muted
+                            ))
+                            .accessibilityLabel(
+                                turnSoundsEnabled
+                                    ? "Turn sound settings, sounds on"
+                                    : "Turn sound settings, sounds off"
+                            )
+                            .accessibilityIdentifier(
+                                "home-turn-sound-settings"
+                            )
                         }
                         .padding(.top, 28)
 
