@@ -298,7 +298,7 @@ struct LiveScorecardView: View {
                 design: .rounded
             ))
             .foregroundStyle(Color(theme.contractPillText))
-            .frame(width: 70, minHeight: 30)
+            .frame(width: 70, height: 30)
             .background(
                 Color(theme.scoreChipBg),
                 in: Capsule()
