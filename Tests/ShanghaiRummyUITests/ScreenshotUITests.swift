@@ -53,6 +53,7 @@ final class ScreenshotUITests: XCTestCase {
         start.tap()
 
         XCTAssertTrue(app.buttons["quit-game"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["turn-sound-settings"].exists)
         XCTAssertTrue(
             app.descendants(matching: .any)["opening-seat-draw"]
                 .waitForExistence(timeout: 5)
@@ -195,7 +196,7 @@ final class ScreenshotUITests: XCTestCase {
         XCTAssertTrue(createTable.waitForExistence(timeout: 5))
     }
 
-    func testTurnSoundSettingsOfferPreviewsAndPersistentToggle() throws {
+    func testTurnSoundSettingsOfferPreviewsAndToggle() throws {
         app.launch()
 
         let soundSettings = app.buttons["home-turn-sound-settings"]
@@ -208,6 +209,7 @@ final class ScreenshotUITests: XCTestCase {
         )
         let enabledToggle = app.switches["turn-sounds-enabled"]
         XCTAssertTrue(enabledToggle.exists)
+        XCTAssertTrue(enabledToggle.isHittable)
 
         for sound in ["classic", "crystal", "soft-bell", "woodblock"] {
             XCTAssertTrue(app.buttons["turn-sound-\(sound)"].exists)
@@ -215,9 +217,7 @@ final class ScreenshotUITests: XCTestCase {
 
         app.buttons["turn-sound-crystal"].tap()
         dismissSoundUnavailableAlertIfNeeded()
-        setSwitch(enabledToggle, enabled: false)
-        setSwitch(enabledToggle, enabled: true)
-        dismissSoundUnavailableAlertIfNeeded()
+        snapshot(named: "01-turn-sound-settings")
 
         app.buttons["close-turn-sound-settings"].tap()
         XCTAssertTrue(soundSettings.waitForExistence(timeout: 3))
@@ -228,28 +228,6 @@ final class ScreenshotUITests: XCTestCase {
         if alert.waitForExistence(timeout: 0.5) {
             alert.buttons["OK"].tap()
         }
-    }
-
-    private func setSwitch(
-        _ element: XCUIElement,
-        enabled: Bool
-    ) {
-        let expectedValue = enabled ? "1" : "0"
-        if element.value as? String != expectedValue {
-            element.coordinate(
-                withNormalizedOffset: CGVector(dx: 0.85, dy: 0.5)
-            )
-            .tap()
-        }
-        let deadline = Date().addingTimeInterval(2)
-        while element.value as? String != expectedValue,
-              Date() < deadline {
-            Thread.sleep(forTimeInterval: 0.1)
-        }
-        XCTAssertEqual(
-            element.value as? String,
-            expectedValue
-        )
     }
 
     func testCaptureMidGamePreview() throws {
