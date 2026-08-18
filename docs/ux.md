@@ -48,9 +48,24 @@ file first, then the scene.
   Hard is selected by default. Easy makes relaxed local choices, Medium
   protects its contract without advanced opponent-aware tactics, and Hard
   uses the full existing strategy.
-- **Starting play:** Bot-only tables begin immediately. Tables with Human
-  seats authenticate with Game Center when needed, then request exactly the
-  selected number of remote players.
+- **Starting play:** Bot-only tables begin immediately. Mixed tables reserve
+  the complete roster before Game Center opens, including each Bot and its
+  selected strength.
+- **Gathering the Table:** Human invitations use a second Midnight Deco state
+  rather than returning to Home or switching to a generic progress screen.
+  The host, Bots, invited people, and unused places remain visible throughout
+  the invitation and connection process.
+- **Game Center handoff:** Apple's picker is treated as a temporary guest
+  chooser. A branded table ticket remains over it with the total player count,
+  reserved Bots, Bot strengths, and exact number of people to choose.
+- **Live invitation status:** Human places move through Choose, Joining, and
+  Ready while every Bot remains visibly Ready. Canceling the picker returns to
+  the same reserved roster, where the host can retry or edit the table without
+  rebuilding it.
+- **Seating transition:** When all invited people are connected, the assembly
+  screen announces that everyone is ready and leads directly into the opening
+  draw. The roster is explicitly a guest list; seating order is not implied
+  until the cards are drawn.
 - **Opening draw:** Once the roster is complete, every player receives a
   face-up random non-joker card. After a short reveal, the cards animate into
   highest-to-lowest clockwise order. Ace is high, tied ranks redraw, the
@@ -372,6 +387,12 @@ Haptics (M4):
   switch them off or preview/select Classic Chime, Crystal, Soft Bell, or
   Woodblock from the home screen or table. Deliberate previews remain audible
   while turn alerts are switched off; haptics remain enabled.
+- Contract confirmation: when saved melds complete the current contract, a
+  twilight panel uses the table's amber success treatment, level/contract
+  summary, saved-meld count, and clear Put Down Contract / Review Melds
+  hierarchy. Attempting to discard while still ready presents the same panel
+  with coral warning treatment, a preview of the selected discard, and an
+  explicit warning that Discard Anyway clears the saved arrangement.
 - Draw: `.light`
 - Discard: `.rigid`
 - Go Down / Go Out: `.success`

@@ -112,10 +112,10 @@ struct GameContainerView: View {
                     stage: stage,
                     draws: vm.state.openingDraws,
                     players: vm.state.players,
-                    theme: theme
-                ) {
-                    vm.completeOpeningDrawCeremony()
-                }
+                    theme: theme,
+                    onShowSeatOrder: vm.showOpeningSeatOrder,
+                    onContinue: vm.completeOpeningDrawCeremony
+                )
             } else if let choice = vm.pendingInitialSequenceChoice {
                 initialSequenceChoiceOverlay(choice)
             } else if let choice = vm.pendingSequenceEndChoice {
@@ -139,6 +139,9 @@ struct GameContainerView: View {
 
     private func runOpeningDrawCeremony() async {
         if vm.openingDrawStage == .drawing {
+            if CommandLine.arguments.contains("--ui-testing") {
+                return
+            }
             do {
                 try await Task.sleep(
                     for: GameViewModel.openingDrawRevealDuration
@@ -176,72 +179,33 @@ struct GameContainerView: View {
     private func contractReadyOverlay(
         _ prompt: GameViewModel.ContractReadyPrompt
     ) -> some View {
-        ZStack {
-            Color.black.opacity(0.48)
-                .ignoresSafeArea()
-                .contentShape(Rectangle())
-
-            VStack(spacing: 14) {
-                Text(contractReadyTitle(for: prompt))
-                    .font(.system(.title2, design: .rounded, weight: .bold))
-                    .multilineTextAlignment(.center)
-
-                Text(contractReadyMessage(for: prompt))
-                    .font(.system(.body, design: .rounded))
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-
-                Button("PUT DOWN NOW") {
-                    vm.confirmGoDown()
-                }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
-                .accessibilityIdentifier("contract-ready-put-down")
-
-                switch prompt {
-                case .readyToPutDown:
-                    Button("REVIEW MELDS") {
-                        vm.reviewContractMelds()
-                    }
-                    .buttonStyle(.bordered)
-                    .accessibilityIdentifier("contract-ready-review")
-                case .confirmDiscard:
-                    Button("DISCARD ANYWAY") {
-                        vm.discardAnyway()
-                    }
-                    .buttonStyle(.bordered)
-                    .tint(.red)
-                    .accessibilityIdentifier("contract-ready-discard-anyway")
-                }
+        ContractConfirmationView(
+            prompt: prompt,
+            level: vm.currentPlayer.currentLevel,
+            contractDescription: vm.currentContractDescription,
+            savedMeldCount: vm.contractDraft.count,
+            remainingCardCount: contractReadyRemainingCardCount,
+            theme: theme,
+            onPutDown: {
+                vm.confirmGoDown()
+            },
+            onReview: {
+                vm.reviewContractMelds()
+            },
+            onDiscardAnyway: {
+                vm.discardAnyway()
             }
-            .padding(22)
-            .frame(maxWidth: 440)
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 22))
-            .padding(28)
-        }
-        .accessibilityIdentifier("contract-ready-overlay")
-        .accessibilityAddTraits(.isModal)
+        )
     }
 
-    private func contractReadyTitle(
-        for prompt: GameViewModel.ContractReadyPrompt
-    ) -> String {
-        switch prompt {
-        case .readyToPutDown:
-            return "Contract Ready"
-        case .confirmDiscard:
-            return "Put Down First?"
-        }
-    }
-
-    private func contractReadyMessage(
-        for prompt: GameViewModel.ContractReadyPrompt
-    ) -> String {
-        switch prompt {
-        case .readyToPutDown:
-            return "Your saved melds complete this round's contract. Would you like to put them down now?"
-        case .confirmDiscard(let card):
-            return "Your contract is ready. Put it down before discarding \(CardNode.shortName(card))?"
+    private var contractReadyRemainingCardCount: Int {
+        let draftCardIds = Set(
+            vm.contractDraft.flatMap { meld in meld.map(\.id) }
+        )
+        return vm.currentPlayer.hand.reduce(into: 0) { count, card in
+            if !draftCardIds.contains(card.id) {
+                count += 1
+            }
         }
     }
 

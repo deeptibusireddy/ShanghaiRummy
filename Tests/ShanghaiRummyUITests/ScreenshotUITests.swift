@@ -54,17 +54,20 @@ final class ScreenshotUITests: XCTestCase {
 
         XCTAssertTrue(app.buttons["quit-game"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.buttons["turn-sound-settings"].exists)
-        XCTAssertTrue(
-            app.descendants(matching: .any)["opening-seat-draw"]
-                .waitForExistence(timeout: 5)
-        )
-        XCTAssertTrue(app.staticTexts["DRAW FOR SEATS"].exists)
+        let openingDraw = app.descendants(matching: .any)[
+            "opening-seat-draw"
+        ]
+        XCTAssertTrue(openingDraw.waitForExistence(timeout: 5))
+        let openingTitle = app.staticTexts["opening-seat-draw-title"]
+        XCTAssertTrue(openingTitle.waitForExistence(timeout: 2))
+        XCTAssertEqual(openingTitle.label, "DRAW FOR SEATS")
         Thread.sleep(forTimeInterval: 0.8)
         snapshot(named: "03-opening-seat-draw")
 
+        openingDraw.tap()
         let takeSeats = app.buttons["opening-seat-draw-continue"]
         XCTAssertTrue(takeSeats.waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["THE TABLE IS SET"].exists)
+        XCTAssertEqual(openingTitle.label, "THE TABLE IS SET")
         snapshot(named: "03-clockwise-seating")
         takeSeats.tap()
 
@@ -119,7 +122,7 @@ final class ScreenshotUITests: XCTestCase {
         XCTAssertEqual(addBot.frame.midX, initialBotFrame.midX, accuracy: 1)
         XCTAssertEqual(addBot.frame.midY, initialBotFrame.midY, accuracy: 1)
         XCTAssertTrue(start.isEnabled)
-        XCTAssertEqual(start.label, "Sign In & Invite 1 Guest")
+        XCTAssertEqual(start.label, "Sign In & Reserve Table")
         snapshot(named: "02-family-table-one-human")
         app.buttons["Remove Human 1"].tap()
         XCTAssertFalse(start.isEnabled)
@@ -162,6 +165,77 @@ final class ScreenshotUITests: XCTestCase {
         XCTAssertTrue(app.buttons["quit-game"].waitForExistence(timeout: 5))
     }
 
+    func testCaptureTableAssemblyChoosingGuests() throws {
+        app.launchArguments += ["--demo-table-assembly-choose"]
+        app.launch()
+
+        XCTAssertTrue(
+            app.descendants(matching: .any)["table-assembly"]
+                .waitForExistence(timeout: 5)
+        )
+        XCTAssertTrue(app.staticTexts["table-assembly-title"].exists)
+        XCTAssertTrue(
+            app.descendants(matching: .any)["table-assembly-host"].exists
+        )
+        XCTAssertTrue(
+            app.descendants(matching: .any)["table-assembly-human-1"].exists
+        )
+        XCTAssertTrue(
+            app.descendants(matching: .any)["table-assembly-bot-1"].exists
+        )
+        XCTAssertTrue(
+            app.descendants(matching: .any)["table-assembly-bot-2"].exists
+        )
+        XCTAssertTrue(app.buttons["table-assembly-choose-guests"].exists)
+        snapshot(named: "02-table-assembly-choose-guests")
+    }
+
+    func testCaptureTableAssemblyGathering() throws {
+        app.launchArguments += ["--demo-table-assembly-gathering"]
+        app.launch()
+
+        XCTAssertTrue(
+            app.descendants(matching: .any)["table-assembly"]
+                .waitForExistence(timeout: 5)
+        )
+        XCTAssertTrue(app.staticTexts["table-assembly-title"].exists)
+        XCTAssertTrue(
+            app.descendants(matching: .any)["table-assembly-human-1"].exists
+        )
+        XCTAssertTrue(
+            app.descendants(matching: .any)["table-assembly-bot-1"].exists
+        )
+        XCTAssertTrue(
+            app.descendants(matching: .any)["table-assembly-bot-2"].exists
+        )
+        XCTAssertTrue(app.buttons["table-assembly-leave"].exists)
+        snapshot(named: "02-table-assembly-gathering")
+    }
+
+    func testCaptureTableAssemblyReady() throws {
+        app.launchArguments += ["--demo-table-assembly-ready"]
+        app.launch()
+
+        XCTAssertTrue(
+            app.descendants(matching: .any)["table-assembly"]
+                .waitForExistence(timeout: 5)
+        )
+        XCTAssertTrue(app.staticTexts["table-assembly-title"].exists)
+        let guest = app.descendants(matching: .any)[
+            "table-assembly-human-1"
+        ]
+        XCTAssertTrue(guest.exists)
+        XCTAssertTrue(guest.label.contains("Morgan"))
+        XCTAssertTrue(
+            app.descendants(matching: .any)["table-assembly-bot-1"].exists
+        )
+        XCTAssertTrue(
+            app.descendants(matching: .any)["table-assembly-bot-2"].exists
+        )
+        XCTAssertTrue(app.staticTexts["Everyone is ready"].exists)
+        snapshot(named: "02-table-assembly-ready")
+    }
+
     func testQuitRequiresConfirmation() throws {
         app.launch()
 
@@ -176,6 +250,11 @@ final class ScreenshotUITests: XCTestCase {
 
         let quit = app.buttons["quit-game"]
         XCTAssertTrue(quit.waitForExistence(timeout: 5))
+        let openingDraw = app.descendants(matching: .any)[
+            "opening-seat-draw"
+        ]
+        XCTAssertTrue(openingDraw.waitForExistence(timeout: 5))
+        openingDraw.tap()
         let takeSeats = app.buttons["opening-seat-draw-continue"]
         XCTAssertTrue(takeSeats.waitForExistence(timeout: 5))
         takeSeats.tap()
@@ -328,6 +407,48 @@ final class ScreenshotUITests: XCTestCase {
         XCTAssertTrue(app.buttons["quit-game"].waitForExistence(timeout: 5))
         Thread.sleep(forTimeInterval: 0.9)
         snapshot(named: "07-staging-tray-long-sequence")
+    }
+
+    func testCaptureContractReadyConfirmation() throws {
+        app.launchArguments += ["--demo-contract-ready"]
+        app.launch()
+
+        let overlay = app.descendants(matching: .any)[
+            "contract-ready-overlay"
+        ]
+        XCTAssertTrue(overlay.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Your Contract Is Ready"].exists)
+        XCTAssertTrue(app.buttons["contract-ready-put-down"].exists)
+        XCTAssertTrue(app.buttons["contract-ready-review"].exists)
+        XCTAssertTrue(
+            app.descendants(matching: .any)["contract-ready-contract"].exists
+        )
+        Thread.sleep(forTimeInterval: 0.6)
+        snapshot(named: "08-contract-ready-confirmation")
+    }
+
+    func testCaptureContractDiscardReconfirmation() throws {
+        app.launchArguments += ["--demo-contract-discard-warning"]
+        app.launch()
+
+        let overlay = app.descendants(matching: .any)[
+            "contract-ready-overlay"
+        ]
+        XCTAssertTrue(overlay.waitForExistence(timeout: 5))
+        XCTAssertTrue(
+            app.staticTexts["Put Down Before Discarding?"].exists
+        )
+        XCTAssertTrue(app.buttons["contract-ready-put-down"].exists)
+        XCTAssertTrue(
+            app.buttons["contract-ready-discard-anyway"].exists
+        )
+        XCTAssertTrue(
+            app.descendants(matching: .any)[
+                "contract-ready-discard-card"
+            ].exists
+        )
+        Thread.sleep(forTimeInterval: 0.6)
+        snapshot(named: "08-contract-discard-reconfirmation")
     }
 
     func testCaptureCrowdedNewCardMarkers() throws {
