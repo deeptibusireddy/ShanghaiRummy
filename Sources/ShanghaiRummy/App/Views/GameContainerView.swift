@@ -65,7 +65,7 @@ struct GameContainerView: View {
                             )
                         }
                     } label: {
-                        Image(systemName: "square.and.arrow.down.fill")
+                        Image(systemName: "bookmark.fill")
                             .font(.system(
                                 size: 15,
                                 weight: .bold,

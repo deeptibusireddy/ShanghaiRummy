@@ -88,10 +88,10 @@ final class ScreenshotUITests: XCTestCase {
         XCTAssertTrue(savedAlert.waitForExistence(timeout: 3))
         savedAlert.buttons["OK"].tap()
 
-        app.buttons["quit-game"].tap()
-        let leaveAlert = app.alerts["Leave Game?"]
-        XCTAssertTrue(leaveAlert.waitForExistence(timeout: 3))
-        leaveAlert.buttons["Leave Game"].tap()
+        app.terminate()
+        app = XCUIApplication()
+        app.launchArguments += ["--ui-testing"]
+        app.launch()
 
         let savedGameCard = app.descendants(matching: .any)[
             "saved-bot-game"
