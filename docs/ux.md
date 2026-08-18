@@ -56,8 +56,9 @@ file first, then the scene.
   The host, Bots, invited people, and unused places remain visible throughout
   the invitation and connection process.
 - **Game Center handoff:** Apple's picker is treated as a temporary guest
-  chooser. A branded table ticket remains over it with the total player count,
-  reserved Bots, Bot strengths, and exact number of people to choose.
+  chooser. A branded table ticket occupies reserved header space above it with
+  the total player count, reserved Bots, Bot strengths, and exact number of
+  people to choose. It never overlays the picker's native invitation controls.
 - **Live invitation status:** Human places move through Choose, Joining, and
   Ready while every Bot remains visibly Ready. Canceling the picker returns to
   the same reserved roster, where the host can retry or edit the table without
