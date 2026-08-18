@@ -330,6 +330,48 @@ final class ScreenshotUITests: XCTestCase {
         snapshot(named: "07-staging-tray-long-sequence")
     }
 
+    func testCaptureContractReadyConfirmation() throws {
+        app.launchArguments += ["--demo-contract-ready"]
+        app.launch()
+
+        let overlay = app.descendants(matching: .any)[
+            "contract-ready-overlay"
+        ]
+        XCTAssertTrue(overlay.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Your Contract Is Ready"].exists)
+        XCTAssertTrue(app.buttons["contract-ready-put-down"].exists)
+        XCTAssertTrue(app.buttons["contract-ready-review"].exists)
+        XCTAssertTrue(
+            app.descendants(matching: .any)["contract-ready-contract"].exists
+        )
+        Thread.sleep(forTimeInterval: 0.6)
+        snapshot(named: "08-contract-ready-confirmation")
+    }
+
+    func testCaptureContractDiscardReconfirmation() throws {
+        app.launchArguments += ["--demo-contract-discard-warning"]
+        app.launch()
+
+        let overlay = app.descendants(matching: .any)[
+            "contract-ready-overlay"
+        ]
+        XCTAssertTrue(overlay.waitForExistence(timeout: 5))
+        XCTAssertTrue(
+            app.staticTexts["Put Down Before Discarding?"].exists
+        )
+        XCTAssertTrue(app.buttons["contract-ready-put-down"].exists)
+        XCTAssertTrue(
+            app.buttons["contract-ready-discard-anyway"].exists
+        )
+        XCTAssertTrue(
+            app.descendants(matching: .any)[
+                "contract-ready-discard-card"
+            ].exists
+        )
+        Thread.sleep(forTimeInterval: 0.6)
+        snapshot(named: "08-contract-discard-reconfirmation")
+    }
+
     func testCaptureCrowdedNewCardMarkers() throws {
         app.launchArguments += ["--demo-crowded-new-cards"]
         app.launch()

@@ -108,6 +108,19 @@ struct RootView: View {
                             state: GameFactory.demoCrowdedHighlightedHand()
                         )
                     } else if activeGame == nil,
+                              CommandLine.arguments.contains(
+                                "--demo-contract-ready"
+                              )
+                                || CommandLine.arguments.contains(
+                                    "--demo-contract-discard-warning"
+                                ) {
+                        activeTheme = themeFromArgs()
+                        activeGame = contractConfirmationDemo(
+                            discardWarning: CommandLine.arguments.contains(
+                                "--demo-contract-discard-warning"
+                            )
+                        )
+                    } else if activeGame == nil,
                        CommandLine.arguments.contains("--demo-mid-game") {
                         activeTheme = themeFromArgs()
                         var state = GameFactory.demoMidGame()
@@ -237,6 +250,59 @@ struct RootView: View {
             .prefix(7) {
             vm.toggleStaged(cardId: card.id)
         }
+    }
+
+    private func contractConfirmationDemo(
+        discardWarning: Bool
+    ) -> GameViewModel {
+        let firstTriplet = [
+            Card(suit: .hearts, rank: .king),
+            Card(suit: .spades, rank: .king),
+            Card(suit: .diamonds, rank: .king),
+        ]
+        let secondTriplet = [
+            Card(suit: .hearts, rank: .seven),
+            Card(suit: .spades, rank: .seven),
+            Card(suit: .clubs, rank: .seven),
+        ]
+        let discard = Card(suit: .clubs, rank: .three)
+        let localPlayer = Player(
+            name: "You",
+            hand: firstTriplet + secondTriplet + [discard]
+        )
+        let opponent = Player(name: "Morgan")
+        let state = GameState(
+            players: [localPlayer, opponent],
+            currentRound: 1,
+            currentTurnIndex: 0,
+            dealerIndex: 1,
+            stock: [
+                Card(suit: .diamonds, rank: .four),
+                Card(suit: .clubs, rank: .five),
+            ],
+            discard: [Card(suit: .hearts, rank: .three)],
+            melds: [],
+            phase: .awaitingMeldOrDiscard,
+            stockReshufflesUsed: 0,
+            randomSeed: 44
+        )
+        let vm = GameViewModel(
+            state: state,
+            localPlayerId: localPlayer.id
+        )
+        for card in firstTriplet {
+            vm.toggleStaged(cardId: card.id)
+        }
+        _ = vm.saveStagedAsMeld()
+        for card in secondTriplet {
+            vm.toggleStaged(cardId: card.id)
+        }
+        _ = vm.saveStagedAsMeld()
+        if discardWarning {
+            vm.reviewContractMelds()
+            _ = vm.requestDiscard(discard)
+        }
+        return vm
     }
 
     private func themeFromArgs() -> VisualTheme {

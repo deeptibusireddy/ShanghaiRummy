@@ -372,6 +372,12 @@ Haptics (M4):
   switch them off or preview/select Classic Chime, Crystal, Soft Bell, or
   Woodblock from the home screen or table. Deliberate previews remain audible
   while turn alerts are switched off; haptics remain enabled.
+- Contract confirmation: when saved melds complete the current contract, a
+  twilight panel uses the table's amber success treatment, level/contract
+  summary, saved-meld count, and clear Put Down Contract / Review Melds
+  hierarchy. Attempting to discard while still ready presents the same panel
+  with coral warning treatment, a preview of the selected discard, and an
+  explicit warning that Discard Anyway clears the saved arrangement.
 - Draw: `.light`
 - Discard: `.rigid`
 - Go Down / Go Out: `.success`
