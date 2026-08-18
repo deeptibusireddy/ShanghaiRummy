@@ -35,6 +35,11 @@ Each bot can be set to **Easy**, **Medium**, or **Hard** before the table
 starts. Hard is the default. The selected strength stays with that bot in
 local and Game Center games.
 
+Use **Sounds** on the home screen, or the speaker button at the table, to turn
+turn alerts on or off. You can preview and select Classic Chime, Crystal,
+Soft Bell, or Woodblock. Your choice is remembered the next time you open the
+app.
+
 ---
 
 ## Drawing for seats

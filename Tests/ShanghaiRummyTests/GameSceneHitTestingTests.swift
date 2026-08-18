@@ -163,7 +163,7 @@ final class GameSceneHitTestingTests: XCTestCase {
         let remote = UUID()
         let bot = UUID()
 
-        XCTAssertFalse(
+        XCTAssertTrue(
             GameScene.shouldPlayTurnAlert(
                 previousRound: nil,
                 previousActivePlayerId: nil,
@@ -173,6 +173,44 @@ final class GameSceneHitTestingTests: XCTestCase {
                 localPlayerId: local,
                 cpuPlayerIds: [bot],
                 phase: .awaitingDraw
+            )
+        )
+        XCTAssertTrue(
+            GameScene.shouldPlayTurnAlert(
+                previousRound: 1,
+                previousActivePlayerId: local,
+                previousPhase: .awaitingDraw,
+                currentRound: 1,
+                currentActivePlayerId: local,
+                localPlayerId: local,
+                cpuPlayerIds: [bot],
+                phase: .awaitingDraw,
+                forceCurrentPrompt: true
+            )
+        )
+        XCTAssertFalse(
+            GameScene.shouldPlayTurnAlert(
+                previousRound: nil,
+                previousActivePlayerId: nil,
+                previousPhase: nil,
+                currentRound: 1,
+                currentActivePlayerId: remote,
+                localPlayerId: local,
+                cpuPlayerIds: [bot],
+                phase: .awaitingDraw
+            )
+        )
+        XCTAssertFalse(
+            GameScene.shouldPlayTurnAlert(
+                previousRound: nil,
+                previousActivePlayerId: nil,
+                previousPhase: nil,
+                currentRound: 1,
+                currentActivePlayerId: bot,
+                localPlayerId: local,
+                cpuPlayerIds: [bot],
+                phase: .awaitingDraw,
+                forceCurrentPrompt: true
             )
         )
         XCTAssertTrue(

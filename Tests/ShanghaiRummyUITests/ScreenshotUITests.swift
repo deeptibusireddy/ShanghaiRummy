@@ -195,6 +195,47 @@ final class ScreenshotUITests: XCTestCase {
         XCTAssertTrue(createTable.waitForExistence(timeout: 5))
     }
 
+    func testTurnSoundSettingsOfferPreviewsAndPersistentToggle() throws {
+        app.launch()
+
+        let soundSettings = app.buttons["home-turn-sound-settings"]
+        XCTAssertTrue(soundSettings.waitForExistence(timeout: 5))
+        soundSettings.tap()
+
+        XCTAssertTrue(
+            app.descendants(matching: .any)["turn-sound-settings-view"]
+                .waitForExistence(timeout: 3)
+        )
+        let enabledToggle = app.switches["turn-sounds-enabled"]
+        XCTAssertTrue(enabledToggle.exists)
+
+        for sound in ["classic", "crystal", "soft-bell", "woodblock"] {
+            XCTAssertTrue(app.buttons["turn-sound-\(sound)"].exists)
+        }
+
+        app.buttons["turn-sound-crystal"].tap()
+        dismissSoundUnavailableAlertIfNeeded()
+        if enabledToggle.value as? String == "0" {
+            enabledToggle.tap()
+            dismissSoundUnavailableAlertIfNeeded()
+        }
+        enabledToggle.tap()
+        XCTAssertEqual(enabledToggle.value as? String, "0")
+        enabledToggle.tap()
+        dismissSoundUnavailableAlertIfNeeded()
+        XCTAssertEqual(enabledToggle.value as? String, "1")
+
+        app.buttons["close-turn-sound-settings"].tap()
+        XCTAssertTrue(soundSettings.waitForExistence(timeout: 3))
+    }
+
+    private func dismissSoundUnavailableAlertIfNeeded() {
+        let alert = app.alerts["Sound Unavailable"]
+        if alert.waitForExistence(timeout: 0.5) {
+            alert.buttons["OK"].tap()
+        }
+    }
+
     func testCaptureMidGamePreview() throws {
         // Boots directly into a rigged 4-player mid-game state so we can
         // preview the table populated with melds from every player.

@@ -164,6 +164,45 @@ final class GameScene: SKScene {
             }
             .store(in: &cancellables)
 
+        vm.$openingDrawStage
+            .removeDuplicates()
+            .dropFirst()
+            .receive(on: RunLoop.main)
+            .sink { [weak self] stage in
+                guard stage == nil, let self else { return }
+                self.playTurnAlertIfNeeded(
+                    for: self.vm.state,
+                    forceCurrentPrompt: true
+                )
+            }
+            .store(in: &cancellables)
+
+        vm.$isBetweenTurns
+            .removeDuplicates()
+            .dropFirst()
+            .receive(on: RunLoop.main)
+            .sink { [weak self] isBetweenTurns in
+                guard !isBetweenTurns, let self else { return }
+                self.playTurnAlertIfNeeded(
+                    for: self.vm.state,
+                    forceCurrentPrompt: true
+                )
+            }
+            .store(in: &cancellables)
+
+        NotificationCenter.default.publisher(
+            for: UIApplication.didBecomeActiveNotification
+        )
+        .receive(on: RunLoop.main)
+        .sink { [weak self] _ in
+            guard let self else { return }
+            self.playTurnAlertIfNeeded(
+                for: self.vm.state,
+                forceCurrentPrompt: true
+            )
+        }
+        .store(in: &cancellables)
+
         // Rebuild on any published change (state, staging, etc.).
         vm.objectWillChange
             .receive(on: RunLoop.main)
@@ -188,19 +227,25 @@ final class GameScene: SKScene {
         buildContextActions()
     }
 
-    private func playTurnAlertIfNeeded(for state: GameState) {
+    private func playTurnAlertIfNeeded(
+        for state: GameState,
+        forceCurrentPrompt: Bool = false
+    ) {
         let currentRound = state.currentRound
         let activePlayerId = state.activePlayerId
-        let shouldPlay = Self.shouldPlayTurnAlert(
-            previousRound: lastObservedTurnRound,
-            previousActivePlayerId: lastObservedActivePlayerId,
-            previousPhase: lastObservedTurnPhase,
-            currentRound: currentRound,
-            currentActivePlayerId: activePlayerId,
-            localPlayerId: vm.localPlayerId,
-            cpuPlayerIds: vm.cpuPlayerIds,
-            phase: state.phase
-        )
+        let shouldPlay = !vm.isOpeningDrawPresented
+            && !vm.isBetweenTurns
+            && Self.shouldPlayTurnAlert(
+                previousRound: lastObservedTurnRound,
+                previousActivePlayerId: lastObservedActivePlayerId,
+                previousPhase: lastObservedTurnPhase,
+                currentRound: currentRound,
+                currentActivePlayerId: activePlayerId,
+                localPlayerId: vm.localPlayerId,
+                cpuPlayerIds: vm.cpuPlayerIds,
+                phase: state.phase,
+                forceCurrentPrompt: forceCurrentPrompt
+            )
         lastObservedTurnRound = currentRound
         lastObservedActivePlayerId = activePlayerId
         lastObservedTurnPhase = state.phase
@@ -209,7 +254,11 @@ final class GameScene: SKScene {
               UIApplication.shared.applicationState == .active else {
             return
         }
-        run(.playSoundFileNamed("turn-chime.wav", waitForCompletion: false))
+        if TurnSoundPreferences.soundsEnabled() {
+            TurnSoundPlayer.shared.play(
+                TurnSoundPreferences.selectedSound()
+            )
+        }
         UIImpactFeedbackGenerator(style: .medium)
             .impactOccurred(intensity: 0.75)
     }
@@ -222,20 +271,29 @@ final class GameScene: SKScene {
         currentActivePlayerId: UUID,
         localPlayerId: UUID?,
         cpuPlayerIds: Set<UUID>,
-        phase: GameState.Phase
+        phase: GameState.Phase,
+        forceCurrentPrompt: Bool = false
     ) -> Bool {
-        guard let previousRound,
-              let previousActivePlayerId,
-              let previousPhase,
-              (previousRound != currentRound
-                || previousActivePlayerId != currentActivePlayerId
-                || previousPhase != phase),
-              (phase == .awaitingDraw
+        guard (phase == .awaitingDraw
                 || phase == .awaitingMeldOrDiscard),
               !cpuPlayerIds.contains(currentActivePlayerId) else {
             return false
         }
-        return localPlayerId == nil || localPlayerId == currentActivePlayerId
+        guard localPlayerId == nil
+                || localPlayerId == currentActivePlayerId else {
+            return false
+        }
+        if forceCurrentPrompt {
+            return true
+        }
+        guard let previousRound,
+              let previousActivePlayerId,
+              let previousPhase else {
+            return true
+        }
+        return previousRound != currentRound
+            || previousActivePlayerId != currentActivePlayerId
+            || previousPhase != phase
     }
 
     private func buildHeader() {

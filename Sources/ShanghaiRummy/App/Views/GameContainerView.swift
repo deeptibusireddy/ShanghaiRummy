@@ -6,6 +6,9 @@ import SwiftUI
 struct GameContainerView: View {
     @StateObject var vm: GameViewModel
     @State private var isConfirmingExit = false
+    @State private var isShowingTurnSoundSettings = false
+    @AppStorage(TurnSoundPreferences.enabledKey)
+    private var turnSoundsEnabled = true
     let theme: VisualTheme
     let onExit: () -> Void
 
@@ -21,18 +24,47 @@ struct GameContainerView: View {
                 .background(Color(theme.background))
                 .accessibilityIdentifier("game-table")
 
-            Button {
-                isConfirmingExit = true
-            } label: {
-                Image(systemName: "xmark")
-                    .font(.system(size: 15, weight: .bold, design: .rounded))
-                    .foregroundStyle(.white.opacity(0.9))
-                    .frame(width: 44, height: 44)
-                    .background(.ultraThinMaterial, in: Circle())
+            HStack(spacing: 8) {
+                Button {
+                    isConfirmingExit = true
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(
+                            size: 15,
+                            weight: .bold,
+                            design: .rounded
+                        ))
+                        .foregroundStyle(.white.opacity(0.9))
+                        .frame(width: 44, height: 44)
+                        .background(.ultraThinMaterial, in: Circle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Leave game")
+                .accessibilityIdentifier("quit-game")
+
+                Button {
+                    isShowingTurnSoundSettings = true
+                } label: {
+                    Image(systemName: turnSoundsEnabled
+                        ? "speaker.wave.2.fill"
+                        : "speaker.slash.fill")
+                        .font(.system(
+                            size: 15,
+                            weight: .bold,
+                            design: .rounded
+                        ))
+                        .foregroundStyle(.white.opacity(0.9))
+                        .frame(width: 44, height: 44)
+                        .background(.ultraThinMaterial, in: Circle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(
+                    turnSoundsEnabled
+                        ? "Turn sound settings, sounds on"
+                        : "Turn sound settings, sounds off"
+                )
+                .accessibilityIdentifier("turn-sound-settings")
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Leave game")
-            .accessibilityIdentifier("quit-game")
             .opacity(vm.isGameOver ? 0 : 1)
             .disabled(vm.isGameOver)
             .accessibilityHidden(vm.isGameOver)
@@ -54,6 +86,9 @@ struct GameContainerView: View {
             }
         }
         .statusBarHidden(true)
+        .sheet(isPresented: $isShowingTurnSoundSettings) {
+            TurnSoundSettingsView()
+        }
         .sheet(isPresented: $vm.isBetweenTurns) {
             PassAndPlayView(nextPlayerName: vm.privacyPlayerName) {
                 vm.acknowledgeTurnPassed()
