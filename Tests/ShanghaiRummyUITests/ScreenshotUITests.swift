@@ -54,20 +54,20 @@ final class ScreenshotUITests: XCTestCase {
 
         XCTAssertTrue(app.buttons["quit-game"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.buttons["turn-sound-settings"].exists)
-        XCTAssertTrue(
-            app.descendants(matching: .any)["opening-seat-draw"]
-                .waitForExistence(timeout: 5)
-        )
-        XCTAssertTrue(
-            app.staticTexts["DRAW FOR SEATS"]
-                .waitForExistence(timeout: 2)
-        )
+        let openingDraw = app.descendants(matching: .any)[
+            "opening-seat-draw"
+        ]
+        XCTAssertTrue(openingDraw.waitForExistence(timeout: 5))
+        let openingTitle = app.staticTexts["opening-seat-draw-title"]
+        XCTAssertTrue(openingTitle.waitForExistence(timeout: 2))
+        XCTAssertEqual(openingTitle.label, "DRAW FOR SEATS")
         Thread.sleep(forTimeInterval: 0.8)
         snapshot(named: "03-opening-seat-draw")
 
+        openingDraw.tap()
         let takeSeats = app.buttons["opening-seat-draw-continue"]
         XCTAssertTrue(takeSeats.waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["THE TABLE IS SET"].exists)
+        XCTAssertEqual(openingTitle.label, "THE TABLE IS SET")
         snapshot(named: "03-clockwise-seating")
         takeSeats.tap()
 
@@ -250,6 +250,11 @@ final class ScreenshotUITests: XCTestCase {
 
         let quit = app.buttons["quit-game"]
         XCTAssertTrue(quit.waitForExistence(timeout: 5))
+        let openingDraw = app.descendants(matching: .any)[
+            "opening-seat-draw"
+        ]
+        XCTAssertTrue(openingDraw.waitForExistence(timeout: 5))
+        openingDraw.tap()
         let takeSeats = app.buttons["opening-seat-draw-continue"]
         XCTAssertTrue(takeSeats.waitForExistence(timeout: 5))
         takeSeats.tap()
