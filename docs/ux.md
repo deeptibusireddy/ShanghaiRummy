@@ -227,14 +227,19 @@ meld.
   without replacing useful details with another turn label.
 - The bottom-left local HUD remains the persistent personal reference for name,
   score, level, and contract. On full-height iPad layouts, these details use a
-  larger semibold treatment so they remain readable at a glance.
+  larger semibold treatment so they remain readable at a glance. The capsule
+  reserves enough width for every scheduled contract and fits the label within
+  its bounds as a final safeguard.
 - The bottom-right area is reserved for real enabled actions. Passive prompts
   and duplicated "[name]'s turn" boxes are omitted because guidance already
   lives in the top banner.
 - Purchase and hand-summary overlays remain transient and role-specific.
 - **Score**, beside Rank and Suit, opens a dismissible live standings card with
   player name, current level, and cumulative score, ordered lowest score first.
-  It is display-only and remains available during purchase decisions.
+  It uses the same twilight gradient, amber frame, rounded typography, and
+  compact hierarchy as contract confirmation, with the current leader
+  emphasized. It is display-only and remains available during purchase
+  decisions.
 
 ## Interaction spec
 
@@ -352,7 +357,8 @@ with warning feedback.
 | Joker / wild 2       | Amber side band and unmistakable wild marker           |
 | Meld target          | Dark translucent group; mint outline when playable     |
 | Staging tray         | Indigo glass-like panel kept inline above the hand     |
-| Turn ribbon          | Bright amber outline, active player's hand count, level, and contract |
+| Turn ribbon / local HUD | Bright amber outline; enough width for every level and contract label |
+| Score sheet          | Twilight panel, amber frame, compact ranked standings |
 | Buttons              | One contextual amber primary action; quiet secondary chips |
 | Sensitive states     | Coral warning, mint confirmation, plus motion/haptics  |
 | Typography           | Rounded system typography throughout                   |

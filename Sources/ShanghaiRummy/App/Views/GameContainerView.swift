@@ -359,76 +359,13 @@ struct GameContainerView: View {
     // MARK: - Hand / game over overlays
 
     private var liveScorecardOverlay: some View {
-        ZStack {
-            Color.black.opacity(0.42)
-                .ignoresSafeArea()
-                .contentShape(Rectangle())
-
-            VStack(spacing: 10) {
-                HStack {
-                    Text("Current Score")
-                        .font(.system(
-                            .title2,
-                            design: .rounded,
-                            weight: .bold
-                        ))
-                    Spacer()
-                    Button {
-                        vm.dismissScorecard()
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.title2)
-                            .foregroundStyle(.secondary)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Close scorecard")
-                    .accessibilityIdentifier("dismiss-live-scorecard")
-                }
-
-                Text("Lowest cumulative score leads")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-
-                HStack {
-                    Text("Player")
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    Text("Level")
-                        .frame(width: 54, alignment: .trailing)
-                    Text("Score")
-                        .frame(width: 64, alignment: .trailing)
-                }
-                .font(.caption.bold())
-                .foregroundStyle(.secondary)
-
-                Divider()
-
-                ForEach(vm.liveScoreboard) { row in
-                    HStack {
-                        Text(row.name)
-                            .bold()
-                            .lineLimit(1)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                        Text("\(row.currentLevel)")
-                            .frame(width: 54, alignment: .trailing)
-                        Text("\(row.totalScore)")
-                            .bold()
-                            .frame(width: 64, alignment: .trailing)
-                    }
-                    .font(.body)
-                }
+        LiveScorecardView(
+            rows: vm.liveScoreboard,
+            theme: theme,
+            onDismiss: {
+                vm.dismissScorecard()
             }
-            .padding(18)
-            .frame(width: 380)
-            .background(
-                .regularMaterial,
-                in: RoundedRectangle(cornerRadius: 20)
-            )
-            .shadow(color: .black.opacity(0.28), radius: 18, y: 8)
-        }
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("live-scorecard")
-        .accessibilityAddTraits(.isModal)
+        )
     }
 
     private var buyDecisionOverlay: some View {

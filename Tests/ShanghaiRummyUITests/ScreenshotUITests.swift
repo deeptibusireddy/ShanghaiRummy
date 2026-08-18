@@ -377,7 +377,13 @@ final class ScreenshotUITests: XCTestCase {
         let scorecard = app.descendants(matching: .any)["live-scorecard"]
         XCTAssertTrue(scorecard.waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["Current Score"].exists)
-        XCTAssertTrue(app.staticTexts["Morgan"].exists)
+        XCTAssertTrue(app.staticTexts["SCORE SHEET"].exists)
+        XCTAssertTrue(
+            app.descendants(matching: .any)["live-scorecard-row-1"].exists
+        )
+        XCTAssertTrue(
+            app.descendants(matching: .any)["live-scorecard-row-6"].exists
+        )
         Thread.sleep(forTimeInterval: 0.5)
         snapshot(named: "04-six-player-scorecard")
     }

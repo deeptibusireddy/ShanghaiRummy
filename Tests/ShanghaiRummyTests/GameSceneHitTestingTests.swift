@@ -351,6 +351,24 @@ final class GameSceneHitTestingTests: XCTestCase {
         )
     }
 
+    func testWideIPadStatusPanelsReserveRoomForLongContracts() {
+        XCTAssertEqual(
+            GameScene.turnBannerWidth(
+                sceneWidth: 1366,
+                horizontalEdgeInset: 54
+            ),
+            544
+        )
+        XCTAssertEqual(
+            GameScene.currentPlayerHUDWidth(sceneWidth: 1366),
+            264
+        )
+        XCTAssertEqual(
+            GameScene.currentPlayerHUDWidth(sceneWidth: 700),
+            218
+        )
+    }
+
     func testSixPlayerTopMeldLanesStaySeparated() {
         let sceneSize = CGSize(width: 1366, height: 1024)
         let horizontalEdgeInset: CGFloat = 24
