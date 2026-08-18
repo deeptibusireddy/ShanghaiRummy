@@ -374,6 +374,7 @@ struct BundAfterDarkHomeView: View {
     let onCreateTable: () -> Void
     let onAuthenticate: () -> Void
     let onSoundSettings: () -> Void
+    let onAppInformation: () -> Void
     let onResumeSavedGame: () -> Void
     let onDiscardSavedGame: () -> Void
     @State private var isConfirmingDiscardSavedGame = false
@@ -386,6 +387,7 @@ struct BundAfterDarkHomeView: View {
         onCreateTable: @escaping () -> Void,
         onAuthenticate: @escaping () -> Void,
         onSoundSettings: @escaping () -> Void,
+        onAppInformation: @escaping () -> Void = {},
         onResumeSavedGame: @escaping () -> Void = {},
         onDiscardSavedGame: @escaping () -> Void = {}
     ) {
@@ -396,6 +398,7 @@ struct BundAfterDarkHomeView: View {
         self.onCreateTable = onCreateTable
         self.onAuthenticate = onAuthenticate
         self.onSoundSettings = onSoundSettings
+        self.onAppInformation = onAppInformation
         self.onResumeSavedGame = onResumeSavedGame
         self.onDiscardSavedGame = onDiscardSavedGame
     }
@@ -497,6 +500,19 @@ struct BundAfterDarkHomeView: View {
                             )
                             .accessibilityIdentifier(
                                 "home-turn-sound-settings"
+                            )
+
+                            Button(action: onAppInformation) {
+                                Image(systemName: "info.circle.fill")
+                                    .font(.headline.weight(.bold))
+                            }
+                            .buttonStyle(EntrySecondaryButtonStyle(
+                                foreground: palette.text,
+                                stroke: palette.muted
+                            ))
+                            .accessibilityLabel("Privacy and support")
+                            .accessibilityIdentifier(
+                                "home-privacy-support"
                             )
                         }
                         .padding(.top, 28)

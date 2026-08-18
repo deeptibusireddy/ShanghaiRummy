@@ -11,6 +11,7 @@ struct RootView: View {
         FamilyTableConfiguration?
     @State private var tableAssemblyHandoffComplete = false
     @State private var isShowingTurnSoundSettings = false
+    @State private var isShowingAppInformation = false
     @State private var savedBotGame: LocalBotGameSave?
     @State private var didLoadSavedBotGame = false
     @State private var localSaveError: String?
@@ -67,6 +68,9 @@ struct RootView: View {
             homeMenu
                 .sheet(isPresented: $isShowingTurnSoundSettings) {
                     TurnSoundSettingsView()
+                }
+                .sheet(isPresented: $isShowingAppInformation) {
+                    AppInformationView()
                 }
                 .fullScreenCover(isPresented: $gameCenter.isPresentingMatchmaker) {
                     matchmakerContent(configuration: nil)
@@ -570,6 +574,9 @@ struct RootView: View {
             },
             onSoundSettings: {
                 isShowingTurnSoundSettings = true
+            },
+            onAppInformation: {
+                isShowingAppInformation = true
             },
             onResumeSavedGame: {
                 resumeSavedBotGame()

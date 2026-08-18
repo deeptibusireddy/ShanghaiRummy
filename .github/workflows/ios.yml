@@ -6,6 +6,20 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      screenshot_device:
+        description: Simulator used for build, tests, and screenshots
+        required: true
+        default: Automatic iPad
+        type: choice
+        options:
+          - Automatic iPad
+          - iPad Pro 13-inch
+      run_simulations:
+        description: Run the full game-simulation matrix
+        required: true
+        default: false
+        type: boolean
 
 jobs:
   build-and-test:
@@ -14,6 +28,7 @@ jobs:
     timeout-minutes: 20
     env:
       DEVICE_FAMILY: iPad
+      PREFERRED_DEVICE: ${{ inputs.screenshot_device || 'Automatic iPad' }}
       RESULT_BUNDLE: TestResults-iPad.xcresult
 
     steps:
@@ -48,13 +63,17 @@ jobs:
       - name: Build & test
         run: |
           set -o pipefail
-          # Pick the first available device in the iPad family instead of
-          # pinning to a runtime that may rotate off the hosted runner.
+          # Keep routine CI on its existing first-iPad behavior. Manual
+          # screenshot runs may select the newest matching 13-inch runtime.
           DEVICE_ID=$(xcrun simctl list devices available -j \
-            | python3 -c 'import json,os,sys; d=json.load(sys.stdin)["devices"]; \
+            | python3 -c 'import json,os,re,sys; d=json.load(sys.stdin)["devices"]; \
               family=os.environ["DEVICE_FAMILY"]; \
-              picks=[dev for k,v in d.items() if "iOS" in k for dev in v if family in dev["name"]]; \
-              print(picks[0]["udid"])')
+              preferred=os.environ["PREFERRED_DEVICE"]; \
+              picks=[(k,dev) for k,v in d.items() if "iOS" in k for dev in v if family in dev["name"]]; \
+              matches=[item for item in picks if preferred != "Automatic iPad" and preferred in item[1]["name"]]; \
+              matches.sort(key=lambda item: tuple(map(int,re.findall(r"\d+",item[0])))); \
+              selected=matches[-1] if matches else picks[0]; \
+              print(selected[1]["udid"])')
           echo "Using $DEVICE_FAMILY simulator: $DEVICE_ID"
           xcodebuild \
             -project ShanghaiRummy.xcodeproj \
@@ -97,7 +116,7 @@ jobs:
 
   game-simulation:
     name: Simulate ${{ matrix.player_count }} Players (${{ matrix.batch.start }}-${{ matrix.batch.end }})
-    if: ${{ github.event_name == 'workflow_dispatch' }}
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_simulations }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:

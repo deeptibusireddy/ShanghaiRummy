@@ -331,6 +331,29 @@ final class ScreenshotUITests: XCTestCase {
         XCTAssertTrue(soundSettings.waitForExistence(timeout: 3))
     }
 
+    func testPrivacyAndSupportIsAccessibleFromHome() throws {
+        app.launch()
+
+        let information = app.buttons["home-privacy-support"]
+        XCTAssertTrue(information.waitForExistence(timeout: 5))
+        information.tap()
+
+        XCTAssertTrue(
+            app.descendants(matching: .any)["privacy-support-view"]
+                .waitForExistence(timeout: 3)
+        )
+        XCTAssertTrue(
+            app.descendants(matching: .any)["privacy-policy-link"].exists
+        )
+        XCTAssertTrue(
+            app.descendants(matching: .any)["support-link"].exists
+        )
+        snapshot(named: "01-privacy-and-support")
+
+        app.buttons["close-privacy-support"].tap()
+        XCTAssertTrue(information.waitForExistence(timeout: 3))
+    }
+
     private func dismissSoundUnavailableAlertIfNeeded() {
         let alert = app.alerts["Sound Unavailable"]
         if alert.waitForExistence(timeout: 0.5) {
