@@ -7,14 +7,25 @@ struct GameContainerView: View {
     @StateObject var vm: GameViewModel
     @State private var isConfirmingExit = false
     @State private var isShowingTurnSoundSettings = false
+    @State private var saveAlert: SaveAlert?
     @AppStorage(TurnSoundPreferences.enabledKey)
     private var turnSoundsEnabled = true
     let theme: VisualTheme
+    let onSaveGame: (() throws -> Void)?
+    let onGameCompleted: (() -> Void)?
     let onExit: () -> Void
 
-    init(vm: GameViewModel, theme: VisualTheme = .gameNight, onExit: @escaping () -> Void) {
+    init(
+        vm: GameViewModel,
+        theme: VisualTheme = .gameNight,
+        onSaveGame: (() throws -> Void)? = nil,
+        onGameCompleted: (() -> Void)? = nil,
+        onExit: @escaping () -> Void
+    ) {
         _vm = StateObject(wrappedValue: vm)
         self.theme = theme
+        self.onSaveGame = onSaveGame
+        self.onGameCompleted = onGameCompleted
         self.onExit = onExit
     }
 
@@ -41,6 +52,33 @@ struct GameContainerView: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel("Leave game")
                 .accessibilityIdentifier("quit-game")
+
+                if let onSaveGame,
+                   vm.openingDrawStage == nil {
+                    Button {
+                        do {
+                            try onSaveGame()
+                            saveAlert = .saved
+                        } catch {
+                            saveAlert = .failed(
+                                error.localizedDescription
+                            )
+                        }
+                    } label: {
+                        Image(systemName: "square.and.arrow.down.fill")
+                            .font(.system(
+                                size: 15,
+                                weight: .bold,
+                                design: .rounded
+                            ))
+                            .foregroundStyle(.white.opacity(0.9))
+                            .frame(width: 44, height: 44)
+                            .background(.ultraThinMaterial, in: Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Save solo game")
+                    .accessibilityIdentifier("save-bot-game")
+                }
 
                 Button {
                     isShowingTurnSoundSettings = true
@@ -106,6 +144,29 @@ struct GameContainerView: View {
         } message: {
             Text(exitConfirmationMessage)
         }
+        .alert(item: $saveAlert) { alert in
+            switch alert {
+            case .saved:
+                return Alert(
+                    title: Text("Game Saved"),
+                    message: Text(
+                        "You can resume this solo table from the home screen."
+                    ),
+                    dismissButton: .default(Text("OK"))
+                )
+            case .failed(let message):
+                return Alert(
+                    title: Text("Couldn’t Save Game"),
+                    message: Text(message),
+                    dismissButton: .default(Text("OK"))
+                )
+            }
+        }
+        .onChange(of: vm.state.phase) { _, phase in
+            if phase == .gameEnded {
+                onGameCompleted?()
+            }
+        }
         .overlay {
             if let stage = vm.openingDrawStage {
                 OpeningDrawView(
@@ -134,6 +195,20 @@ struct GameContainerView: View {
         }
         .task {
             await runOpeningDrawCeremony()
+        }
+    }
+
+    private enum SaveAlert: Identifiable {
+        case saved
+        case failed(String)
+
+        var id: String {
+            switch self {
+            case .saved:
+                return "saved"
+            case .failed(let message):
+                return "failed-\(message)"
+            }
         }
     }
 

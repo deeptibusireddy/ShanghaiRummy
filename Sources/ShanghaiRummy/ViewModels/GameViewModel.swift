@@ -706,6 +706,40 @@ public final class GameViewModel: ObservableObject {
         return order.compactMap { byId[$0] }
     }
 
+    public var persistedHandOrderByPlayer: [UUID: [UUID]] {
+        var persisted: [UUID: [UUID]] = [:]
+        for player in state.players {
+            let handIds = Set(player.hand.map(\.id))
+            var seen: Set<UUID> = []
+            var order = (handOrderByPlayer[player.id] ?? []).filter {
+                handIds.contains($0) && seen.insert($0).inserted
+            }
+            order.append(contentsOf: player.hand.map(\.id).filter {
+                seen.insert($0).inserted
+            })
+            persisted[player.id] = order
+        }
+        return persisted
+    }
+
+    public func restoreHandOrderByPlayer(
+        _ savedOrder: [UUID: [UUID]]
+    ) {
+        var restored: [UUID: [UUID]] = [:]
+        for player in state.players {
+            let handIds = Set(player.hand.map(\.id))
+            var seen: Set<UUID> = []
+            var order = (savedOrder[player.id] ?? []).filter {
+                handIds.contains($0) && seen.insert($0).inserted
+            }
+            order.append(contentsOf: player.hand.map(\.id).filter {
+                seen.insert($0).inserted
+            })
+            restored[player.id] = order
+        }
+        handOrderByPlayer = restored
+    }
+
     /// Reorder relative to another visible card. This remains correct while
     /// some cards are staged and therefore absent from the hand fan.
     public func moveHandCard(_ cardId: UUID, before targetId: UUID?) {

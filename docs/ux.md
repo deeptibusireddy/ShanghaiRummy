@@ -423,6 +423,13 @@ Haptics (M4):
 
 - Local bot table: your seat stays anchored at the bottom and every bot action,
   including draw and buy decisions, runs automatically with visible pacing.
+- Local bot tables expose a manual **Save Game** control after the opening seat
+  draw. One authoritative table snapshot is stored on the iPad; Game Center
+  sessions never expose or write this save.
+- When a solo save exists, Home shows its player count, hand number, bot count,
+  local level, and save time with **Resume Game** and **Discard** actions.
+  Resuming restores the exact cards, scores, levels, dealer, buy state, bot
+  strengths, and hand ordering. Completing that same game clears its save.
 - Online: scene stays anchored to *you* (your seat always bottom); opponent
   hands stay hidden, and the turn banner shows whose turn or buy decision is
   active.

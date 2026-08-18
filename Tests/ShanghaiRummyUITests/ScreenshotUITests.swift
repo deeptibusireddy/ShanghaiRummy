@@ -15,7 +15,10 @@ final class ScreenshotUITests: XCTestCase {
         continueAfterFailure = false
         XCUIDevice.shared.orientation = .landscapeLeft
         app = XCUIApplication()
-        app.launchArguments += ["--ui-testing"]
+        app.launchArguments += [
+            "--ui-testing",
+            "--reset-saved-bot-game",
+        ]
     }
 
     override func tearDownWithError() throws {
@@ -75,6 +78,30 @@ final class ScreenshotUITests: XCTestCase {
         // Small pause so the scene finishes its first frame.
         Thread.sleep(forTimeInterval: 0.5)
         snapshot(named: "04-hand-1-scaffold")
+
+        let saveGame = app.buttons["save-bot-game"]
+        XCTAssertTrue(saveGame.waitForExistence(timeout: 3))
+        saveGame.tap()
+        let savedAlert = app.alerts["Game Saved"]
+        XCTAssertTrue(savedAlert.waitForExistence(timeout: 3))
+        savedAlert.buttons["OK"].tap()
+
+        app.buttons["quit-game"].tap()
+        let leaveAlert = app.alerts["Leave Game?"]
+        XCTAssertTrue(leaveAlert.waitForExistence(timeout: 3))
+        leaveAlert.buttons["Leave Game"].tap()
+
+        let savedGameCard = app.descendants(matching: .any)[
+            "saved-bot-game"
+        ]
+        XCTAssertTrue(savedGameCard.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["resume-saved-bot-game"].exists)
+        XCTAssertTrue(app.buttons["discard-saved-bot-game"].exists)
+        snapshot(named: "01-home-menu-saved-game")
+
+        app.buttons["resume-saved-bot-game"].tap()
+        XCTAssertTrue(app.buttons["quit-game"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["save-bot-game"].exists)
     }
 
     func testCaptureFamilyTableSetup() throws {

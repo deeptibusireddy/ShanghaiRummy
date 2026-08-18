@@ -11,6 +11,10 @@ struct RootView: View {
         FamilyTableConfiguration?
     @State private var tableAssemblyHandoffComplete = false
     @State private var isShowingTurnSoundSettings = false
+    @State private var savedBotGame: LocalBotGameSave?
+    @State private var didLoadSavedBotGame = false
+    @State private var localSaveError: String?
+    private let localBotGameSaveStore = LocalBotGameSaveStore()
     private let entryFinalistPreview = EntryFinalistLaunchConfiguration.current()
     private let tableAssemblyPreview =
         TableAssemblyLaunchConfiguration.current()
@@ -47,7 +51,16 @@ struct RootView: View {
         } else if gameCenter.hasActiveMatch {
             onlineLobby
         } else if let game = activeGame {
-            GameContainerView(vm: game, theme: activeTheme) {
+            GameContainerView(
+                vm: game,
+                theme: activeTheme,
+                onSaveGame: game.cpuPlayerIds.isEmpty ? nil : {
+                    try saveBotGame(game)
+                },
+                onGameCompleted: {
+                    discardSavedBotGameIfMatching(game.state)
+                }
+            ) {
                 activeGame = nil
             }
         } else {
@@ -70,6 +83,7 @@ struct RootView: View {
                     }
                 }
                 .onAppear {
+                    loadSavedBotGameIfNeeded()
                     if CommandLine.arguments.contains(
                         "--demo-family-table-setup"
                     ) {
@@ -300,6 +314,69 @@ struct RootView: View {
         return .gameNight
     }
 
+    private func loadSavedBotGameIfNeeded() {
+        guard !didLoadSavedBotGame else { return }
+        didLoadSavedBotGame = true
+        do {
+            if CommandLine.arguments.contains("--reset-saved-bot-game") {
+                try localBotGameSaveStore.discard()
+            }
+            savedBotGame = try localBotGameSaveStore.load()
+            localSaveError = nil
+        } catch {
+            savedBotGame = nil
+            localSaveError = error.localizedDescription
+        }
+    }
+
+    private func saveBotGame(_ viewModel: GameViewModel) throws {
+        let savedGame = LocalBotGameSave(
+            savedAt: Date(),
+            state: viewModel.state,
+            localPlayerId: viewModel.localPlayerId,
+            cpuPlayerDifficulties: viewModel.cpuPlayerDifficulties,
+            handOrderByPlayer: viewModel.persistedHandOrderByPlayer
+        )
+        try localBotGameSaveStore.save(savedGame)
+        savedBotGame = savedGame
+        localSaveError = nil
+    }
+
+    private func resumeSavedBotGame() {
+        guard let savedBotGame else {
+            localSaveError = "No saved solo table is available."
+            return
+        }
+        let viewModel = GameViewModel(
+            state: savedBotGame.state,
+            localPlayerId: savedBotGame.localPlayerId
+        )
+        viewModel.restoreHandOrderByPlayer(
+            savedBotGame.handOrderByPlayer
+        )
+        viewModel.configureCPUPlayers(
+            savedBotGame.cpuPlayerDifficulties
+        )
+        localSaveError = nil
+        activeTheme = .gameNight
+        activeGame = viewModel
+    }
+
+    private func discardSavedBotGame() {
+        do {
+            try localBotGameSaveStore.discard()
+            savedBotGame = nil
+            localSaveError = nil
+        } catch {
+            localSaveError = error.localizedDescription
+        }
+    }
+
+    private func discardSavedBotGameIfMatching(_ state: GameState) {
+        guard savedBotGame?.belongs(to: state) == true else { return }
+        discardSavedBotGame()
+    }
+
     private func startFamilyTable(
         configuration: FamilyTableConfiguration
     ) {
@@ -478,7 +555,8 @@ struct RootView: View {
         BundAfterDarkHomeView(
             localPlayerName: gameCenter.displayName,
             isGameCenterAuthenticated: gameCenter.isAuthenticated,
-            errorMessage: gameCenter.lastError,
+            errorMessage: localSaveError ?? gameCenter.lastError,
+            savedGame: savedBotGame?.summary,
             onCreateTable: {
                 tableAssemblyConfiguration = nil
                 tableAssemblyHandoffComplete = false
@@ -492,6 +570,12 @@ struct RootView: View {
             },
             onSoundSettings: {
                 isShowingTurnSoundSettings = true
+            },
+            onResumeSavedGame: {
+                resumeSavedBotGame()
+            },
+            onDiscardSavedGame: {
+                discardSavedBotGame()
             }
         )
     }

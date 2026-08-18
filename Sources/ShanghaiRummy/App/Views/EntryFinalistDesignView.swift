@@ -370,24 +370,34 @@ struct BundAfterDarkHomeView: View {
     let localPlayerName: String
     let isGameCenterAuthenticated: Bool
     let errorMessage: String?
+    let savedGame: LocalBotGameSaveSummary?
     let onCreateTable: () -> Void
     let onAuthenticate: () -> Void
     let onSoundSettings: () -> Void
+    let onResumeSavedGame: () -> Void
+    let onDiscardSavedGame: () -> Void
+    @State private var isConfirmingDiscardSavedGame = false
 
     init(
         localPlayerName: String,
         isGameCenterAuthenticated: Bool,
         errorMessage: String?,
+        savedGame: LocalBotGameSaveSummary? = nil,
         onCreateTable: @escaping () -> Void,
         onAuthenticate: @escaping () -> Void,
-        onSoundSettings: @escaping () -> Void
+        onSoundSettings: @escaping () -> Void,
+        onResumeSavedGame: @escaping () -> Void = {},
+        onDiscardSavedGame: @escaping () -> Void = {}
     ) {
         self.localPlayerName = localPlayerName
         self.isGameCenterAuthenticated = isGameCenterAuthenticated
         self.errorMessage = errorMessage
+        self.savedGame = savedGame
         self.onCreateTable = onCreateTable
         self.onAuthenticate = onAuthenticate
         self.onSoundSettings = onSoundSettings
+        self.onResumeSavedGame = onResumeSavedGame
+        self.onDiscardSavedGame = onDiscardSavedGame
     }
 
     var body: some View {
@@ -491,6 +501,11 @@ struct BundAfterDarkHomeView: View {
                         }
                         .padding(.top, 28)
 
+                        if let savedGame {
+                            savedGameCard(savedGame)
+                                .padding(.top, 20)
+                        }
+
                         if let errorMessage {
                             Text(errorMessage)
                                 .font(.footnote.weight(.semibold))
@@ -510,6 +525,105 @@ struct BundAfterDarkHomeView: View {
             }
         }
         .ignoresSafeArea()
+        .alert(
+            "Discard Saved Game?",
+            isPresented: $isConfirmingDiscardSavedGame
+        ) {
+            Button("Keep Save", role: .cancel) {}
+            Button("Discard", role: .destructive) {
+                onDiscardSavedGame()
+            }
+        } message: {
+            Text(
+                "This removes the saved solo table from this iPad."
+            )
+        }
+    }
+
+    private func savedGameCard(
+        _ savedGame: LocalBotGameSaveSummary
+    ) -> some View {
+        HStack(spacing: 18) {
+            Image(systemName: "bookmark.fill")
+                .font(.system(size: 25, weight: .bold))
+                .foregroundStyle(palette.gold)
+                .frame(width: 46, height: 46)
+                .background(
+                    palette.gold.opacity(0.12),
+                    in: Circle()
+                )
+
+            VStack(alignment: .leading, spacing: 5) {
+                Text("SAVED SOLO TABLE")
+                    .font(.caption.weight(.black))
+                    .tracking(2)
+                    .foregroundStyle(palette.gold)
+
+                Text(savedGameTitle(savedGame))
+                    .font(.headline.weight(.bold))
+                    .foregroundStyle(palette.text)
+
+                Text(
+                    "Saved "
+                        + savedGame.savedAt.formatted(
+                            date: .abbreviated,
+                            time: .shortened
+                        )
+                )
+                .font(.footnote.weight(.medium))
+                .foregroundStyle(palette.muted)
+            }
+
+            Spacer(minLength: 10)
+
+            Button("Resume Game", action: onResumeSavedGame)
+                .buttonStyle(EntryPrimaryButtonStyle(
+                    fill: palette.gold,
+                    foreground: palette.background
+                ))
+                .accessibilityIdentifier("resume-saved-bot-game")
+
+            Button {
+                isConfirmingDiscardSavedGame = true
+            } label: {
+                Image(systemName: "trash")
+                    .font(.headline.weight(.bold))
+            }
+            .buttonStyle(EntrySecondaryButtonStyle(
+                foreground: palette.text,
+                stroke: palette.muted
+            ))
+            .accessibilityLabel("Discard saved solo game")
+            .accessibilityIdentifier("discard-saved-bot-game")
+        }
+        .padding(.horizontal, 18)
+        .padding(.vertical, 14)
+        .frame(maxWidth: 650)
+        .background(
+            palette.panelStrong.opacity(0.88),
+            in: RoundedRectangle(cornerRadius: 18)
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: 18)
+                .stroke(palette.gold.opacity(0.42), lineWidth: 1)
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("saved-bot-game")
+    }
+
+    private func savedGameTitle(
+        _ savedGame: LocalBotGameSaveSummary
+    ) -> String {
+        var parts = [
+            "\(savedGame.playerCount) players",
+            "Hand \(savedGame.currentHand)",
+            "\(savedGame.botCount) bots",
+        ]
+        if let name = savedGame.localPlayerName,
+           let level = savedGame.localPlayerLevel {
+            parts.append("\(name) at Level \(level)")
+        }
+        return parts.joined(separator: "  •  ")
     }
 
     private var statusTitle: String {
