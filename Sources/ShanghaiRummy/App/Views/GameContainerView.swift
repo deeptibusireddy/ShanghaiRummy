@@ -593,83 +593,16 @@ struct GameContainerView: View {
     }
 
     private var handOverOverlay: some View {
-        VStack(spacing: 14) {
-            Text("Hand \(vm.state.currentRound) Over")
-                .font(.title2).bold()
-            let outName = vm.pendingHandSummary?.first(where: { $0.wentOut })?.name
-            if let out = outName {
-                Text("\(out) went out")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+        RoundScorecardView(
+            handNumber: vm.state.currentRound,
+            rows: vm.pendingHandSummary ?? [],
+            canAdvance: vm.canAdvanceHand,
+            nextDealerName: vm.nextDealerName,
+            theme: theme,
+            onAdvance: {
+                vm.advanceHand()
             }
-            scoreTable
-            if vm.canAdvanceHand {
-                Button("Deal Next Hand") { vm.advanceHand() }
-                    .buttonStyle(.borderedProminent)
-                    .padding(.top, 4)
-            } else {
-                Text("Waiting for \(vm.nextDealerName) to deal the next hand")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .padding(.top, 4)
-            }
-        }
-        .padding(20)
-        .frame(maxWidth: 460)
-        .background(RoundedRectangle(cornerRadius: 16).fill(.regularMaterial))
-        .padding()
-    }
-
-    @ViewBuilder
-    private var scoreTable: some View {
-        let rows = vm.pendingHandSummary ?? []
-        VStack(spacing: 6) {
-            HStack {
-                Text("Player").frame(maxWidth: .infinity, alignment: .leading)
-                Text("Lvl").frame(width: 44, alignment: .trailing)
-                Text("Round").frame(width: 60, alignment: .trailing)
-                Text("Total").frame(width: 60, alignment: .trailing)
-            }
-            .font(.caption.bold())
-            .foregroundStyle(.secondary)
-            Divider()
-            ForEach(rows) { row in
-                HStack {
-                    HStack(spacing: 6) {
-                        Text(row.name).bold()
-                        if row.wentOut {
-                            Text("• out")
-                                .font(.caption2)
-                                .foregroundStyle(.green)
-                        }
-                        if row.didLevelUp && !row.wentOut {
-                            Text("• down")
-                                .font(.caption2)
-                                .foregroundStyle(.blue)
-                        }
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-
-                    HStack(spacing: 2) {
-                        Text("\(row.currentLevel)")
-                        if row.didLevelUp {
-                            Image(systemName: "arrow.up.circle.fill")
-                                .foregroundStyle(.green)
-                                .font(.caption)
-                        }
-                    }
-                    .frame(width: 44, alignment: .trailing)
-
-                    Text("\(row.roundPoints)")
-                        .frame(width: 60, alignment: .trailing)
-                        .foregroundStyle(row.roundPoints == 0 ? .green : .primary)
-                    Text("\(row.totalAfter)")
-                        .frame(width: 60, alignment: .trailing)
-                        .bold()
-                }
-                .font(.body)
-            }
-        }
+        )
     }
 
     private var gameOverOverlay: some View {

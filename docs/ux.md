@@ -331,9 +331,11 @@ with warning feedback.
 
 - Detected automatically: after discard, if your hand is empty AND
   you've gone down → hand ends.
-- **Hand-over overlay** slides up center: title, per-player level
-  bumps, per-player round score, cumulative totals. **Next hand**
-  button starts the new deal for ordinary hands.
+- **Hand-over overlay** uses the same twilight-and-amber scorecard system as
+  the live Score sheet. Ranked rows show who went out, who completed their
+  contract, the level that advances next, round penalties, and cumulative
+  totals. **Deal Next Hand** uses the amber primary action; remote players see
+  a themed waiting state naming the next dealer.
 - If anyone completed level 10, final scoring happens immediately and the
   hand-over/deal step is skipped.
 

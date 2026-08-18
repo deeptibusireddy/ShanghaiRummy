@@ -474,7 +474,19 @@ final class ScreenshotUITests: XCTestCase {
     func testCaptureHandOver() throws {
         app.launchArguments += ["--demo-hand-over"]
         app.launch()
-        XCTAssertTrue(app.buttons["quit-game"].waitForExistence(timeout: 5))
+
+        let scorecard = app.descendants(matching: .any)[
+            "hand-over-scorecard"
+        ]
+        XCTAssertTrue(scorecard.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Hand 3 Complete"].exists)
+        XCTAssertTrue(
+            app.descendants(matching: .any)["hand-over-row-1"].exists
+        )
+        XCTAssertTrue(
+            app.descendants(matching: .any)["hand-over-row-4"].exists
+        )
+        XCTAssertTrue(app.buttons["deal-next-hand"].exists)
         Thread.sleep(forTimeInterval: 0.9)
         snapshot(named: "08-hand-over-scoreboard")
     }
