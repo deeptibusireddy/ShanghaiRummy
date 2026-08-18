@@ -218,100 +218,25 @@ struct LiveScorecardView: View {
         compact: Bool
     ) -> some View {
         HStack(spacing: 12) {
-            ZStack {
-                Circle()
-                    .fill(
-                        rank == 1
-                            ? accent
-                            : accent.opacity(0.12)
-                    )
-                Text("\(rank)")
-                    .font(.system(
-                        size: 12,
-                        weight: .black,
-                        design: .rounded
-                    ))
-                    .foregroundStyle(
-                        rank == 1
-                            ? Color(theme.blackSuit)
-                            : accent
-                    )
-            }
-            .frame(width: 32, height: 32)
-
-            HStack(spacing: 6) {
-                Text(row.name)
-                    .font(.system(
-                        .body,
-                        design: .rounded,
-                        weight: .bold
-                    ))
-                    .foregroundStyle(Color(theme.bannerText))
-                    .lineLimit(1)
-
-                if rank == 1 {
-                    Image(systemName: "crown.fill")
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundStyle(accent)
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-
-            Text("LV \(row.currentLevel)")
-                .font(.system(
-                    size: 11,
-                    weight: .black,
-                    design: .rounded
-                ))
-                .foregroundStyle(Color(theme.contractPillText))
-                .frame(width: 70, minHeight: 30)
-                .background(
-                    Color(theme.scoreChipBg),
-                    in: Capsule()
-                )
-                .overlay {
-                    Capsule()
-                        .stroke(accent.opacity(0.34), lineWidth: 1)
-                }
-
-            VStack(alignment: .trailing, spacing: 0) {
-                Text("\(row.totalScore)")
-                    .font(.system(
-                        compact ? .headline : .title3,
-                        design: .rounded,
-                        weight: .heavy
-                    ))
-                    .foregroundStyle(
-                        rank == 1
-                            ? accent
-                            : Color(theme.bannerText)
-                    )
-
-                Text("PTS")
-                    .font(.system(
-                        size: 8,
-                        weight: .black,
-                        design: .rounded
-                    ))
-                    .tracking(0.8)
-                    .foregroundStyle(Color(theme.seatSub))
-            }
-            .frame(width: 64, alignment: .trailing)
+            rankBadge(rank)
+            playerLabel(row.name, isLeader: rank == 1)
+            levelBadge(row.currentLevel)
+            scoreTotal(
+                row.totalScore,
+                isLeader: rank == 1,
+                compact: compact
+            )
         }
         .padding(.horizontal, 12)
         .padding(.vertical, compact ? 7 : 9)
         .background(
-            rank == 1
-                ? accent.opacity(0.10)
-                : Color(theme.background).opacity(0.34),
+            scoreRowFill(isLeader: rank == 1),
             in: RoundedRectangle(cornerRadius: 14)
         )
         .overlay {
             RoundedRectangle(cornerRadius: 14)
                 .stroke(
-                    rank == 1
-                        ? accent.opacity(0.50)
-                        : Color(theme.seatSub).opacity(0.20),
+                    scoreRowStroke(isLeader: rank == 1),
                     lineWidth: 1
                 )
         }
@@ -321,6 +246,107 @@ struct LiveScorecardView: View {
                 + "\(row.totalScore) points"
         )
         .accessibilityIdentifier("live-scorecard-row-\(rank)")
+    }
+
+    private func rankBadge(_ rank: Int) -> some View {
+        let isLeader = rank == 1
+        let fill = isLeader ? accent : accent.opacity(0.12)
+        let textColor = isLeader ? Color(theme.blackSuit) : accent
+
+        return ZStack {
+            Circle()
+                .fill(fill)
+            Text("\(rank)")
+                .font(.system(
+                    size: 12,
+                    weight: .black,
+                    design: .rounded
+                ))
+                .foregroundStyle(textColor)
+        }
+        .frame(width: 32, height: 32)
+    }
+
+    private func playerLabel(
+        _ name: String,
+        isLeader: Bool
+    ) -> some View {
+        HStack(spacing: 6) {
+            Text(name)
+                .font(.system(
+                    .body,
+                    design: .rounded,
+                    weight: .bold
+                ))
+                .foregroundStyle(Color(theme.bannerText))
+                .lineLimit(1)
+
+            if isLeader {
+                Image(systemName: "crown.fill")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(accent)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func levelBadge(_ level: Int) -> some View {
+        Text("LV \(level)")
+            .font(.system(
+                size: 11,
+                weight: .black,
+                design: .rounded
+            ))
+            .foregroundStyle(Color(theme.contractPillText))
+            .frame(width: 70, minHeight: 30)
+            .background(
+                Color(theme.scoreChipBg),
+                in: Capsule()
+            )
+            .overlay {
+                Capsule()
+                    .stroke(accent.opacity(0.34), lineWidth: 1)
+            }
+    }
+
+    private func scoreTotal(
+        _ score: Int,
+        isLeader: Bool,
+        compact: Bool
+    ) -> some View {
+        let scoreColor = isLeader ? accent : Color(theme.bannerText)
+
+        return VStack(alignment: .trailing, spacing: 0) {
+            Text("\(score)")
+                .font(.system(
+                    compact ? .headline : .title3,
+                    design: .rounded,
+                    weight: .heavy
+                ))
+                .foregroundStyle(scoreColor)
+
+            Text("PTS")
+                .font(.system(
+                    size: 8,
+                    weight: .black,
+                    design: .rounded
+                ))
+                .tracking(0.8)
+                .foregroundStyle(Color(theme.seatSub))
+        }
+        .frame(width: 64, alignment: .trailing)
+    }
+
+    private func scoreRowFill(isLeader: Bool) -> Color {
+        isLeader
+            ? accent.opacity(0.10)
+            : Color(theme.background).opacity(0.34)
+    }
+
+    private func scoreRowStroke(isLeader: Bool) -> Color {
+        isLeader
+            ? accent.opacity(0.50)
+            : Color(theme.seatSub).opacity(0.20)
     }
 
     private var accent: Color {
