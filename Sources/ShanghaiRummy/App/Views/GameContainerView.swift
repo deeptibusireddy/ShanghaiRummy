@@ -54,7 +54,7 @@ struct GameContainerView: View {
                 .accessibilityIdentifier("quit-game")
 
                 if let onSaveGame,
-                   vm.openingDrawStage == nil {
+                   canShowSaveGame {
                     Button {
                         do {
                             try onSaveGame()
@@ -210,6 +210,17 @@ struct GameContainerView: View {
                 return "failed-\(message)"
             }
         }
+    }
+
+    private var canShowSaveGame: Bool {
+        vm.openingDrawStage == nil
+            && !vm.isBuyDecisionActive
+            && vm.pendingInitialSequenceChoice == nil
+            && vm.pendingSequenceEndChoice == nil
+            && vm.contractReadyPrompt == nil
+            && !vm.isScorecardPresented
+            && !vm.isHandOver
+            && !vm.isGameOver
     }
 
     private func runOpeningDrawCeremony() async {

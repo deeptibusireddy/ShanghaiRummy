@@ -79,6 +79,7 @@ final class ScreenshotUITests: XCTestCase {
         Thread.sleep(forTimeInterval: 0.5)
         snapshot(named: "04-hand-1-scaffold")
 
+        app.buttons["accept-buy-offer"].tap()
         let saveGame = app.buttons["save-bot-game"]
         XCTAssertTrue(saveGame.waitForExistence(timeout: 3))
         saveGame.tap()
