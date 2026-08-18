@@ -284,7 +284,7 @@ public enum GameFactory {
         )
     }
 
-    /// Seventeen-card hand with several persistent new-card markers. Used to
+    /// Eighteen-card hand with several persistent new-card markers. Used to
     /// keep the crowded-hand treatment readable in CI screenshots.
     public static func demoCrowdedHighlightedHand() -> GameState {
         func c(_ suit: Suit, _ rank: Rank) -> Card {
@@ -297,6 +297,7 @@ public enum GameFactory {
             c(.hearts, .five), c(.spades, .seven),
             c(.clubs, .nine), c(.diamonds, .ten),
             c(.hearts, .jack), c(.clubs, .queen),
+            c(.hearts, .ace),
         ]
         state.players[state.currentTurnIndex].hand.append(
             contentsOf: addedCards

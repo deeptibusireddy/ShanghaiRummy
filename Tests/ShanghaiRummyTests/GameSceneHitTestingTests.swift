@@ -448,6 +448,18 @@ final class GameSceneHitTestingTests: XCTestCase {
         )
     }
 
+    func testCrowdedHandFixtureCoversEighteenCardLayout() {
+        let state = GameFactory.demoCrowdedHighlightedHand()
+        let player = state.players[state.currentTurnIndex]
+        let highlightedIds = state.highlightedCardIds(for: player.id)
+
+        XCTAssertEqual(player.hand.count, 18)
+        XCTAssertEqual(highlightedIds.count, 3)
+        XCTAssertTrue(
+            highlightedIds.isSubset(of: Set(player.hand.map(\.id)))
+        )
+    }
+
     func testContextAreaShowsOnlyRealEnabledActions() {
         XCTAssertFalse(
             GameScene.shouldDisplayContextAction(name: nil, enabled: false)
@@ -771,5 +783,37 @@ final class GameSceneHitTestingTests: XCTestCase {
             ),
             secondSpadeFour
         )
+    }
+
+    func testEighteenCardHandFanKeepsEveryCardHittable() {
+        let ids = (0..<18).map { _ in UUID() }
+        let cardSize = CGSize(width: 68, height: 96)
+        let step: CGFloat = 25
+        let slots = ids.enumerated().map { index, id in
+            let centeredIndex = CGFloat(index) - CGFloat(ids.count - 1) / 2
+            let normalized = centeredIndex
+                / (CGFloat(ids.count - 1) / 2)
+            return (
+                id: id,
+                x: 100 + CGFloat(index) * step,
+                y: 80 + 8 * (1 - normalized * normalized)
+            )
+        }
+
+        for index in slots.indices {
+            let slot = slots[index]
+            let hitX = index == slots.index(before: slots.endIndex)
+                ? slot.x
+                : slot.x - cardSize.width / 2 + step / 2
+            XCTAssertEqual(
+                GameScene.handCardId(
+                    at: CGPoint(x: hitX, y: slot.y),
+                    slots: slots,
+                    cardSize: cardSize
+                ),
+                slot.id,
+                "Card \(index + 1) should retain an exposed hit target"
+            )
+        }
     }
 }
