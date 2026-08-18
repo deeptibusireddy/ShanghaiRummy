@@ -215,15 +215,9 @@ final class ScreenshotUITests: XCTestCase {
 
         app.buttons["turn-sound-crystal"].tap()
         dismissSoundUnavailableAlertIfNeeded()
-        if enabledToggle.value as? String == "0" {
-            enabledToggle.tap()
-            dismissSoundUnavailableAlertIfNeeded()
-        }
-        enabledToggle.tap()
-        XCTAssertEqual(enabledToggle.value as? String, "0")
-        enabledToggle.tap()
+        setSwitch(enabledToggle, enabled: false)
+        setSwitch(enabledToggle, enabled: true)
         dismissSoundUnavailableAlertIfNeeded()
-        XCTAssertEqual(enabledToggle.value as? String, "1")
 
         app.buttons["close-turn-sound-settings"].tap()
         XCTAssertTrue(soundSettings.waitForExistence(timeout: 3))
@@ -234,6 +228,28 @@ final class ScreenshotUITests: XCTestCase {
         if alert.waitForExistence(timeout: 0.5) {
             alert.buttons["OK"].tap()
         }
+    }
+
+    private func setSwitch(
+        _ element: XCUIElement,
+        enabled: Bool
+    ) {
+        let expectedValue = enabled ? "1" : "0"
+        if element.value as? String != expectedValue {
+            element.tap()
+        }
+        let predicate = NSPredicate(
+            format: "value == %@",
+            expectedValue
+        )
+        let expectation = XCTNSPredicateExpectation(
+            predicate: predicate,
+            object: element
+        )
+        XCTAssertEqual(
+            XCTWaiter.wait(for: [expectation], timeout: 2),
+            .completed
+        )
     }
 
     func testCaptureMidGamePreview() throws {
