@@ -388,11 +388,12 @@ Haptics (M4):
   Woodblock from the home screen or table. Deliberate previews remain audible
   while turn alerts are switched off; haptics remain enabled.
 - Contract confirmation: when saved melds complete the current contract, a
-  twilight panel uses the table's amber success treatment, level/contract
-  summary, saved-meld count, and clear Put Down Contract / Review Melds
-  hierarchy. Attempting to discard while still ready presents the same panel
-  with coral warning treatment, a preview of the selected discard, and an
-  explicit warning that Discard Anyway clears the saved arrangement.
+  compact twilight panel uses the table's amber success treatment, shows the
+  actual saved cards grouped by meld, and keeps only the level/contract line,
+  remaining hand count, and Put Down Contract / Edit Melds actions. Attempting
+  to discard while still ready retains the more explicit coral warning panel,
+  previews the selected discard, and explains that Discard Anyway clears the
+  saved arrangement.
 - Draw: `.light`
 - Discard: `.rigid`
 - Go Down / Go Out: `.success`

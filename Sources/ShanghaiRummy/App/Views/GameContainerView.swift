@@ -183,7 +183,7 @@ struct GameContainerView: View {
             prompt: prompt,
             level: vm.currentPlayer.currentLevel,
             contractDescription: vm.currentContractDescription,
-            savedMeldCount: vm.contractDraft.count,
+            savedMelds: vm.contractDraft,
             remainingCardCount: contractReadyRemainingCardCount,
             theme: theme,
             onPutDown: {
