@@ -666,7 +666,6 @@ struct GameCenterTableContextBanner: View {
                 .shadow(color: .black.opacity(0.28), radius: 12, y: 6)
         )
         .padding(.horizontal, 24)
-        .padding(.bottom, 20)
         .allowsHitTesting(false)
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("game-center-table-context")

@@ -397,27 +397,46 @@ struct RootView: View {
     private func matchmakerContent(
         configuration: FamilyTableConfiguration?
     ) -> some View {
-        ZStack(alignment: .bottom) {
-            GameCenterMatchmakerView(manager: gameCenter)
-            if let configuration {
+        if let configuration {
+            VStack(spacing: 0) {
                 GameCenterTableContextBanner(
                     configuration: configuration,
                     notice: gameCenter.matchmakerNotice
                 )
-            } else if let notice = gameCenter.matchmakerNotice {
-                Text(notice)
-                    .font(.footnote.weight(.semibold))
-                    .multilineTextAlignment(.center)
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 10)
-                    .background(.black.opacity(0.82), in: Capsule())
-                    .padding(.horizontal, 24)
-                    .padding(.bottom, 20)
-                    .allowsHitTesting(false)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 8)
+                .background(
+                    EntryFinalistPalette.midnightDeco.background
+                )
+
+                GameCenterMatchmakerView(manager: gameCenter)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
+            .background(
+                EntryFinalistPalette.midnightDeco.background
+                    .ignoresSafeArea()
+            )
+        } else {
+            ZStack(alignment: .bottom) {
+                GameCenterMatchmakerView(manager: gameCenter)
+                if let notice = gameCenter.matchmakerNotice {
+                    Text(notice)
+                        .font(.footnote.weight(.semibold))
+                        .multilineTextAlignment(.center)
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 10)
+                        .background(
+                            .black.opacity(0.82),
+                            in: Capsule()
+                        )
+                        .padding(.horizontal, 24)
+                        .padding(.bottom, 20)
+                        .allowsHitTesting(false)
+                }
+            }
+            .ignoresSafeArea()
         }
-        .ignoresSafeArea()
     }
 
     private func startBotOnlyGame(
