@@ -181,7 +181,7 @@ jobs:
 
   simulation-summary:
     name: Verify 5,000 Simulated Games
-    if: ${{ always() && github.event_name == 'workflow_dispatch' }}
+    if: ${{ always() && github.event_name == 'workflow_dispatch' && inputs.run_simulations }}
     needs: game-simulation
     runs-on: ubuntu-latest
     steps:
