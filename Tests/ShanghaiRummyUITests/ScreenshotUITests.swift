@@ -236,19 +236,19 @@ final class ScreenshotUITests: XCTestCase {
     ) {
         let expectedValue = enabled ? "1" : "0"
         if element.value as? String != expectedValue {
-            element.tap()
+            element.coordinate(
+                withNormalizedOffset: CGVector(dx: 0.85, dy: 0.5)
+            )
+            .tap()
         }
-        let predicate = NSPredicate(
-            format: "value == %@",
-            expectedValue
-        )
-        let expectation = XCTNSPredicateExpectation(
-            predicate: predicate,
-            object: element
-        )
+        let deadline = Date().addingTimeInterval(2)
+        while element.value as? String != expectedValue,
+              Date() < deadline {
+            Thread.sleep(forTimeInterval: 0.1)
+        }
         XCTAssertEqual(
-            XCTWaiter.wait(for: [expectation], timeout: 2),
-            .completed
+            element.value as? String,
+            expectedValue
         )
     }
 
