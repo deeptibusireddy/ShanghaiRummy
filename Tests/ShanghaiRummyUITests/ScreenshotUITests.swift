@@ -377,7 +377,13 @@ final class ScreenshotUITests: XCTestCase {
         let scorecard = app.descendants(matching: .any)["live-scorecard"]
         XCTAssertTrue(scorecard.waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["Current Score"].exists)
-        XCTAssertTrue(app.staticTexts["Morgan"].exists)
+        XCTAssertTrue(app.staticTexts["SCORE SHEET"].exists)
+        XCTAssertTrue(
+            app.descendants(matching: .any)["live-scorecard-row-1"].exists
+        )
+        XCTAssertTrue(
+            app.descendants(matching: .any)["live-scorecard-row-6"].exists
+        )
         Thread.sleep(forTimeInterval: 0.5)
         snapshot(named: "04-six-player-scorecard")
     }
@@ -417,11 +423,17 @@ final class ScreenshotUITests: XCTestCase {
             "contract-ready-overlay"
         ]
         XCTAssertTrue(overlay.waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["Your Contract Is Ready"].exists)
+        XCTAssertTrue(app.staticTexts["Confirm Your Melds"].exists)
         XCTAssertTrue(app.buttons["contract-ready-put-down"].exists)
         XCTAssertTrue(app.buttons["contract-ready-review"].exists)
         XCTAssertTrue(
             app.descendants(matching: .any)["contract-ready-contract"].exists
+        )
+        XCTAssertTrue(
+            app.descendants(matching: .any)["contract-ready-meld-1"].exists
+        )
+        XCTAssertTrue(
+            app.descendants(matching: .any)["contract-ready-meld-2"].exists
         )
         Thread.sleep(forTimeInterval: 0.6)
         snapshot(named: "08-contract-ready-confirmation")

@@ -339,6 +339,8 @@ public enum GameFactory {
             currentLevel: 3
         ))
         state.currentTurnIndex = 3
+        state.players[0].currentLevel = 9
+        state.players[state.currentTurnIndex].currentLevel = 9
         state.players[state.currentTurnIndex].hasGoneDownThisRound = true
         let activePlayerId = state.currentPlayerId
         state.melds.append(contentsOf: [
