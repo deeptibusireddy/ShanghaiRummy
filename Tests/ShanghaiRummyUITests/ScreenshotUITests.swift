@@ -119,7 +119,7 @@ final class ScreenshotUITests: XCTestCase {
         XCTAssertEqual(addBot.frame.midX, initialBotFrame.midX, accuracy: 1)
         XCTAssertEqual(addBot.frame.midY, initialBotFrame.midY, accuracy: 1)
         XCTAssertTrue(start.isEnabled)
-        XCTAssertEqual(start.label, "Sign In & Invite 1 Guest")
+        XCTAssertEqual(start.label, "Sign In & Reserve Table")
         snapshot(named: "02-family-table-one-human")
         app.buttons["Remove Human 1"].tap()
         XCTAssertFalse(start.isEnabled)
@@ -160,6 +160,77 @@ final class ScreenshotUITests: XCTestCase {
         snapshot(named: "02-family-table-full")
         start.tap()
         XCTAssertTrue(app.buttons["quit-game"].waitForExistence(timeout: 5))
+    }
+
+    func testCaptureTableAssemblyChoosingGuests() throws {
+        app.launchArguments += ["--demo-table-assembly-choose"]
+        app.launch()
+
+        XCTAssertTrue(
+            app.descendants(matching: .any)["table-assembly"]
+                .waitForExistence(timeout: 5)
+        )
+        XCTAssertTrue(app.staticTexts["table-assembly-title"].exists)
+        XCTAssertTrue(
+            app.descendants(matching: .any)["table-assembly-host"].exists
+        )
+        XCTAssertTrue(
+            app.descendants(matching: .any)["table-assembly-human-1"].exists
+        )
+        XCTAssertTrue(
+            app.descendants(matching: .any)["table-assembly-bot-1"].exists
+        )
+        XCTAssertTrue(
+            app.descendants(matching: .any)["table-assembly-bot-2"].exists
+        )
+        XCTAssertTrue(app.buttons["table-assembly-choose-guests"].exists)
+        snapshot(named: "02-table-assembly-choose-guests")
+    }
+
+    func testCaptureTableAssemblyGathering() throws {
+        app.launchArguments += ["--demo-table-assembly-gathering"]
+        app.launch()
+
+        XCTAssertTrue(
+            app.descendants(matching: .any)["table-assembly"]
+                .waitForExistence(timeout: 5)
+        )
+        XCTAssertTrue(app.staticTexts["table-assembly-title"].exists)
+        XCTAssertTrue(
+            app.descendants(matching: .any)["table-assembly-human-1"].exists
+        )
+        XCTAssertTrue(
+            app.descendants(matching: .any)["table-assembly-bot-1"].exists
+        )
+        XCTAssertTrue(
+            app.descendants(matching: .any)["table-assembly-bot-2"].exists
+        )
+        XCTAssertTrue(app.buttons["table-assembly-leave"].exists)
+        snapshot(named: "02-table-assembly-gathering")
+    }
+
+    func testCaptureTableAssemblyReady() throws {
+        app.launchArguments += ["--demo-table-assembly-ready"]
+        app.launch()
+
+        XCTAssertTrue(
+            app.descendants(matching: .any)["table-assembly"]
+                .waitForExistence(timeout: 5)
+        )
+        XCTAssertTrue(app.staticTexts["table-assembly-title"].exists)
+        let guest = app.descendants(matching: .any)[
+            "table-assembly-human-1"
+        ]
+        XCTAssertTrue(guest.exists)
+        XCTAssertTrue(guest.label.contains("Morgan"))
+        XCTAssertTrue(
+            app.descendants(matching: .any)["table-assembly-bot-1"].exists
+        )
+        XCTAssertTrue(
+            app.descendants(matching: .any)["table-assembly-bot-2"].exists
+        )
+        XCTAssertTrue(app.staticTexts["Everyone is ready"].exists)
+        snapshot(named: "02-table-assembly-ready")
     }
 
     func testQuitRequiresConfirmation() throws {

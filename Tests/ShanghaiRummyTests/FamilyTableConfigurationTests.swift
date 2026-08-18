@@ -42,15 +42,18 @@ final class FamilyTableConfigurationTests: XCTestCase {
         XCTAssertEqual(configuration.invitedHumanCount, 1)
         XCTAssertEqual(configuration.humanCount, 2)
         XCTAssertEqual(configuration.gameCenterPlayerCount, 2)
-        XCTAssertEqual(configuration.actionTitle, "Invite 1 Guest")
+        XCTAssertEqual(
+            configuration.actionTitle,
+            "Reserve & Choose 1 Guest"
+        )
         XCTAssertEqual(
             configuration.actionTitle(isGameCenterAuthenticated: false),
-            "Sign In & Invite 1 Guest"
+            "Sign In & Reserve Table"
         )
         XCTAssertTrue(configuration.canStart)
         XCTAssertEqual(
             configuration.actionTitle(isGameCenterAuthenticated: true),
-            "Invite 1 Guest"
+            "Reserve & Choose 1 Guest"
         )
     }
 

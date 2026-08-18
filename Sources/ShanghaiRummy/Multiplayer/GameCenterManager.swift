@@ -11,6 +11,7 @@ final class GameCenterManager: NSObject, ObservableObject {
     @Published private(set) var hasActiveMatch = false
     @Published private(set) var onlineStatusMessage = ""
     @Published private(set) var onlineGame: GameViewModel?
+    @Published private(set) var connectedGuestNames: [String] = []
     @Published private(set) var matchmakerNotice: String?
     @Published var isPresentingMatchmaker = false
     @Published var isPresentingAuthentication = false
@@ -31,6 +32,7 @@ final class GameCenterManager: NSObject, ObservableObject {
     private var isRunningHostedBots = false
     private var hostedBotTask: Task<Void, Never>?
     private var hostedBotTaskId: UUID?
+    private var connectedGuestNamesByPlayerId: [String: String] = [:]
 
     func authenticate() async {
         lastError = nil
@@ -95,13 +97,16 @@ final class GameCenterManager: NSObject, ObservableObject {
         requestedRemoteHumanCount = invitedHumanCount
         shouldBroadcastGameSetup = true
         lastError = nil
-        let people = invitedHumanCount == 1 ? "person" : "people"
+        onlineStatusMessage = ""
+        connectedGuestNames = []
+        connectedGuestNamesByPlayerId = [:]
+        let guests = invitedHumanCount == 1 ? "guest" : "guests"
         if botCount == 0 {
-            matchmakerNotice = "Invite exactly \(invitedHumanCount) \(people)"
+            matchmakerNotice = "Choose exactly \(invitedHumanCount) \(guests)"
         } else {
             let bots = botCount == 1 ? "bot" : "bots"
-            matchmakerNotice = "\(botCount) \(bots) reserved • Invite exactly "
-                + "\(invitedHumanCount) \(people)"
+            matchmakerNotice = "\(botCount) \(bots) ready - choose exactly "
+                + "\(invitedHumanCount) \(guests)"
         }
         if isAuthenticated {
             isPresentingMatchmaker = true
@@ -135,6 +140,8 @@ final class GameCenterManager: NSObject, ObservableObject {
         requestedRemoteHumanCount = nil
         shouldBroadcastGameSetup = false
         lastError = nil
+        connectedGuestNames = []
+        connectedGuestNamesByPlayerId = [:]
         matchmakerNotice = nil
         hasActiveMatch = true
         onlineStatusMessage = "Looking for one other Quick Pair player…"
@@ -259,6 +266,7 @@ final class GameCenterManager: NSObject, ObservableObject {
         self.match?.disconnect()
         cancelHostedBotActions()
         self.match = match
+        replaceConnectedGuests(with: match.players)
         requestedRemoteHumanCount = nil
         match.delegate = self
         hasActiveMatch = true
@@ -339,6 +347,34 @@ final class GameCenterManager: NSObject, ObservableObject {
             }
             .values
             .sorted { $0.gamePlayerID < $1.gamePlayerID }
+    }
+
+    private func replaceConnectedGuests(with players: [GKPlayer]) {
+        connectedGuestNamesByPlayerId = Dictionary(
+            uniqueKeysWithValues: players.map {
+                ($0.gamePlayerID, $0.displayName)
+            }
+        )
+        publishConnectedGuestNames()
+    }
+
+    private func updateConnectedGuest(
+        _ player: GKPlayer,
+        isConnected: Bool
+    ) {
+        if isConnected {
+            connectedGuestNamesByPlayerId[player.gamePlayerID] =
+                player.displayName
+        } else {
+            connectedGuestNamesByPlayerId[player.gamePlayerID] = nil
+        }
+        publishConnectedGuestNames()
+    }
+
+    private func publishConnectedGuestNames() {
+        connectedGuestNames = connectedGuestNamesByPlayerId
+            .sorted { $0.key < $1.key }
+            .map(\.value)
     }
 
     private func startHostedGame(
@@ -705,6 +741,8 @@ final class GameCenterManager: NSObject, ObservableObject {
         onlineGame = nil
         hasActiveMatch = false
         isChoosingHost = false
+        connectedGuestNames = []
+        connectedGuestNamesByPlayerId = [:]
         matchmakerNotice = nil
         onlineStatusMessage = ""
     }
@@ -877,6 +915,7 @@ extension GameCenterManager: GKMatchDelegate {
             guard let self, self.match === match else { return }
             switch state {
             case .connected:
+                self.updateConnectedGuest(player, isConnected: true)
                 if let snapshot = self.currentSnapshot,
                    snapshot.hostGamePlayerId
                     == GKLocalPlayer.local.gamePlayerID {
@@ -890,6 +929,7 @@ extension GameCenterManager: GKMatchDelegate {
                     self.tryStartMatchIfReady()
                 }
             case .disconnected:
+                self.updateConnectedGuest(player, isConnected: false)
                 self.onlineStatusMessage = "\(player.displayName) disconnected"
                 if self.currentSnapshot?.hostGamePlayerId == player.gamePlayerID,
                    let onlineGame = self.onlineGame {

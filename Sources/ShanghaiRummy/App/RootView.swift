@@ -7,9 +7,13 @@ struct RootView: View {
     @State private var showingFamilyTableSetup = false
     @State private var familyTableConfiguration =
         FamilyTableConfiguration()
-    @State private var pendingFamilyTable: FamilyTableConfiguration?
+    @State private var tableAssemblyConfiguration:
+        FamilyTableConfiguration?
+    @State private var tableAssemblyHandoffComplete = false
     @State private var isShowingTurnSoundSettings = false
     private let entryFinalistPreview = EntryFinalistLaunchConfiguration.current()
+    private let tableAssemblyPreview =
+        TableAssemblyLaunchConfiguration.current()
 
     var body: some View {
         if let preview = entryFinalistPreview {
@@ -17,8 +21,27 @@ struct RootView: View {
                 design: preview.design,
                 screen: preview.screen
             )
+        } else if let preview = tableAssemblyPreview {
+            TableAssemblyView(
+                configuration: preview.configuration,
+                localPlayerName: "Deepti",
+                connectedGuestNames: preview.connectedGuestNames,
+                isMatchActive: preview.isMatchActive,
+                statusMessage: preview.statusMessage,
+                errorMessage: nil,
+                onChooseGuests: {},
+                onEditTable: {},
+                onLeaveTable: {}
+            )
+        } else if showingFamilyTableSetup {
+            familyTableSetup
+        } else if let configuration = tableAssemblyConfiguration,
+                  !tableAssemblyHandoffComplete {
+            tableAssemblyView(configuration: configuration)
         } else if let game = gameCenter.onlineGame {
             GameContainerView(vm: game, theme: activeTheme) {
+                tableAssemblyConfiguration = nil
+                tableAssemblyHandoffComplete = false
                 gameCenter.leaveOnlineMatch()
             }
         } else if gameCenter.hasActiveMatch {
@@ -32,42 +55,8 @@ struct RootView: View {
                 .sheet(isPresented: $isShowingTurnSoundSettings) {
                     TurnSoundSettingsView()
                 }
-                .fullScreenCover(
-                    isPresented: $showingFamilyTableSetup,
-                    onDismiss: startPendingFamilyTable
-                ) {
-                    MidnightDecoTableView(
-                        configuration: $familyTableConfiguration,
-                        localPlayerName: gameCenter.displayName,
-                        isGameCenterAuthenticated:
-                            gameCenter.isAuthenticated,
-                        onBack: {
-                            pendingFamilyTable = nil
-                            showingFamilyTableSetup = false
-                        },
-                        onStart: { configuration in
-                            pendingFamilyTable = configuration
-                            showingFamilyTableSetup = false
-                        }
-                    )
-                }
                 .fullScreenCover(isPresented: $gameCenter.isPresentingMatchmaker) {
-                    ZStack(alignment: .bottom) {
-                        GameCenterMatchmakerView(manager: gameCenter)
-                        if let notice = gameCenter.matchmakerNotice {
-                            Text(notice)
-                                .font(.footnote.weight(.semibold))
-                                .multilineTextAlignment(.center)
-                                .foregroundStyle(.white)
-                                .padding(.horizontal, 16)
-                                .padding(.vertical, 10)
-                                .background(.black.opacity(0.82), in: Capsule())
-                                .padding(.horizontal, 24)
-                                .padding(.bottom, 20)
-                                .allowsHitTesting(false)
-                        }
-                    }
-                    .ignoresSafeArea()
+                    matchmakerContent(configuration: nil)
                 }
                 .sheet(
                     isPresented: $gameCenter.isPresentingAuthentication,
@@ -245,20 +234,124 @@ struct RootView: View {
         return .gameNight
     }
 
-    private func startPendingFamilyTable() {
-        guard let configuration = pendingFamilyTable else { return }
-        pendingFamilyTable = nil
-
+    private func startFamilyTable(
+        configuration: FamilyTableConfiguration
+    ) {
+        showingFamilyTableSetup = false
+        tableAssemblyHandoffComplete = false
         if configuration.invitedHumanCount == 0 {
+            tableAssemblyConfiguration = nil
             startBotOnlyGame(
                 botDifficulties: configuration.botDifficulties
             )
         } else {
+            tableAssemblyConfiguration = configuration
             gameCenter.beginMatchmaking(
                 invitedHumanCount: configuration.invitedHumanCount,
                 botDifficulties: configuration.botDifficulties
             )
         }
+    }
+
+    private var familyTableSetup: some View {
+        MidnightDecoTableView(
+            configuration: $familyTableConfiguration,
+            localPlayerName: gameCenter.displayName,
+            isGameCenterAuthenticated: gameCenter.isAuthenticated,
+            onBack: {
+                tableAssemblyConfiguration = nil
+                showingFamilyTableSetup = false
+            },
+            onStart: { configuration in
+                startFamilyTable(configuration: configuration)
+            }
+        )
+        .fullScreenCover(isPresented: $gameCenter.isPresentingMatchmaker) {
+            matchmakerContent(configuration: nil)
+        }
+    }
+
+    private func tableAssemblyView(
+        configuration: FamilyTableConfiguration
+    ) -> some View {
+        TableAssemblyView(
+            configuration: configuration,
+            localPlayerName: gameCenter.displayName,
+            connectedGuestNames: gameCenter.connectedGuestNames,
+            isMatchActive: gameCenter.hasActiveMatch,
+            statusMessage: gameCenter.onlineStatusMessage,
+            errorMessage: gameCenter.lastError,
+            onChooseGuests: {
+                gameCenter.beginMatchmaking(
+                    invitedHumanCount:
+                        configuration.invitedHumanCount,
+                    botDifficulties: configuration.botDifficulties
+                )
+            },
+            onEditTable: {
+                gameCenter.leaveOnlineMatch()
+                familyTableConfiguration = configuration
+                tableAssemblyConfiguration = nil
+                tableAssemblyHandoffComplete = false
+                showingFamilyTableSetup = true
+            },
+            onLeaveTable: {
+                gameCenter.leaveOnlineMatch()
+                tableAssemblyConfiguration = nil
+                tableAssemblyHandoffComplete = false
+            }
+        )
+        .task(id: gameCenter.onlineGame != nil) {
+            guard gameCenter.onlineGame != nil else { return }
+            do {
+                try await Task.sleep(for: .seconds(1.4))
+            } catch {
+                return
+            }
+            guard !Task.isCancelled else { return }
+            tableAssemblyHandoffComplete = true
+        }
+        .fullScreenCover(isPresented: $gameCenter.isPresentingMatchmaker) {
+            matchmakerContent(configuration: configuration)
+        }
+        .sheet(
+            isPresented: $gameCenter.isPresentingAuthentication,
+            onDismiss: {
+                gameCenter.authenticationDidDismiss()
+            }
+        ) {
+            if let controller = gameCenter.authenticationViewController {
+                GameCenterAuthenticationView(viewController: controller)
+                    .ignoresSafeArea()
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func matchmakerContent(
+        configuration: FamilyTableConfiguration?
+    ) -> some View {
+        ZStack(alignment: .bottom) {
+            GameCenterMatchmakerView(manager: gameCenter)
+            if let configuration {
+                GameCenterTableContextBanner(
+                    configuration: configuration,
+                    notice: gameCenter.matchmakerNotice
+                )
+            } else if let notice = gameCenter.matchmakerNotice {
+                Text(notice)
+                    .font(.footnote.weight(.semibold))
+                    .multilineTextAlignment(.center)
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .background(.black.opacity(0.82), in: Capsule())
+                    .padding(.horizontal, 24)
+                    .padding(.bottom, 20)
+                    .allowsHitTesting(false)
+            }
+        }
+        .ignoresSafeArea()
     }
 
     private func startBotOnlyGame(
@@ -302,7 +395,8 @@ struct RootView: View {
             isGameCenterAuthenticated: gameCenter.isAuthenticated,
             errorMessage: gameCenter.lastError,
             onCreateTable: {
-                pendingFamilyTable = nil
+                tableAssemblyConfiguration = nil
+                tableAssemblyHandoffComplete = false
                 familyTableConfiguration = FamilyTableConfiguration()
                 showingFamilyTableSetup = true
             },
