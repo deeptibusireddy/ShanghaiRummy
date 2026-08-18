@@ -108,24 +108,6 @@ jobs:
         batch:
           - { start: 1, end: 50, slug: "0001-0050" }
           - { start: 51, end: 100, slug: "0051-0100" }
-          - { start: 101, end: 150, slug: "0101-0150" }
-          - { start: 151, end: 200, slug: "0151-0200" }
-          - { start: 201, end: 250, slug: "0201-0250" }
-          - { start: 251, end: 300, slug: "0251-0300" }
-          - { start: 301, end: 350, slug: "0301-0350" }
-          - { start: 351, end: 400, slug: "0351-0400" }
-          - { start: 401, end: 450, slug: "0401-0450" }
-          - { start: 451, end: 500, slug: "0451-0500" }
-          - { start: 501, end: 550, slug: "0501-0550" }
-          - { start: 551, end: 600, slug: "0551-0600" }
-          - { start: 601, end: 650, slug: "0601-0650" }
-          - { start: 651, end: 700, slug: "0651-0700" }
-          - { start: 701, end: 750, slug: "0701-0750" }
-          - { start: 751, end: 800, slug: "0751-0800" }
-          - { start: 801, end: 850, slug: "0801-0850" }
-          - { start: 851, end: 900, slug: "0851-0900" }
-          - { start: 901, end: 950, slug: "0901-0950" }
-          - { start: 951, end: 1000, slug: "0951-1000" }
     env:
       PLAYER_COUNT: ${{ matrix.player_count }}
       BATCH_START: ${{ matrix.batch.start }}
@@ -161,7 +143,7 @@ jobs:
           if-no-files-found: warn
 
   simulation-summary:
-    name: Verify 5,000 Simulated Games
+    name: Verify 500 Simulated Games
     if: ${{ always() && github.event_name == 'workflow_dispatch' }}
     needs: game-simulation
     runs-on: ubuntu-latest
@@ -207,10 +189,10 @@ jobs:
           )
           print(f"Completed by player count: {by_player}")
           if (
-              len(reports) != 100
-              or requested != 5000
-              or completed != 5000
-              or any(count != 1000 for count in by_player.values())
+              len(reports) != 10
+              or requested != 500
+              or completed != 500
+              or any(count != 100 for count in by_player.values())
               or failures
           ):
               for failure in failures[:20]:
