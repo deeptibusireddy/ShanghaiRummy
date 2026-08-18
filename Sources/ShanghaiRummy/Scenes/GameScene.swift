@@ -384,6 +384,11 @@ final class GameScene: SKScene {
         contract.position = CGPoint(x: center.x + width / 2 - 18,
                                     y: center.y - 10)
         contract.zPosition = 31
+        fitLabel(
+            contract,
+            maxWidth: width * 0.52,
+            minimumFontSize: size.width < 720 ? 8 : 9
+        )
         headerLayer.addChild(contract)
     }
 
@@ -1393,6 +1398,11 @@ final class GameScene: SKScene {
             y: center.y + (usesRoomyLayout ? 1 : 0)
         )
         detail.zPosition = 3
+        fitLabel(
+            detail,
+            maxWidth: center.x + panelSize.width / 2 - 12 - textX,
+            minimumFontSize: usesRoomyLayout ? 10 : 8
+        )
         seatsLayer.addChild(detail)
 
         let buysRemaining = vm.buysRemaining(for: player.id)
@@ -1659,7 +1669,7 @@ final class GameScene: SKScene {
         horizontalEdgeInset: CGFloat
     ) -> CGFloat {
         min(
-            520,
+            544,
             max(300, sceneWidth - horizontalEdgeInset * 2 - 304)
         )
     }
@@ -1763,8 +1773,12 @@ final class GameScene: SKScene {
         return max(24, cutoutInset + 15)
     }
 
+    static func currentPlayerHUDWidth(sceneWidth: CGFloat) -> CGFloat {
+        sceneWidth < 720 ? 218 : 264
+    }
+
     private var currentPlayerHUDWidth: CGFloat {
-        size.width < 720 ? 190 : 240
+        Self.currentPlayerHUDWidth(sceneWidth: size.width)
     }
 
     private var stagingTrayY: CGFloat {
@@ -1799,6 +1813,22 @@ final class GameScene: SKScene {
     }
 
     private var tableauLaneY: CGFloat { stagingTrayY }
+
+    private func fitLabel(
+        _ label: SKLabelNode,
+        maxWidth: CGFloat,
+        minimumFontSize: CGFloat
+    ) {
+        guard maxWidth > 0, label.frame.width > maxWidth else { return }
+
+        label.fontSize = max(
+            minimumFontSize,
+            label.fontSize * maxWidth / label.frame.width
+        )
+        if label.frame.width > maxWidth {
+            label.xScale = maxWidth / label.frame.width
+        }
+    }
 
     private func ownMeldRowY(scale: CGFloat) -> CGFloat {
         Self.ownMeldRowY(
