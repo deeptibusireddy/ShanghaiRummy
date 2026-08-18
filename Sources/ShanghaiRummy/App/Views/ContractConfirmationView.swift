@@ -278,7 +278,6 @@ struct ContractConfirmationView: View {
             }
         }
         .frame(maxWidth: .infinity)
-        .accessibilityIdentifier("contract-ready-melds")
     }
 
     private var remainingCardsLine: some View {
