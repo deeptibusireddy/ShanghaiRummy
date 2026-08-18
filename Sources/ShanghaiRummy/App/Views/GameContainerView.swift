@@ -112,10 +112,10 @@ struct GameContainerView: View {
                     stage: stage,
                     draws: vm.state.openingDraws,
                     players: vm.state.players,
-                    theme: theme
-                ) {
-                    vm.completeOpeningDrawCeremony()
-                }
+                    theme: theme,
+                    onShowSeatOrder: vm.showOpeningSeatOrder,
+                    onContinue: vm.completeOpeningDrawCeremony
+                )
             } else if let choice = vm.pendingInitialSequenceChoice {
                 initialSequenceChoiceOverlay(choice)
             } else if let choice = vm.pendingSequenceEndChoice {
@@ -139,6 +139,9 @@ struct GameContainerView: View {
 
     private func runOpeningDrawCeremony() async {
         if vm.openingDrawStage == .drawing {
+            if CommandLine.arguments.contains("--ui-testing") {
+                return
+            }
             do {
                 try await Task.sleep(
                     for: GameViewModel.openingDrawRevealDuration

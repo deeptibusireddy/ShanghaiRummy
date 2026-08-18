@@ -5,6 +5,7 @@ struct OpeningDrawView: View {
     let draws: [OpeningDraw]
     let players: [Player]
     let theme: VisualTheme
+    let onShowSeatOrder: () -> Void
     let onContinue: () -> Void
 
     @Namespace private var cardMovement
@@ -82,6 +83,12 @@ struct OpeningDrawView: View {
         .contentShape(Rectangle())
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("opening-seat-draw")
+        .onTapGesture {
+            if CommandLine.arguments.contains("--ui-testing"),
+               stage == .drawing {
+                onShowSeatOrder()
+            }
+        }
         .task {
             do {
                 try await Task.sleep(for: .milliseconds(350))
@@ -104,6 +111,7 @@ struct OpeningDrawView: View {
                 ))
                 .tracking(2.4)
                 .foregroundStyle(Color(theme.bannerText))
+                .accessibilityIdentifier("opening-seat-draw-title")
 
             Text(headerMessage)
                 .font(.system(

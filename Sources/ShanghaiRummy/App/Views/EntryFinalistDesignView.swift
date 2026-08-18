@@ -101,7 +101,7 @@ struct EntryFinalistPreviewHost: View {
     }
 }
 
-private struct EntryFinalistPalette {
+struct EntryFinalistPalette {
     let background: Color
     let backgroundSecondary: Color
     let panel: Color
@@ -672,7 +672,7 @@ private struct EntryTopStatus: View {
     }
 }
 
-private struct EntryNavigationBar: View {
+struct EntryNavigationBar: View {
     let title: String
     let seatCount: Int
     let palette: EntryFinalistPalette
@@ -1326,7 +1326,7 @@ private struct EntryPlayingCard: View {
     }
 }
 
-private struct MidnightDecoBackdrop: View {
+struct MidnightDecoBackdrop: View {
     let palette: EntryFinalistPalette
 
     var body: some View {
@@ -1632,7 +1632,7 @@ private struct BundRiver: View {
     }
 }
 
-private struct EntryPrimaryButtonStyle: ButtonStyle {
+struct EntryPrimaryButtonStyle: ButtonStyle {
     @Environment(\.isEnabled) private var isEnabled
     let fill: Color
     let foreground: Color
@@ -1666,7 +1666,7 @@ private struct EntryPrimaryButtonStyle: ButtonStyle {
     }
 }
 
-private struct EntrySecondaryButtonStyle: ButtonStyle {
+struct EntrySecondaryButtonStyle: ButtonStyle {
     let foreground: Color
     let stroke: Color
 
@@ -1688,7 +1688,7 @@ private struct EntrySecondaryButtonStyle: ButtonStyle {
     }
 }
 
-private struct ChamferedRectangle: Shape {
+struct ChamferedRectangle: Shape {
     let corner: CGFloat
 
     func path(in rect: CGRect) -> Path {

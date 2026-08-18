@@ -73,13 +73,13 @@ struct FamilyTableConfiguration: Equatable {
         if invitedHumanCount == 0 {
             return "Play with \(botCount) \(botCount == 1 ? "Bot" : "Bots")"
         }
-        return "Invite \(invitedHumanCount) "
+        return "Reserve & Choose \(invitedHumanCount) "
             + (invitedHumanCount == 1 ? "Guest" : "Guests")
     }
 
     func actionTitle(isGameCenterAuthenticated: Bool) -> String {
         if invitedHumanCount > 0, !isGameCenterAuthenticated {
-            return "Sign In & \(actionTitle)"
+            return "Sign In & Reserve Table"
         }
         return actionTitle
     }
@@ -318,7 +318,7 @@ struct FamilyTableSetupView: View {
         }
         if configuration.invitedHumanCount > 0,
            !isGameCenterAuthenticated {
-            return "Tap Sign In & Invite to connect this device to Game "
+            return "Tap Sign In & Reserve Table to connect this device to Game "
                 + "Center. Every player with the app can create a table."
         }
         if configuration.invitedHumanCount == 0 {
