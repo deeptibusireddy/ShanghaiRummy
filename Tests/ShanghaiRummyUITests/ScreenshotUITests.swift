@@ -58,7 +58,10 @@ final class ScreenshotUITests: XCTestCase {
             app.descendants(matching: .any)["opening-seat-draw"]
                 .waitForExistence(timeout: 5)
         )
-        XCTAssertTrue(app.staticTexts["DRAW FOR SEATS"].exists)
+        XCTAssertTrue(
+            app.staticTexts["DRAW FOR SEATS"]
+                .waitForExistence(timeout: 2)
+        )
         Thread.sleep(forTimeInterval: 0.8)
         snapshot(named: "03-opening-seat-draw")
 

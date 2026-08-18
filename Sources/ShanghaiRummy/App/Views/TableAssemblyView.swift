@@ -76,7 +76,10 @@ struct TableAssemblyPresentation: Equatable {
                 + " to choose"
         case .gathering:
             return "\(connectedGuestCount) of "
-                + "\(configuration.invitedHumanCount) guests joined"
+                + "\(configuration.invitedHumanCount) "
+                + (configuration.invitedHumanCount == 1
+                    ? "guest joined"
+                    : "guests joined")
         case .ready:
             return "Everyone is ready"
         }
