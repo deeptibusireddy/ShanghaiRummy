@@ -87,6 +87,36 @@ jobs:
             build test \
             | xcbeautify --renderer github-actions
 
+      - name: Verify bundled version
+        run: |
+          BUILD_SETTINGS=$(xcodebuild \
+            -project ShanghaiRummy.xcodeproj \
+            -target ShanghaiRummy \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -showBuildSettings)
+          EXPECTED_VERSION=$(printf '%s\n' "$BUILD_SETTINGS" \
+            | awk -F ' = ' '/MARKETING_VERSION/ { print $2; exit }')
+          EXPECTED_BUILD=$(printf '%s\n' "$BUILD_SETTINGS" \
+            | awk -F ' = ' '/CURRENT_PROJECT_VERSION/ { print $2; exit }')
+          APP_INFO=$(find "$HOME/Library/Developer/Xcode/DerivedData" \
+            -path '*/Build/Products/Debug-iphonesimulator/ShanghaiRummy.app/Info.plist' \
+            -print -quit)
+          if [ -z "$APP_INFO" ]; then
+            echo "Built ShanghaiRummy.app Info.plist was not found"
+            exit 1
+          fi
+          BUNDLED_VERSION=$(/usr/libexec/PlistBuddy \
+            -c 'Print :CFBundleShortVersionString' "$APP_INFO")
+          BUNDLED_BUILD=$(/usr/libexec/PlistBuddy \
+            -c 'Print :CFBundleVersion' "$APP_INFO")
+          echo "Bundled version: $BUNDLED_VERSION ($BUNDLED_BUILD)"
+          if [ "$BUNDLED_VERSION" != "$EXPECTED_VERSION" ] \
+            || [ "$BUNDLED_BUILD" != "$EXPECTED_BUILD" ]; then
+            echo "Expected $EXPECTED_VERSION ($EXPECTED_BUILD)"
+            exit 1
+          fi
+
       - name: Extract screenshots from test results
         if: always()
         run: |
