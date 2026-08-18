@@ -82,6 +82,7 @@ final class ScreenshotUITests: XCTestCase {
         app.buttons["accept-buy-offer"].tap()
         let saveGame = app.buttons["save-bot-game"]
         XCTAssertTrue(saveGame.waitForExistence(timeout: 3))
+        snapshot(named: "04-solo-save-control")
         saveGame.tap()
         let savedAlert = app.alerts["Game Saved"]
         XCTAssertTrue(savedAlert.waitForExistence(timeout: 3))

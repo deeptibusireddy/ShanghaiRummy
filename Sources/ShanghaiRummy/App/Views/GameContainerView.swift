@@ -255,6 +255,10 @@ struct GameContainerView: View {
     }
 
     private var exitConfirmationMessage: String {
+        if onSaveGame != nil {
+            return "You’ll return to Home. Only your most recently saved "
+                + "progress can be resumed; newer progress will be lost."
+        }
         if vm.isOnlineGame {
             return "You will leave this online table and may not be able to "
                 + "rejoin."

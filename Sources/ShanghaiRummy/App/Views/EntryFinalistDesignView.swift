@@ -614,10 +614,13 @@ struct BundAfterDarkHomeView: View {
     private func savedGameTitle(
         _ savedGame: LocalBotGameSaveSummary
     ) -> String {
+        let botLabel = savedGame.botCount == 1
+            ? "1 bot"
+            : "\(savedGame.botCount) bots"
         var parts = [
             "\(savedGame.playerCount) players",
             "Hand \(savedGame.currentHand)",
-            "\(savedGame.botCount) bots",
+            botLabel,
         ]
         if let name = savedGame.localPlayerName,
            let level = savedGame.localPlayerLevel {
