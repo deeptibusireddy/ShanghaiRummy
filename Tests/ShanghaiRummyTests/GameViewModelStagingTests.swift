@@ -187,7 +187,10 @@ final class GameViewModelStagingTests: XCTestCase {
         let queen = Card(suit: .diamonds, rank: .queen)
         let firstJoker = Card.joker()
         let secondJoker = Card.joker()
-        let vm = makeVM(hand: [nine, queen, firstJoker, secondJoker])
+        let vm = makeVM(
+            hand: [nine, queen, firstJoker, secondJoker],
+            level: 2
+        )
         for card in vm.currentPlayer.hand {
             vm.toggleStaged(cardId: card.id)
         }
@@ -207,7 +210,7 @@ final class GameViewModelStagingTests: XCTestCase {
         let ten = Card(suit: .diamonds, rank: .ten)
         let jack = Card(suit: .diamonds, rank: .jack)
         let joker = Card.joker()
-        let vm = makeVM(hand: [nine, ten, jack, joker])
+        let vm = makeVM(hand: [nine, ten, jack, joker], level: 2)
         for card in vm.currentPlayer.hand {
             vm.toggleStaged(cardId: card.id)
         }
@@ -225,6 +228,141 @@ final class GameViewModelStagingTests: XCTestCase {
         XCTAssertEqual(vm.contractDraft.count, 1)
         XCTAssertEqual(vm.contractDraft[0].first?.id, joker.id)
         XCTAssertTrue(vm.stagedCardIds.isEmpty)
+    }
+
+    func testShortLegalRunReportsContractProgressAndCannotBeSaved() {
+        let run = [
+            Card(suit: .hearts, rank: .three),
+            Card(suit: .hearts, rank: .four),
+            Card(suit: .hearts, rank: .five),
+            Card(suit: .hearts, rank: .six),
+        ]
+        let vm = makeVM(
+            hand: run + [Card(suit: .clubs, rank: .king)],
+            level: 6
+        )
+        for card in run {
+            vm.toggleStaged(cardId: card.id)
+        }
+
+        XCTAssertEqual(
+            vm.stagedContractFeedback,
+            .progress(
+                kind: .sequence,
+                selectedCount: 4,
+                requiredCount: 5
+            )
+        )
+        XCTAssertFalse(vm.canSaveStagedMeld)
+        XCTAssertFalse(vm.saveStagedAsMeld())
+        XCTAssertTrue(vm.contractDraft.isEmpty)
+    }
+
+    func testCompletedRequiredRunIsReadyToSave() {
+        let run = [
+            Card(suit: .hearts, rank: .three),
+            Card(suit: .hearts, rank: .four),
+            Card(suit: .hearts, rank: .five),
+            Card(suit: .hearts, rank: .six),
+            Card(suit: .hearts, rank: .seven),
+        ]
+        let vm = makeVM(
+            hand: run + [Card(suit: .clubs, rank: .king)],
+            level: 6
+        )
+        for card in run {
+            vm.toggleStaged(cardId: card.id)
+        }
+
+        XCTAssertEqual(
+            vm.stagedContractFeedback,
+            .ready(kind: .sequence, cardCount: 5)
+        )
+        XCTAssertTrue(vm.canSaveStagedMeld)
+    }
+
+    func testInvalidFullSizeRunReportsStructuralProblem() {
+        let cards = [
+            Card(suit: .hearts, rank: .three),
+            Card(suit: .hearts, rank: .four),
+            Card(suit: .clubs, rank: .five),
+            Card(suit: .hearts, rank: .six),
+            Card(suit: .hearts, rank: .seven),
+        ]
+        let vm = makeVM(
+            hand: cards + [Card(suit: .clubs, rank: .king)],
+            level: 6
+        )
+        for card in cards {
+            vm.toggleStaged(cardId: card.id)
+        }
+
+        XCTAssertEqual(
+            vm.stagedContractFeedback,
+            .invalid(.sequenceMixedSuits)
+        )
+        XCTAssertFalse(vm.canSaveStagedMeld)
+    }
+
+    func testRequiredSetIsReadyToSave() {
+        let set = [
+            Card(suit: .hearts, rank: .queen),
+            Card(suit: .spades, rank: .queen),
+            Card(suit: .diamonds, rank: .queen),
+        ]
+        let vm = makeVM(
+            hand: set + [Card(suit: .clubs, rank: .king)],
+            level: 6
+        )
+        for card in set {
+            vm.toggleStaged(cardId: card.id)
+        }
+
+        XCTAssertEqual(
+            vm.stagedContractFeedback,
+            .ready(kind: .triplet, cardCount: 3)
+        )
+        XCTAssertTrue(vm.canSaveStagedMeld)
+    }
+
+    func testRepeatedRunContractKeepsNextRunRequirement() {
+        let firstRun = [
+            Card(suit: .hearts, rank: .three),
+            Card(suit: .hearts, rank: .four),
+            Card(suit: .hearts, rank: .five),
+            Card(suit: .hearts, rank: .six),
+            Card(suit: .hearts, rank: .seven),
+        ]
+        let secondRun = [
+            Card(suit: .clubs, rank: .eight),
+            Card(suit: .clubs, rank: .nine),
+            Card(suit: .clubs, rank: .ten),
+            Card(suit: .clubs, rank: .jack),
+        ]
+        let vm = makeVM(
+            hand: firstRun + secondRun + [
+                Card(suit: .clubs, rank: .queen),
+                Card(suit: .diamonds, rank: .king),
+            ],
+            level: 10
+        )
+        for card in firstRun {
+            vm.toggleStaged(cardId: card.id)
+        }
+        XCTAssertTrue(vm.saveStagedAsMeld())
+        for card in secondRun {
+            vm.toggleStaged(cardId: card.id)
+        }
+
+        XCTAssertEqual(
+            vm.stagedContractFeedback,
+            .progress(
+                kind: .sequence,
+                selectedCount: 4,
+                requiredCount: 5
+            )
+        )
+        XCTAssertFalse(vm.canSaveStagedMeld)
     }
 
     func testFinalAmbiguousSequenceChoicePresentsContractReadyPrompt() throws {

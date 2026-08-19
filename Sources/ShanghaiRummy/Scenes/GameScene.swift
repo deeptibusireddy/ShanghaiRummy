@@ -2069,7 +2069,7 @@ final class GameScene: SKScene {
             if vm.canConfirmGoDown {
                 return ("PUT DOWN CONTRACT", "go-down", true, true)
             }
-            if case .some(.success(_)) = vm.stagedValidation {
+            if vm.canSaveStagedMeld {
                 return ("SAVE MELD", "save-meld", true, true)
             }
             if !vm.stagedCardIds.isEmpty {
@@ -2163,28 +2163,62 @@ final class GameScene: SKScene {
     }
 
     private var stagingStatusText: String {
-        switch vm.stagedValidation {
-        case .none:
+        switch vm.stagedContractFeedback {
+        case .empty:
             if vm.canConfirmGoDown { return "CONTRACT READY" }
             if !vm.contractDraft.isEmpty { return "BUILD NEXT MELD" }
             return vm.goDownProgressText.uppercased()
-        case .some(.success(let kind)):
-            let type = kind == .triplet ? "SET" : "RUN"
-            let count = Self.cardCountLabel(vm.stagedCards.count).uppercased()
-            return "VALID \(type)  •  \(count)"
-        case .some(.failure(let error)):
-            return error.description.uppercased()
+        case .building(let selectedCount):
+            let count = Self.cardCountLabel(selectedCount).uppercased()
+            return "BUILDING MELD  •  \(count) SELECTED"
+        case .progress(let kind, let selectedCount, let requiredCount):
+            return "\(stagingMeldName(kind)) IN PROGRESS  •  "
+                + "\(selectedCount) OF \(requiredCount)"
+        case .ready(let kind, let cardCount):
+            let count = Self.cardCountLabel(cardCount).uppercased()
+            return "\(stagingMeldName(kind)) READY  •  \(count)"
+        case .wrongSize(let kind, let selectedCount, let requiredCounts):
+            let needed = requiredCounts.map(String.init).joined(separator: " OR ")
+            return "\(stagingMeldName(kind)) HAS \(selectedCount)  •  "
+                + "NEED \(needed)"
+        case .notNeeded(let kind, _):
+            return "\(stagingMeldName(kind)) NOT NEEDED FOR THIS CONTRACT"
+        case .invalid(let error):
+            return stagingErrorText(error)
         }
     }
 
     private var stagingStatusColor: UIColor {
-        switch vm.stagedValidation {
-        case .some(.success(_)):
+        switch vm.stagedContractFeedback {
+        case .ready:
             return UIColor(red: 0.38, green: 0.86, blue: 0.66, alpha: 1)
-        case .some(.failure(_)):
+        case .invalid:
             return UIColor(red: 0.96, green: 0.42, blue: 0.45, alpha: 1)
-        case .none:
+        case .progress, .wrongSize, .notNeeded:
+            return theme.turnGlow
+        case .empty, .building:
             return theme.contractPillText
+        }
+    }
+
+    private func stagingMeldName(_ kind: Meld.Kind) -> String {
+        kind == .triplet ? "SET" : "RUN"
+    }
+
+    private func stagingErrorText(
+        _ error: MeldValidator.ValidationError
+    ) -> String {
+        switch error {
+        case .tripletMixedRanks:
+            return "SET CARDS MUST SHARE A RANK"
+        case .tripletDuplicateSuits:
+            return "SET NEEDS DIFFERENT SUITS"
+        case .sequenceMixedSuits:
+            return "RUN CARDS MUST SHARE A SUIT"
+        case .sequenceNotConsecutive:
+            return "RUN CARDS MUST BE CONSECUTIVE"
+        default:
+            return error.description.uppercased()
         }
     }
 
