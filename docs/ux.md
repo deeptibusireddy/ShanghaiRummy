@@ -331,9 +331,11 @@ with warning feedback.
 
 - Detected automatically: after discard, if your hand is empty AND
   you've gone down → hand ends.
-- **Hand-over overlay** slides up center: title, per-player level
-  bumps, per-player round score, cumulative totals. **Next hand**
-  button starts the new deal for ordinary hands.
+- **Hand-over overlay** uses the same twilight-and-amber scorecard system as
+  the live Score sheet. Ranked rows show who went out, who completed their
+  contract, the level that advances next, round penalties, and cumulative
+  totals. **Deal Next Hand** uses the amber primary action; remote players see
+  a themed waiting state naming the next dealer.
 - If anyone completed level 10, final scoring happens immediately and the
   hand-over/deal step is skipped.
 
@@ -421,6 +423,13 @@ Haptics (M4):
 
 - Local bot table: your seat stays anchored at the bottom and every bot action,
   including draw and buy decisions, runs automatically with visible pacing.
+- Local bot tables expose a manual **Save Game** control after the opening seat
+  draw. One authoritative table snapshot is stored on the iPad; Game Center
+  sessions never expose or write this save.
+- When a solo save exists, Home shows its player count, hand number, bot count,
+  local level, and save time with **Resume Game** and **Discard** actions.
+  Resuming restores the exact cards, scores, levels, dealer, buy state, bot
+  strengths, and hand ordering. Completing that same game clears its save.
 - Online: scene stays anchored to *you* (your seat always bottom); opponent
   hands stay hidden, and the turn banner shows whose turn or buy decision is
   active.

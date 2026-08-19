@@ -5,94 +5,31 @@ struct LiveScorecardView: View {
     let theme: VisualTheme
     let onDismiss: () -> Void
 
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var hasAppeared = false
-
     var body: some View {
-        GeometryReader { geometry in
-            let compact = geometry.size.height < 760
+        ScorecardModalShell(
+            theme: theme,
+            maxWidth: 500,
+            accessibilityIdentifier: "live-scorecard"
+        ) { compact in
+            VStack(spacing: compact ? 12 : 15) {
+                header(compact: compact)
+                standingsNote
+                columnHeaders
 
-            ZStack {
-                Color.black.opacity(0.62)
-                    .ignoresSafeArea()
-                    .contentShape(Rectangle())
-
-                RadialGradient(
-                    colors: [
-                        accent.opacity(0.18),
-                        .clear,
-                    ],
-                    center: .center,
-                    startRadius: 30,
-                    endRadius: compact ? 330 : 440
-                )
-                .ignoresSafeArea()
-                .allowsHitTesting(false)
-
-                panel(compact: compact)
-                    .padding(.horizontal, 28)
-                    .scaleEffect(hasAppeared ? 1 : 0.94)
-                    .opacity(hasAppeared ? 1 : 0)
-            }
-        }
-        .onAppear {
-            if reduceMotion {
-                hasAppeared = true
-            } else {
-                withAnimation(
-                    .spring(response: 0.48, dampingFraction: 0.82)
-                ) {
-                    hasAppeared = true
+                VStack(spacing: compact ? 6 : 8) {
+                    ForEach(
+                        Array(rows.enumerated()),
+                        id: \.element.id
+                    ) { index, row in
+                        scoreRow(
+                            row,
+                            rank: index + 1,
+                            compact: compact
+                        )
+                    }
                 }
             }
         }
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("live-scorecard")
-        .accessibilityAddTraits(.isModal)
-    }
-
-    private func panel(compact: Bool) -> some View {
-        VStack(spacing: compact ? 12 : 15) {
-            header(compact: compact)
-            standingsNote
-            columnHeaders
-
-            VStack(spacing: compact ? 6 : 8) {
-                ForEach(
-                    Array(rows.enumerated()),
-                    id: \.element.id
-                ) { index, row in
-                    scoreRow(row, rank: index + 1, compact: compact)
-                }
-            }
-        }
-        .padding(.horizontal, compact ? 22 : 28)
-        .padding(.vertical, compact ? 20 : 26)
-        .frame(maxWidth: compact ? 460 : 500)
-        .background {
-            RoundedRectangle(cornerRadius: 28)
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            Color(theme.contractPillBg),
-                            Color(theme.scoreChipBg),
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-        }
-        .overlay {
-            RoundedRectangle(cornerRadius: 28)
-                .stroke(accent.opacity(0.92), lineWidth: 2)
-        }
-        .overlay(alignment: .top) {
-            Capsule()
-                .fill(accent)
-                .frame(width: 92, height: 4)
-                .offset(y: 10)
-        }
-        .shadow(color: .black.opacity(0.48), radius: 28, y: 14)
     }
 
     private func header(compact: Bool) -> some View {

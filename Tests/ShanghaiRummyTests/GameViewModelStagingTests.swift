@@ -162,6 +162,26 @@ final class GameViewModelStagingTests: XCTestCase {
         XCTAssertEqual(vm.stagedCards.map(\.id), [cards[1].id])
     }
 
+    func testHandOrderRoundTripsForSavedBotGame() {
+        let cards = [
+            Card(suit: .clubs, rank: .three),
+            Card(suit: .diamonds, rank: .four),
+            Card(suit: .hearts, rank: .five),
+            Card(suit: .spades, rank: .six),
+        ]
+        let vm = makeVM(hand: cards)
+        vm.moveHandCard(cards[3].id, before: cards[0].id)
+        let savedOrder = vm.persistedHandOrderByPlayer
+
+        let resumed = GameViewModel(state: vm.state)
+        resumed.restoreHandOrderByPlayer(savedOrder)
+
+        XCTAssertEqual(
+            resumed.orderedHand.map(\.id),
+            [cards[3].id, cards[0].id, cards[1].id, cards[2].id]
+        )
+    }
+
     func testStagingArrangesNineQueenAndTwoJokersBeforeSaving() throws {
         let nine = Card(suit: .diamonds, rank: .nine)
         let queen = Card(suit: .diamonds, rank: .queen)

@@ -15,7 +15,10 @@ final class ScreenshotUITests: XCTestCase {
         continueAfterFailure = false
         XCUIDevice.shared.orientation = .landscapeLeft
         app = XCUIApplication()
-        app.launchArguments += ["--ui-testing"]
+        app.launchArguments += [
+            "--ui-testing",
+            "--reset-saved-bot-game",
+        ]
     }
 
     override func tearDownWithError() throws {
@@ -75,6 +78,32 @@ final class ScreenshotUITests: XCTestCase {
         // Small pause so the scene finishes its first frame.
         Thread.sleep(forTimeInterval: 0.5)
         snapshot(named: "04-hand-1-scaffold")
+
+        app.buttons["accept-buy-offer"].tap()
+        let saveGame = app.buttons["save-bot-game"]
+        XCTAssertTrue(saveGame.waitForExistence(timeout: 3))
+        snapshot(named: "04-solo-save-control")
+        saveGame.tap()
+        let savedAlert = app.alerts["Game Saved"]
+        XCTAssertTrue(savedAlert.waitForExistence(timeout: 3))
+        savedAlert.buttons["OK"].tap()
+
+        app.terminate()
+        app = XCUIApplication()
+        app.launchArguments += ["--ui-testing"]
+        app.launch()
+
+        let savedGameCard = app.descendants(matching: .any)[
+            "saved-bot-game"
+        ]
+        XCTAssertTrue(savedGameCard.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["resume-saved-bot-game"].exists)
+        XCTAssertTrue(app.buttons["discard-saved-bot-game"].exists)
+        snapshot(named: "01-home-menu-saved-game")
+
+        app.buttons["resume-saved-bot-game"].tap()
+        XCTAssertTrue(app.buttons["quit-game"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["save-bot-game"].exists)
     }
 
     func testCaptureFamilyTableSetup() throws {
@@ -302,6 +331,29 @@ final class ScreenshotUITests: XCTestCase {
         XCTAssertTrue(soundSettings.waitForExistence(timeout: 3))
     }
 
+    func testPrivacyAndSupportIsAccessibleFromHome() throws {
+        app.launch()
+
+        let information = app.buttons["home-privacy-support"]
+        XCTAssertTrue(information.waitForExistence(timeout: 5))
+        information.tap()
+
+        XCTAssertTrue(
+            app.descendants(matching: .any)["privacy-support-view"]
+                .waitForExistence(timeout: 3)
+        )
+        XCTAssertTrue(
+            app.descendants(matching: .any)["privacy-policy-link"].exists
+        )
+        XCTAssertTrue(
+            app.descendants(matching: .any)["support-link"].exists
+        )
+        snapshot(named: "01-privacy-and-support")
+
+        app.buttons["close-privacy-support"].tap()
+        XCTAssertTrue(information.waitForExistence(timeout: 3))
+    }
+
     private func dismissSoundUnavailableAlertIfNeeded() {
         let alert = app.alerts["Sound Unavailable"]
         if alert.waitForExistence(timeout: 0.5) {
@@ -474,7 +526,19 @@ final class ScreenshotUITests: XCTestCase {
     func testCaptureHandOver() throws {
         app.launchArguments += ["--demo-hand-over"]
         app.launch()
-        XCTAssertTrue(app.buttons["quit-game"].waitForExistence(timeout: 5))
+
+        let scorecard = app.descendants(matching: .any)[
+            "hand-over-scorecard"
+        ]
+        XCTAssertTrue(scorecard.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Hand 3 Complete"].exists)
+        XCTAssertTrue(
+            app.descendants(matching: .any)["hand-over-row-1"].exists
+        )
+        XCTAssertTrue(
+            app.descendants(matching: .any)["hand-over-row-4"].exists
+        )
+        XCTAssertTrue(app.buttons["deal-next-hand"].exists)
         Thread.sleep(forTimeInterval: 0.9)
         snapshot(named: "08-hand-over-scoreboard")
     }

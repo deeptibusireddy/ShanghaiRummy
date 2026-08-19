@@ -15,7 +15,7 @@ macOS runners, so you can develop from Windows and still ship to the App Store.
 ## Tier 1 — GitHub Actions (active now)
 
 Every push to `main` and every PR runs `.github/workflows/ios.yml`:
-1. Checks out the repo on a `macos-14` runner
+1. Checks out the repo on a `macos-15` runner
 2. Installs XcodeGen and generates `ShanghaiRummy.xcodeproj`
 3. Runs `xcodebuild ... test` against the iOS Simulator
 4. Uploads `.xcresult` bundles as an artifact
@@ -43,7 +43,7 @@ Steps on the Mac:
 1. Install Xcode from the App Store
 2. Sign in to your Apple Developer account in Xcode preferences
 3. In App Store Connect (browser), create the app record:
-   - Name: Shanghai Rummy
+   - Name: Shanghai Rummy Nights
    - Bundle ID: `com.deeptibusireddy.ShanghaiRummy`
    - SKU: `shanghairummy001`
 4. Clone this repo, run `xcodegen generate`, open `.xcodeproj`
@@ -80,6 +80,27 @@ Once TestFlight testing is happy:
 3. Submit for review from the browser
 
 **No Mac required after the one-hour setup.**
+
+### Submission links
+
+- Privacy policy:
+  `https://github.com/deeptibusireddy/ShanghaiRummy/blob/main/docs/app-store/privacy-policy.md`
+- Support:
+  `https://github.com/deeptibusireddy/ShanghaiRummy/blob/main/docs/app-store/support.md`
+
+Both pages must be present on `main` before their URLs are entered in App
+Store Connect. The privacy policy is also linked from the app's home screen.
+
+### 13-inch iPad screenshots
+
+Run the **iOS Build & Test** workflow manually with:
+
+- **Simulator:** `iPad Pro 13-inch`
+- **Run the full game-simulation matrix:** disabled
+
+The workflow still defaults to an automatically selected iPad for pushes and
+pull requests. Manual simulation runs must explicitly enable the simulation
+input.
 
 ## Cost summary
 

@@ -68,4 +68,4 @@ docs/                     # Rules & architecture notes
 
 ## License
 
-TBD — likely MIT for now. See [`LICENSE`](LICENSE).
+MIT. See [`LICENSE`](LICENSE).

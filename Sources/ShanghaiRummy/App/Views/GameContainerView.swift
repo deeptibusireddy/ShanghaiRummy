@@ -7,14 +7,25 @@ struct GameContainerView: View {
     @StateObject var vm: GameViewModel
     @State private var isConfirmingExit = false
     @State private var isShowingTurnSoundSettings = false
+    @State private var saveAlert: SaveAlert?
     @AppStorage(TurnSoundPreferences.enabledKey)
     private var turnSoundsEnabled = true
     let theme: VisualTheme
+    let onSaveGame: (() throws -> Void)?
+    let onGameCompleted: (() -> Void)?
     let onExit: () -> Void
 
-    init(vm: GameViewModel, theme: VisualTheme = .gameNight, onExit: @escaping () -> Void) {
+    init(
+        vm: GameViewModel,
+        theme: VisualTheme = .gameNight,
+        onSaveGame: (() throws -> Void)? = nil,
+        onGameCompleted: (() -> Void)? = nil,
+        onExit: @escaping () -> Void
+    ) {
         _vm = StateObject(wrappedValue: vm)
         self.theme = theme
+        self.onSaveGame = onSaveGame
+        self.onGameCompleted = onGameCompleted
         self.onExit = onExit
     }
 
@@ -41,6 +52,33 @@ struct GameContainerView: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel("Leave game")
                 .accessibilityIdentifier("quit-game")
+
+                if let onSaveGame,
+                   canShowSaveGame {
+                    Button {
+                        do {
+                            try onSaveGame()
+                            saveAlert = .saved
+                        } catch {
+                            saveAlert = .failed(
+                                error.localizedDescription
+                            )
+                        }
+                    } label: {
+                        Image(systemName: "bookmark.fill")
+                            .font(.system(
+                                size: 15,
+                                weight: .bold,
+                                design: .rounded
+                            ))
+                            .foregroundStyle(.white.opacity(0.9))
+                            .frame(width: 44, height: 44)
+                            .background(.ultraThinMaterial, in: Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Save solo game")
+                    .accessibilityIdentifier("save-bot-game")
+                }
 
                 Button {
                     isShowingTurnSoundSettings = true
@@ -106,6 +144,29 @@ struct GameContainerView: View {
         } message: {
             Text(exitConfirmationMessage)
         }
+        .alert(item: $saveAlert) { alert in
+            switch alert {
+            case .saved:
+                return Alert(
+                    title: Text("Game Saved"),
+                    message: Text(
+                        "You can resume this solo table from the home screen."
+                    ),
+                    dismissButton: .default(Text("OK"))
+                )
+            case .failed(let message):
+                return Alert(
+                    title: Text("Couldn’t Save Game"),
+                    message: Text(message),
+                    dismissButton: .default(Text("OK"))
+                )
+            }
+        }
+        .onChange(of: vm.state.phase) { _, phase in
+            if phase == .gameEnded {
+                onGameCompleted?()
+            }
+        }
         .overlay {
             if let stage = vm.openingDrawStage {
                 OpeningDrawView(
@@ -135,6 +196,31 @@ struct GameContainerView: View {
         .task {
             await runOpeningDrawCeremony()
         }
+    }
+
+    private enum SaveAlert: Identifiable {
+        case saved
+        case failed(String)
+
+        var id: String {
+            switch self {
+            case .saved:
+                return "saved"
+            case .failed(let message):
+                return "failed-\(message)"
+            }
+        }
+    }
+
+    private var canShowSaveGame: Bool {
+        vm.openingDrawStage == nil
+            && !vm.isBuyDecisionActive
+            && vm.pendingInitialSequenceChoice == nil
+            && vm.pendingSequenceEndChoice == nil
+            && vm.contractReadyPrompt == nil
+            && !vm.isScorecardPresented
+            && !vm.isHandOver
+            && !vm.isGameOver
     }
 
     private func runOpeningDrawCeremony() async {
@@ -169,6 +255,10 @@ struct GameContainerView: View {
     }
 
     private var exitConfirmationMessage: String {
+        if onSaveGame != nil {
+            return "You’ll return to Home. Only your most recently saved "
+                + "progress can be resumed; newer progress will be lost."
+        }
         if vm.isOnlineGame {
             return "You will leave this online table and may not be able to "
                 + "rejoin."
@@ -593,83 +683,16 @@ struct GameContainerView: View {
     }
 
     private var handOverOverlay: some View {
-        VStack(spacing: 14) {
-            Text("Hand \(vm.state.currentRound) Over")
-                .font(.title2).bold()
-            let outName = vm.pendingHandSummary?.first(where: { $0.wentOut })?.name
-            if let out = outName {
-                Text("\(out) went out")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+        RoundScorecardView(
+            handNumber: vm.state.currentRound,
+            rows: vm.pendingHandSummary ?? [],
+            canAdvance: vm.canAdvanceHand,
+            nextDealerName: vm.nextDealerName,
+            theme: theme,
+            onAdvance: {
+                vm.advanceHand()
             }
-            scoreTable
-            if vm.canAdvanceHand {
-                Button("Deal Next Hand") { vm.advanceHand() }
-                    .buttonStyle(.borderedProminent)
-                    .padding(.top, 4)
-            } else {
-                Text("Waiting for \(vm.nextDealerName) to deal the next hand")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .padding(.top, 4)
-            }
-        }
-        .padding(20)
-        .frame(maxWidth: 460)
-        .background(RoundedRectangle(cornerRadius: 16).fill(.regularMaterial))
-        .padding()
-    }
-
-    @ViewBuilder
-    private var scoreTable: some View {
-        let rows = vm.pendingHandSummary ?? []
-        VStack(spacing: 6) {
-            HStack {
-                Text("Player").frame(maxWidth: .infinity, alignment: .leading)
-                Text("Lvl").frame(width: 44, alignment: .trailing)
-                Text("Round").frame(width: 60, alignment: .trailing)
-                Text("Total").frame(width: 60, alignment: .trailing)
-            }
-            .font(.caption.bold())
-            .foregroundStyle(.secondary)
-            Divider()
-            ForEach(rows) { row in
-                HStack {
-                    HStack(spacing: 6) {
-                        Text(row.name).bold()
-                        if row.wentOut {
-                            Text("• out")
-                                .font(.caption2)
-                                .foregroundStyle(.green)
-                        }
-                        if row.didLevelUp && !row.wentOut {
-                            Text("• down")
-                                .font(.caption2)
-                                .foregroundStyle(.blue)
-                        }
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-
-                    HStack(spacing: 2) {
-                        Text("\(row.currentLevel)")
-                        if row.didLevelUp {
-                            Image(systemName: "arrow.up.circle.fill")
-                                .foregroundStyle(.green)
-                                .font(.caption)
-                        }
-                    }
-                    .frame(width: 44, alignment: .trailing)
-
-                    Text("\(row.roundPoints)")
-                        .frame(width: 60, alignment: .trailing)
-                        .foregroundStyle(row.roundPoints == 0 ? .green : .primary)
-                    Text("\(row.totalAfter)")
-                        .frame(width: 60, alignment: .trailing)
-                        .bold()
-                }
-                .font(.body)
-            }
-        }
+        )
     }
 
     private var gameOverOverlay: some View {

@@ -6,6 +6,20 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      screenshot_device:
+        description: Simulator used for build, tests, and screenshots
+        required: true
+        default: Automatic iPad
+        type: choice
+        options:
+          - Automatic iPad
+          - iPad Pro 13-inch
+      run_simulations:
+        description: Run the full game-simulation matrix
+        required: true
+        default: false
+        type: boolean
 
 jobs:
   build-and-test:
@@ -14,6 +28,7 @@ jobs:
     timeout-minutes: 20
     env:
       DEVICE_FAMILY: iPad
+      PREFERRED_DEVICE: ${{ inputs.screenshot_device || 'Automatic iPad' }}
       RESULT_BUNDLE: TestResults-iPad.xcresult
 
     steps:
@@ -48,13 +63,17 @@ jobs:
       - name: Build & test
         run: |
           set -o pipefail
-          # Pick the first available device in the iPad family instead of
-          # pinning to a runtime that may rotate off the hosted runner.
+          # Keep routine CI on its existing first-iPad behavior. Manual
+          # screenshot runs may select the newest matching 13-inch runtime.
           DEVICE_ID=$(xcrun simctl list devices available -j \
-            | python3 -c 'import json,os,sys; d=json.load(sys.stdin)["devices"]; \
+            | python3 -c 'import json,os,re,sys; d=json.load(sys.stdin)["devices"]; \
               family=os.environ["DEVICE_FAMILY"]; \
-              picks=[dev for k,v in d.items() if "iOS" in k for dev in v if family in dev["name"]]; \
-              print(picks[0]["udid"])')
+              preferred=os.environ["PREFERRED_DEVICE"]; \
+              picks=[(k,dev) for k,v in d.items() if "iOS" in k for dev in v if family in dev["name"]]; \
+              matches=[item for item in picks if preferred != "Automatic iPad" and preferred in item[1]["name"]]; \
+              matches.sort(key=lambda item: tuple(map(int,re.findall(r"\d+",item[0])))); \
+              selected=matches[-1] if matches else picks[0]; \
+              print(selected[1]["udid"])')
           echo "Using $DEVICE_FAMILY simulator: $DEVICE_ID"
           xcodebuild \
             -project ShanghaiRummy.xcodeproj \
@@ -67,6 +86,36 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             build test \
             | xcbeautify --renderer github-actions
+
+      - name: Verify bundled version
+        run: |
+          BUILD_SETTINGS=$(xcodebuild \
+            -project ShanghaiRummy.xcodeproj \
+            -target ShanghaiRummy \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -showBuildSettings)
+          EXPECTED_VERSION=$(printf '%s\n' "$BUILD_SETTINGS" \
+            | awk -F ' = ' '/MARKETING_VERSION/ { print $2; exit }')
+          EXPECTED_BUILD=$(printf '%s\n' "$BUILD_SETTINGS" \
+            | awk -F ' = ' '/CURRENT_PROJECT_VERSION/ { print $2; exit }')
+          APP_INFO=$(find "$HOME/Library/Developer/Xcode/DerivedData" \
+            -path '*/Build/Products/Debug-iphonesimulator/ShanghaiRummy.app/Info.plist' \
+            -print -quit)
+          if [ -z "$APP_INFO" ]; then
+            echo "Built ShanghaiRummy.app Info.plist was not found"
+            exit 1
+          fi
+          BUNDLED_VERSION=$(/usr/libexec/PlistBuddy \
+            -c 'Print :CFBundleShortVersionString' "$APP_INFO")
+          BUNDLED_BUILD=$(/usr/libexec/PlistBuddy \
+            -c 'Print :CFBundleVersion' "$APP_INFO")
+          echo "Bundled version: $BUNDLED_VERSION ($BUNDLED_BUILD)"
+          if [ "$BUNDLED_VERSION" != "$EXPECTED_VERSION" ] \
+            || [ "$BUNDLED_BUILD" != "$EXPECTED_BUILD" ]; then
+            echo "Expected $EXPECTED_VERSION ($EXPECTED_BUILD)"
+            exit 1
+          fi
 
       - name: Extract screenshots from test results
         if: always()
@@ -97,7 +146,7 @@ jobs:
 
   game-simulation:
     name: Simulate ${{ matrix.player_count }} Players (${{ matrix.batch.start }}-${{ matrix.batch.end }})
-    if: ${{ github.event_name == 'workflow_dispatch' }}
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_simulations }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
@@ -162,7 +211,7 @@ jobs:
 
   simulation-summary:
     name: Verify 5,000 Simulated Games
-    if: ${{ always() && github.event_name == 'workflow_dispatch' }}
+    if: ${{ always() && github.event_name == 'workflow_dispatch' && inputs.run_simulations }}
     needs: game-simulation
     runs-on: ubuntu-latest
     steps:
