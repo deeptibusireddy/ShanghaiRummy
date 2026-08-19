@@ -850,6 +850,87 @@ public final class GameViewModel: ObservableObject {
         return MeldValidator.validate(cards)
     }
 
+    public enum StagedContractFeedback: Equatable {
+        case empty
+        case building(selectedCount: Int)
+        case progress(
+            kind: Meld.Kind,
+            selectedCount: Int,
+            requiredCount: Int
+        )
+        case ready(kind: Meld.Kind, cardCount: Int)
+        case wrongSize(
+            kind: Meld.Kind,
+            selectedCount: Int,
+            requiredCounts: [Int]
+        )
+        case notNeeded(kind: Meld.Kind, cardCount: Int)
+        case invalid(MeldValidator.ValidationError)
+
+        public var canSave: Bool {
+            if case .ready = self { return true }
+            return false
+        }
+    }
+
+    /// Contract-aware guidance for the staging tray. Structural meld
+    /// validation stays separate so partial legal runs are not presented as
+    /// complete contract components.
+    public var stagedContractFeedback: StagedContractFeedback {
+        let cards = stagedCards
+        guard !cards.isEmpty else { return .empty }
+
+        let remaining = remainingContractComponents
+        switch MeldValidator.validate(cards) {
+        case .success(let kind):
+            let matchingKind = remaining.filter {
+                meldKind(for: $0) == kind
+            }
+            if matchingKind.contains(where: {
+                $0.cardCount == cards.count
+            }) {
+                return .ready(kind: kind, cardCount: cards.count)
+            }
+            if let largerTarget = matchingKind
+                .map(\.cardCount)
+                .filter({ $0 > cards.count })
+                .min() {
+                return .progress(
+                    kind: kind,
+                    selectedCount: cards.count,
+                    requiredCount: largerTarget
+                )
+            }
+            let requiredCounts = Array(
+                Set(matchingKind.map(\.cardCount))
+            ).sorted()
+            if !requiredCounts.isEmpty {
+                return .wrongSize(
+                    kind: kind,
+                    selectedCount: cards.count,
+                    requiredCounts: requiredCounts
+                )
+            }
+            return .notNeeded(kind: kind, cardCount: cards.count)
+
+        case .failure(let error):
+            let largestRemainingMeld = remaining.map(\.cardCount).max() ?? 0
+            if cards.count < largestRemainingMeld {
+                return .building(selectedCount: cards.count)
+            }
+            return .invalid(error)
+        }
+    }
+
+    public var canSaveStagedMeld: Bool {
+        guard isLocalPlayersTurn,
+              state.phase == .awaitingMeldOrDiscard,
+              !currentPlayer.hasGoneDownThisRound else {
+            return false
+        }
+        return stagedContractFeedback.canSave
+    }
+
     /// Clear staging. Called after a turn ends or the player cancels.
     public func clearStaging() {
         stagedCardIds.removeAll()
@@ -871,10 +952,7 @@ public final class GameViewModel: ObservableObject {
     /// meld. No-op if staging is empty or invalid.
     @discardableResult
     public func saveStagedAsMeld() -> Bool {
-        guard isLocalPlayersTurn,
-              state.phase == .awaitingMeldOrDiscard else {
-            return false
-        }
+        guard canSaveStagedMeld else { return false }
         let selected = selectedStagedCards
         if case .success = MeldValidator.validateTriplet(selected) {
             commitStagedMeld(selected)
@@ -955,6 +1033,41 @@ public final class GameViewModel: ObservableObject {
             case .sequence(let n): return "sequence-\(n)"
             }
         }.sorted()
+    }
+
+    private var remainingContractComponents: [ContractComponent] {
+        guard let contract = state.contract(forPlayer: currentPlayer.id) else {
+            return []
+        }
+        var remaining = contract.components
+        for cards in contractDraft {
+            guard let component = contractComponent(for: cards),
+                  let index = remaining.firstIndex(of: component) else {
+                continue
+            }
+            remaining.remove(at: index)
+        }
+        return remaining
+    }
+
+    private func contractComponent(for cards: [Card]) -> ContractComponent? {
+        switch MeldValidator.validate(cards) {
+        case .success(.triplet):
+            return .triplet(size: cards.count)
+        case .success(.sequence):
+            return .sequence(size: cards.count)
+        case .failure:
+            return nil
+        }
+    }
+
+    private func meldKind(for component: ContractComponent) -> Meld.Kind {
+        switch component {
+        case .triplet:
+            return .triplet
+        case .sequence:
+            return .sequence
+        }
     }
 
     /// True when the draft exactly satisfies the current player's contract.

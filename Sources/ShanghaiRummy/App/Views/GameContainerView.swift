@@ -133,42 +133,17 @@ struct GameContainerView: View {
             }
             .interactiveDismissDisabled(true)
         }
-        .alert(
-            "Leave Game?",
-            isPresented: $isConfirmingExit
-        ) {
-            Button("Keep Playing", role: .cancel) {}
-            Button("Leave Game", role: .destructive) {
-                onExit()
-            }
-        } message: {
-            Text(exitConfirmationMessage)
-        }
-        .alert(item: $saveAlert) { alert in
-            switch alert {
-            case .saved:
-                return Alert(
-                    title: Text("Game Saved"),
-                    message: Text(
-                        "You can resume this solo table from the home screen."
-                    ),
-                    dismissButton: .default(Text("OK"))
-                )
-            case .failed(let message):
-                return Alert(
-                    title: Text("Couldn’t Save Game"),
-                    message: Text(message),
-                    dismissButton: .default(Text("OK"))
-                )
-            }
-        }
         .onChange(of: vm.state.phase) { _, phase in
             if phase == .gameEnded {
                 onGameCompleted?()
             }
         }
         .overlay {
-            if let stage = vm.openingDrawStage {
+            if let saveAlert {
+                saveResultOverlay(saveAlert)
+            } else if isConfirmingExit {
+                exitConfirmationOverlay
+            } else if let stage = vm.openingDrawStage {
                 OpeningDrawView(
                     stage: stage,
                     draws: vm.state.openingDraws,
@@ -198,18 +173,9 @@ struct GameContainerView: View {
         }
     }
 
-    private enum SaveAlert: Identifiable {
+    private enum SaveAlert {
         case saved
         case failed(String)
-
-        var id: String {
-            switch self {
-            case .saved:
-                return "saved"
-            case .failed(let message):
-                return "failed-\(message)"
-            }
-        }
     }
 
     private var canShowSaveGame: Bool {
@@ -264,6 +230,78 @@ struct GameContainerView: View {
                 + "rejoin."
         }
         return "Your current game will end and its progress will be lost."
+    }
+
+    private var exitConfirmationOverlay: some View {
+        GameStatusDialogView(
+            eyebrow: "END THIS TABLE",
+            title: "Leave Game?",
+            message: exitConfirmationMessage,
+            symbolName: "door.left.hand.open",
+            style: .warning,
+            theme: theme,
+            primaryAction: .init(
+                title: "Leave Game",
+                accessibilityIdentifier: "leave-game"
+            ) {
+                isConfirmingExit = false
+                onExit()
+            },
+            secondaryAction: .init(
+                title: "Keep Playing",
+                accessibilityIdentifier: "keep-playing"
+            ) {
+                isConfirmingExit = false
+            },
+            accessibilityIdentifier: "exit-confirmation-overlay",
+            titleAccessibilityIdentifier: "exit-confirmation-title"
+        )
+    }
+
+    private func saveResultOverlay(_ result: SaveAlert) -> some View {
+        let content: (
+            eyebrow: String,
+            title: String,
+            message: String,
+            symbol: String,
+            style: GameStatusDialogView.Style
+        )
+        switch result {
+        case .saved:
+            content = (
+                "GAME SAVED",
+                "Saved for Later",
+                "You can resume this solo table from the home screen.",
+                "checkmark.seal.fill",
+                .success
+            )
+        case .failed(let message):
+            content = (
+                "SAVE FAILED",
+                "Couldn't Save",
+                message,
+                "exclamationmark.triangle.fill",
+                .error
+            )
+        }
+
+        return GameStatusDialogView(
+            eyebrow: content.eyebrow,
+            title: content.title,
+            message: content.message,
+            symbolName: content.symbol,
+            style: content.style,
+            theme: theme,
+            primaryAction: .init(
+                title: "Back to Table",
+                accessibilityIdentifier: "dismiss-save-result"
+            ) {
+                saveAlert = nil
+            },
+            secondaryAction: nil,
+            accessibilityIdentifier: "save-result-overlay",
+            titleAccessibilityIdentifier: "save-result-title"
+        )
     }
 
     private func contractReadyOverlay(

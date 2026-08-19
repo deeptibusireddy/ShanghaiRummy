@@ -84,9 +84,15 @@ final class ScreenshotUITests: XCTestCase {
         XCTAssertTrue(saveGame.waitForExistence(timeout: 3))
         snapshot(named: "04-solo-save-control")
         saveGame.tap()
-        let savedAlert = app.alerts["Game Saved"]
-        XCTAssertTrue(savedAlert.waitForExistence(timeout: 3))
-        savedAlert.buttons["OK"].tap()
+        let savedOverlay = app.descendants(matching: .any)[
+            "save-result-overlay"
+        ]
+        XCTAssertTrue(savedOverlay.waitForExistence(timeout: 3))
+        XCTAssertEqual(
+            app.staticTexts["save-result-title"].label,
+            "Saved for Later"
+        )
+        app.buttons["dismiss-save-result"].tap()
 
         app.terminate()
         app = XCUIApplication()
@@ -289,18 +295,20 @@ final class ScreenshotUITests: XCTestCase {
         takeSeats.tap()
         tapCenter(of: quit)
 
-        let alert = app.alerts["Leave Game?"]
-        XCTAssertTrue(alert.waitForExistence(timeout: 2))
-        XCTAssertTrue(alert.buttons["Keep Playing"].exists)
-        XCTAssertTrue(alert.buttons["Leave Game"].exists)
+        let confirmation = app.descendants(matching: .any)[
+            "exit-confirmation-overlay"
+        ]
+        XCTAssertTrue(confirmation.waitForExistence(timeout: 2))
+        XCTAssertTrue(app.buttons["keep-playing"].exists)
+        XCTAssertTrue(app.buttons["leave-game"].exists)
         XCTAssertFalse(createTable.exists)
 
-        alert.buttons["Keep Playing"].tap()
+        app.buttons["keep-playing"].tap()
         XCTAssertTrue(quit.waitForExistence(timeout: 2))
 
         tapCenter(of: quit)
-        XCTAssertTrue(alert.waitForExistence(timeout: 2))
-        alert.buttons["Leave Game"].tap()
+        XCTAssertTrue(confirmation.waitForExistence(timeout: 2))
+        app.buttons["leave-game"].tap()
         XCTAssertTrue(createTable.waitForExistence(timeout: 5))
     }
 

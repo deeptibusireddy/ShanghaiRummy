@@ -4,6 +4,7 @@ struct ScorecardModalShell<Content: View>: View {
     let theme: VisualTheme
     let maxWidth: CGFloat
     let accessibilityIdentifier: String
+    private let accent: Color
     private let content: (Bool) -> Content
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -13,11 +14,13 @@ struct ScorecardModalShell<Content: View>: View {
         theme: VisualTheme,
         maxWidth: CGFloat,
         accessibilityIdentifier: String,
+        accent: Color? = nil,
         @ViewBuilder content: @escaping (Bool) -> Content
     ) {
         self.theme = theme
         self.maxWidth = maxWidth
         self.accessibilityIdentifier = accessibilityIdentifier
+        self.accent = accent ?? Color(theme.turnGlow)
         self.content = content
     }
 
@@ -95,7 +98,4 @@ struct ScorecardModalShell<Content: View>: View {
             .shadow(color: .black.opacity(0.48), radius: 28, y: 14)
     }
 
-    private var accent: Color {
-        Color(theme.turnGlow)
-    }
 }
